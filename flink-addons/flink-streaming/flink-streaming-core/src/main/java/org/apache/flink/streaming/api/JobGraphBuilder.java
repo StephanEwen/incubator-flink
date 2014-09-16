@@ -28,11 +28,8 @@ import org.apache.flink.runtime.io.network.channels.ChannelType;
 import org.apache.flink.runtime.jobgraph.AbstractJobVertex;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.jobgraph.JobGraphDefinitionException;
-import org.apache.flink.runtime.jobgraph.JobInputVertex;
-import org.apache.flink.runtime.jobgraph.JobOutputVertex;
-import org.apache.flink.runtime.jobgraph.JobTaskVertex;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.streaming.api.collector.OutputSelector;
 import org.apache.flink.streaming.api.invokable.SinkInvokable;
 import org.apache.flink.streaming.api.invokable.SourceInvokable;
@@ -85,9 +82,6 @@ public class JobGraphBuilder {
 	private int degreeOfParallelism;
 	private int executionParallelism;
 
-	private String maxParallelismVertexName;
-	private int maxParallelism;
-
 	/**
 	 * Creates an new {@link JobGraph} with the given name. A JobGraph is a DAG
 	 * and consists of sources, tasks (intermediate vertices) and sinks. A
@@ -124,8 +118,6 @@ public class JobGraphBuilder {
 		iterationTailCount = new HashMap<String, Integer>();
 		iterationWaitTime = new HashMap<String, Long>();
 
-		maxParallelismVertexName = "";
-		maxParallelism = 0;
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("JobGraph created");
 		}
@@ -395,22 +387,20 @@ public class JobGraphBuilder {
 		byte[] outputSelector = outputSelectors.get(componentName);
 
 		// Create vertex object
-		AbstractJobVertex component = null;
-		if (componentClass.equals(StreamSource.class)
-				|| componentClass.equals(StreamIterationSource.class)) {
-			component = new JobInputVertex(componentName, this.jobGraph);
-		} else if (componentClass.equals(StreamTask.class)
-				|| componentClass.equals(CoStreamTask.class)) {
-			component = new JobTaskVertex(componentName, this.jobGraph);
-		} else if (componentClass.equals(StreamSink.class)
-				|| componentClass.equals(StreamIterationSink.class)) {
-			component = new JobOutputVertex(componentName, this.jobGraph);
+		AbstractJobVertex component;
+		
+		if (componentClass.equals(StreamSource.class) || componentClass.equals(StreamIterationSource.class)
+				|| componentClass.equals(StreamTask.class) || componentClass.equals(CoStreamTask.class)
+				|| componentClass.equals(StreamSink.class) || componentClass.equals(StreamIterationSink.class))
+		{
+			component = new AbstractJobVertex(componentName);
+			this.jobGraph.addVertex(component);
 		} else {
 			throw new RuntimeException("Unsupported component class");
 		}
 
 		component.setInvokableClass(componentClass);
-		component.setNumberOfSubtasks(parallelism);
+		component.setParallelism(parallelism);
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Parallelism set: " + parallelism + " for "
 					+ componentName);
@@ -439,11 +429,6 @@ public class JobGraphBuilder {
 		}
 
 		components.put(componentName, component);
-
-		if (parallelism > maxParallelism) {
-			maxParallelism = parallelism;
-			maxParallelismVertexName = componentName;
-		}
 	}
 
 	/**
@@ -515,29 +500,20 @@ public class JobGraphBuilder {
 		StreamConfig config = new StreamConfig(
 				upStreamComponent.getConfiguration());
 
-		try {
-			if (partitionerObject.getClass().equals(ForwardPartitioner.class)) {
-				upStreamComponent.connectTo(downStreamComponent,
-						ChannelType.NETWORK, DistributionPattern.POINTWISE);
-			} else {
-				upStreamComponent.connectTo(downStreamComponent,
-						ChannelType.NETWORK, DistributionPattern.BIPARTITE);
-			}
-
-			if (LOG.isDebugEnabled()) {
-				LOG.debug("CONNECTED: "
-						+ partitionerObject.getClass().getSimpleName() + " - "
-						+ upStreamComponentName + " -> "
-						+ downStreamComponentName);
-			}
-
-		} catch (JobGraphDefinitionException e) {
-			throw new RuntimeException("Cannot connect components: "
-					+ upStreamComponentName + " to " + downStreamComponentName,
-					e);
+		if (partitionerObject.getClass().equals(ForwardPartitioner.class)) {
+			downStreamComponent.connectNewDataSetAsInput(upStreamComponent, DistributionPattern.POINTWISE);
+		} else {
+			downStreamComponent.connectNewDataSetAsInput(upStreamComponent, DistributionPattern.BIPARTITE);
 		}
 
-		int outputIndex = upStreamComponent.getNumberOfForwardConnections() - 1;
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("CONNECTED: "
+					+ partitionerObject.getClass().getSimpleName() + " - "
+					+ upStreamComponentName + " -> "
+					+ downStreamComponentName);
+		}
+
+		int outputIndex = upStreamComponent.getNumberOfProducedIntermediateDataSets() - 1;
 
 		config.setOutputName(outputIndex,
 				outEdgeNames.get(upStreamComponentName).get(outputIndex));
@@ -603,36 +579,30 @@ public class JobGraphBuilder {
 		typeWrapperOut2.put(to, typeWrapperOut2.get(from));
 	}
 
-	/**
-	 * Sets instance sharing between the given components
-	 * 
-	 * @param component1
-	 *            Share will be called on this component
-	 * @param component2
-	 *            Share will be called to this component
-	 */
-	public void setInstanceSharing(String component1, String component2) {
-		AbstractJobVertex c1 = components.get(component1);
-		AbstractJobVertex c2 = components.get(component2);
-
-		c1.setVertexToShareInstancesWith(c2);
-	}
+//	/**
+//	 * Sets instance sharing between the given components
+//	 * 
+//	 * @param component1
+//	 *            Share will be called on this component
+//	 * @param component2
+//	 *            Share will be called to this component
+//	 */
+//	public void setInstanceSharing(String component1, String component2) {
+//		AbstractJobVertex c1 = components.get(component1);
+//		AbstractJobVertex c2 = components.get(component2);
+//
+//		c1.setVertexToShareInstancesWith(c2);
+//	}
 
 	/**
 	 * Sets all components to share with the one with highest parallelism
 	 */
 	private void setAutomaticInstanceSharing() {
-
-		AbstractJobVertex maxParallelismVertex = components
-				.get(maxParallelismVertexName);
-
-		for (String componentName : components.keySet()) {
-			if (!componentName.equals(maxParallelismVertexName)) {
-				components.get(componentName).setVertexToShareInstancesWith(
-						maxParallelismVertex);
-			}
+		SlotSharingGroup sharingGroup = new SlotSharingGroup();
+		
+		for (AbstractJobVertex vertex : components.values()) {
+			vertex.setSlotSharingGroup(sharingGroup);
 		}
-
 	}
 
 	/**
@@ -641,8 +611,7 @@ public class JobGraphBuilder {
 	private void setNumberOfJobInputs() {
 		for (AbstractJobVertex component : components.values()) {
 			(new StreamConfig(component.getConfiguration()))
-					.setNumberOfInputs(component
-							.getNumberOfBackwardConnections());
+					.setNumberOfInputs(component.getNumberOfInputs());
 		}
 	}
 
@@ -653,8 +622,7 @@ public class JobGraphBuilder {
 	private void setNumberOfJobOutputs() {
 		for (AbstractJobVertex component : components.values()) {
 			(new StreamConfig(component.getConfiguration()))
-					.setNumberOfOutputs(component
-							.getNumberOfForwardConnections());
+					.setNumberOfOutputs(component.getNumberOfProducedIntermediateDataSets());
 		}
 	}
 
