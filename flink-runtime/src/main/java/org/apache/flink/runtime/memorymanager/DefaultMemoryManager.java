@@ -16,7 +16,6 @@
  * limitations under the License.
  */
 
-
 package org.apache.flink.runtime.memorymanager;
 
 import java.util.ArrayDeque;
@@ -69,11 +68,6 @@ public class DefaultMemoryManager implements MemoryManager {
 	
 	private boolean isShutDown;				// flag whether the close() has already been invoked.
 
-	/**
-	 * Number of slots of the task manager
-	 */
-	private final int numberOfSlots;
-
 	private final long memorySize;
 
 	// ------------------------------------------------------------------------
@@ -85,8 +79,8 @@ public class DefaultMemoryManager implements MemoryManager {
 	 * 
 	 * @param memorySize The total size of the memory to be managed by this memory manager.
 	 */
-	public DefaultMemoryManager(long memorySize, int numberOfSlots) {
-		this(memorySize, numberOfSlots, DEFAULT_PAGE_SIZE);
+	public DefaultMemoryManager(long memorySize) {
+		this(memorySize, DEFAULT_PAGE_SIZE);
 	}
 
 	/**
@@ -95,7 +89,7 @@ public class DefaultMemoryManager implements MemoryManager {
 	 * @param memorySize The total size of the memory to be managed by this memory manager.
 	 * @param pageSize The size of the pages handed out by the memory manager.
 	 */
-	public DefaultMemoryManager(long memorySize, int numberOfSlots, int pageSize) {
+	public DefaultMemoryManager(long memorySize, int pageSize) {
 		// sanity checks
 		if (memorySize <= 0) {
 			throw new IllegalArgumentException("Size of total memory must be positive.");
@@ -109,8 +103,6 @@ public class DefaultMemoryManager implements MemoryManager {
 		}
 
 		this.memorySize = memorySize;
-
-		this.numberOfSlots = numberOfSlots;
 		
 		// assign page size and bit utilities
 		this.pageSize = pageSize;
@@ -368,12 +360,10 @@ public class DefaultMemoryManager implements MemoryManager {
 
 	@Override
 	public int computeNumberOfPages(double fraction) {
-		return getRelativeNumPages(fraction);
-	}
-
-	@Override
-	public long computeMemorySize(double fraction) {
-		return this.pageSize*computeNumberOfPages(fraction);
+		if (fraction < 0 || fraction > 1.0) {
+			throw new IllegalArgumentException("Memory fraction must be within [0, 1]");
+		}
+		return (int) (totalNumPages * fraction);
 	}
 
 	@Override
@@ -394,14 +384,6 @@ public class DefaultMemoryManager implements MemoryManager {
 		} else {
 			throw new IllegalArgumentException("The given number of bytes correstponds to more than MAX_INT pages.");
 		}
-	}
-
-	private final int getRelativeNumPages(double fraction){
-		if (fraction <= 0 || fraction > 1) {
-			throw new IllegalArgumentException("The fraction of memory to allocate must within (0, 1].");
-		}
-
-		return (int)(this.totalNumPages * fraction / this.numberOfSlots);
 	}
 	
 	// ------------------------------------------------------------------------

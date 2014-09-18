@@ -161,7 +161,7 @@ public class TaskManager implements TaskOperationProtocol {
 	/** Instance of the task manager profile if profiling is enabled. */
 	private final TaskManagerProfiler profiler;
 
-	private final MemoryManager memoryManager;
+	private final MemoryManager[] memoryManagers;
 
 	private final IOManager ioManager;
 
@@ -329,18 +329,24 @@ public class TaskManager implements TaskOperationProtocol {
 					"Page size is " + pageSize + " bytes.");
 			
 			try {
+				final long memoryPerSlot = memorySize / numberOfSlots;
+				
 				@SuppressWarnings("unused")
 				final boolean lazyAllocation = GlobalConfiguration.getBoolean(ConfigConstants.TASK_MANAGER_MEMORY_LAZY_ALLOCATION_KEY,
 					ConfigConstants.DEFAULT_TASK_MANAGER_MEMORY_LAZY_ALLOCATION);
 				
-				this.memoryManager = new DefaultMemoryManager(memorySize, this.numberOfSlots, pageSize);
-			} catch (Throwable t) {
+				this.memoryManagers = new MemoryManager[numberOfSlots];
+				for (int i = 0; i < numberOfSlots; i++) {
+					this.memoryManagers[i] = new DefaultMemoryManager(memoryPerSlot, pageSize);
+				}
+			}
+			catch (Throwable t) {
 				LOG.error("Unable to initialize memory manager with " + (memorySize >>> 20) + " megabytes of memory.", t);
 				throw new Exception("Unable to initialize memory manager.", t);
 			}
+			
+			this.hardwareDescription = HardwareDescription.extractFromSystem(memorySize);
 		}
-		
-		this.hardwareDescription = HardwareDescription.extractFromSystem(this.memoryManager.getMemorySize());
 
 		// Determine the port of the BLOB server and register it with the library cache manager
 		{
@@ -468,8 +474,12 @@ public class TaskManager implements TaskOperationProtocol {
 			this.ioManager.shutdown();
 		}
 
-		if (this.memoryManager != null) {
-			this.memoryManager.shutdown();
+		if (this.memoryManagers != null) {
+			for (MemoryManager mm : this.memoryManagers) {
+				if (mm != null) {
+					mm.shutdown();
+				}
+			}
 		}
 
 		if(libraryCacheManager != null){
@@ -581,6 +591,7 @@ public class TaskManager implements TaskOperationProtocol {
 		final ExecutionAttemptID executionId = tdd.getExecutionId();
 		final int taskIndex = tdd.getIndexInSubtaskGroup();
 		final int numSubtasks = tdd.getCurrentNumberOfSubtasks();
+		final int targetSlot = tdd.getTargetSlotNumber();
 		
 		Task task = null;
 		
@@ -593,6 +604,10 @@ public class TaskManager implements TaskOperationProtocol {
 		}
 		
 		try {
+			if (targetSlot < 0 || targetSlot >= numberOfSlots) {
+				throw new Exception("The target slot " + targetSlot + " is out of range for this TaskManager.");
+			}
+
 			// Now register data with the library manager
 			libraryCacheManager.registerTask(jobID, executionId, tdd.getRequiredJarFiles());
 			
@@ -602,13 +617,13 @@ public class TaskManager implements TaskOperationProtocol {
 				throw new Exception("No user code ClassLoader available.");
 			}
 			
-			task = new Task(jobID, vertexId, taskIndex, numSubtasks, executionId, tdd.getTaskName(), this);
+			task = new Task(jobID, vertexId, taskIndex, numSubtasks, executionId, tdd.getTaskName(), targetSlot, this);
 			if (this.runningTasks.putIfAbsent(executionId, task) != null) {
 				throw new Exception("TaskManager contains already a task with executionId " + executionId);
 			}
 			
 			final InputSplitProvider splitProvider = new TaskInputSplitProvider(this.globalInputSplitProvider, jobID, vertexId, executionId);
-			final RuntimeEnvironment env = new RuntimeEnvironment(task, tdd, userCodeClassLoader, this.memoryManager, this.ioManager, splitProvider, this.accumulatorProtocolProxy, this.bcVarManager);
+			final RuntimeEnvironment env = new RuntimeEnvironment(task, tdd, userCodeClassLoader, memoryManagers[targetSlot], this.ioManager, splitProvider, this.accumulatorProtocolProxy, this.bcVarManager);
 			task.setEnvironment(env);
 			
 			// register the task with the network stack and profilers
@@ -707,7 +722,7 @@ public class TaskManager implements TaskOperationProtocol {
 		task.unregisterProfiler(this.profiler);
 
 		// Unregister task from memory manager
-		task.unregisterMemoryManager(this.memoryManager);
+		task.unregisterMemoryManager(task.getEnvironment().getMemoryManager());
 		
 		// remove the local tmp file for unregistered tasks.
 		try {

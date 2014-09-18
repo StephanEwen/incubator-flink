@@ -55,7 +55,7 @@ public class BlockResettableIteratorTest
 	@Before
 	public void startup() {
 		// set up IO and memory manager
-		this.memman = new DefaultMemoryManager(MEMORY_CAPACITY, 1);
+		this.memman = new DefaultMemoryManager(MEMORY_CAPACITY);
 		
 		// create test objects
 		this.objects = new ArrayList<Record>(20000);

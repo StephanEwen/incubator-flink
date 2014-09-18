@@ -56,7 +56,7 @@ public class TaskTest {
 			final TaskManager taskManager = mock(TaskManager.class);
 			final RuntimeEnvironment env = mock(RuntimeEnvironment.class);
 			
-			Task task = new Task(jid, vid, 2, 7, eid, "TestTask", taskManager);
+			Task task = new Task(jid, vid, 2, 7, eid, "TestTask", 0, taskManager);
 			task.setEnvironment(env);
 			
 			assertEquals(ExecutionState.DEPLOYING, task.getExecutionState());
@@ -94,7 +94,7 @@ public class TaskTest {
 			final TaskManager taskManager = mock(TaskManager.class);
 			
 			
-			final Task task = new Task(jid, vid, 2, 7, eid, "TestTask", taskManager);
+			final Task task = new Task(jid, vid, 2, 7, eid, "TestTask", 0, taskManager);
 			
 			final AtomicReference<Throwable> error = new AtomicReference<Throwable>();
 			
@@ -144,7 +144,7 @@ public class TaskTest {
 			
 			final TaskManager taskManager = mock(TaskManager.class);
 			
-			final Task task = new Task(jid, vid, 2, 7, eid, "TestTask", taskManager);
+			final Task task = new Task(jid, vid, 2, 7, eid, "TestTask", 0, taskManager);
 			
 			final AtomicReference<Throwable> error = new AtomicReference<Throwable>();
 			
@@ -194,7 +194,7 @@ public class TaskTest {
 			
 			final TaskManager taskManager = mock(TaskManager.class);
 			
-			final Task task = new Task(jid, vid, 2, 7, eid, "TestTask", taskManager);
+			final Task task = new Task(jid, vid, 2, 7, eid, "TestTask", 0, taskManager);
 			
 			final AtomicReference<Throwable> error = new AtomicReference<Throwable>();
 			
@@ -261,7 +261,7 @@ public class TaskTest {
 					Collections.<GateDeploymentDescriptor>emptyList(),
 					new ArrayList<BlobKey>(), 0);
 			
-			Task task = new Task(jid, vid, 2, 7, eid, "TestTask", taskManager);
+			Task task = new Task(jid, vid, 2, 7, eid, "TestTask", 0, taskManager);
 			
 			RuntimeEnvironment env = new RuntimeEnvironment(task, tdd, getClass().getClassLoader(),
 					mock(MemoryManager.class), mock(IOManager.class), mock(InputSplitProvider.class),
@@ -299,7 +299,7 @@ public class TaskTest {
 					Collections.<GateDeploymentDescriptor>emptyList(),
 					new ArrayList<BlobKey>(), 0);
 			
-			Task task = new Task(jid, vid, 2, 7, eid, "TestTask", taskManager);
+			Task task = new Task(jid, vid, 2, 7, eid, "TestTask", 0, taskManager);
 			
 			RuntimeEnvironment env = new RuntimeEnvironment(task, tdd, getClass().getClassLoader(),
 					mock(MemoryManager.class), mock(IOManager.class), mock(InputSplitProvider.class),

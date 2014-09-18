@@ -61,6 +61,8 @@ public final class Task {
 
 	private final TaskManager taskManager;
 	
+	private final int slot;
+	
 	
 	private final List<ExecutionListener> executionListeners = new CopyOnWriteArrayList<ExecutionListener>();
 
@@ -73,7 +75,7 @@ public final class Task {
 	// --------------------------------------------------------------------------------------------	
 	
 	public Task(JobID jobId, JobVertexID vertexId, int taskIndex, int parallelism, 
-			ExecutionAttemptID executionId, String taskName, TaskManager taskManager)
+			ExecutionAttemptID executionId, String taskName, int slot, TaskManager taskManager)
 	{
 		this.jobId = jobId;
 		this.vertexId = vertexId;
@@ -81,6 +83,7 @@ public final class Task {
 		this.numberOfSubtasks = parallelism;
 		this.executionId = executionId;
 		this.taskName = taskName;
+		this.slot = slot;
 		this.taskManager = taskManager;
 	}
 
@@ -159,6 +162,10 @@ public final class Task {
 	
 	public String getTaskNameWithSubtasks() {
 		return this.taskName + " (" + (this.subtaskIndex + 1) + "/" + this.numberOfSubtasks + ")";
+	}
+	
+	public int getSlot() {
+		return slot;
 	}
 	
 	// ----------------------------------------------------------------------------------------------------------------

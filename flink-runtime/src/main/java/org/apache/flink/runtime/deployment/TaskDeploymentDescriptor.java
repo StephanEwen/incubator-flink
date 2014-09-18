@@ -235,6 +235,10 @@ public final class TaskDeploymentDescriptor implements IOReadableWritable {
 
 	public List<BlobKey> getRequiredJarFiles() { return requiredJarFiles; }
 	
+	public int getTargetSlotNumber() {
+		return targetSlotNumber;
+	}
+	
 	// --------------------------------------------------------------------------------------------
 	//  Serialization
 	// --------------------------------------------------------------------------------------------
