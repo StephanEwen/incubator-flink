@@ -181,14 +181,6 @@ public final class TestData {
 			return reuse;
 		}
 
-		public boolean next(org.apache.flink.types.Value[] target) {
-			this.key.setKey(keyMode == KeyMode.SORTED ? ++counter : Math.abs(random.nextInt() % keyMax) + 1);
-			// TODO change this to something proper
-			((IntValue)target[0]).setValue(this.key.getValue());
-			((IntValue)target[1]).setValue(random.nextInt());
-			return true;
-		}
-
 		public int sizeOf(Record rec) {
 			// key
 			int valueLength = Integer.SIZE / 8;

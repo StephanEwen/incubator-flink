@@ -115,6 +115,19 @@ public abstract class IOManager {
 	}
 	
 	/**
+	 * Creates a block channel writer that writes to the given channel. The writer does not return
+	 * the written segments in any way. For asynchronous implementations, the
+	 * {@link BlockChannelWriter#close()} method needs to be called to ensure all data is properly written.
+	 * 
+	 * @param channelID The descriptor for the channel to write to.
+	 * @return A block channel writer that writes to the given channel.
+	 * @throws IOException Thrown, if the channel for the writer could not be opened.
+	 */
+	public BlockChannelWriterWithCallback createBulkBlockChannelWriter(FileIOChannel.ID channelID) throws IOException {
+		return createBlockChannelWriter(channelID, new EmptyCallback());
+	}
+	
+	/**
 	 * Creates a block channel writer that writes to the given channel. The writer adds the
 	 * written segment to the given queue (to allow for asynchronous implementations).
 	 * 

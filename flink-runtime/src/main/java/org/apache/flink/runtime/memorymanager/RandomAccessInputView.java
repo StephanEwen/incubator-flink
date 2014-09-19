@@ -16,24 +16,21 @@
  * limitations under the License.
  */
 
-
-package org.apache.flink.runtime.io.disk;
+package org.apache.flink.runtime.memorymanager;
 
 import java.io.EOFException;
 import java.util.ArrayList;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.SeekableDataInputView;
-import org.apache.flink.runtime.memorymanager.AbstractPagedInputView;
 import org.apache.flink.runtime.util.MathUtils;
-
 
 /**
  *
  *
  */
-public class RandomAccessInputView extends AbstractPagedInputView implements SeekableDataInputView
-{	
+public class RandomAccessInputView extends AbstractPagedInputView implements SeekableDataInputView {
+	
 	private final ArrayList<MemorySegment> segments;
 	
 	private int currentSegmentIndex;
@@ -46,13 +43,11 @@ public class RandomAccessInputView extends AbstractPagedInputView implements See
 	
 	private final int limitInLastSegment;
 	
-	public RandomAccessInputView(ArrayList<MemorySegment> segments, int segmentSize)
-	{
+	public RandomAccessInputView(ArrayList<MemorySegment> segments, int segmentSize) {
 		this(segments, segmentSize, segmentSize);
 	}
 	
-	public RandomAccessInputView(ArrayList<MemorySegment> segments, int segmentSize, int limitInLastSegment)
-	{
+	public RandomAccessInputView(ArrayList<MemorySegment> segments, int segmentSize, int limitInLastSegment) {
 		super(segments.get(0), segments.size() > 1 ? segmentSize : limitInLastSegment, 0);
 		this.segments = segments;
 		this.currentSegmentIndex = 0;
@@ -64,8 +59,7 @@ public class RandomAccessInputView extends AbstractPagedInputView implements See
 
 
 	@Override
-	public void setReadPosition(long position)
-	{
+	public void setReadPosition(long position) {
 		final int bufferNum = (int) (position >>> this.segmentSizeBits);
 		final int offset = (int) (position & this.segmentSizeMask);
 		
@@ -75,8 +69,7 @@ public class RandomAccessInputView extends AbstractPagedInputView implements See
 
 
 	@Override
-	protected MemorySegment nextSegment(MemorySegment current) throws EOFException
-	{
+	protected MemorySegment nextSegment(MemorySegment current) throws EOFException {
 		if (++this.currentSegmentIndex < this.segments.size()) {
 			return this.segments.get(this.currentSegmentIndex);
 		} else {
@@ -86,8 +79,7 @@ public class RandomAccessInputView extends AbstractPagedInputView implements See
 
 
 	@Override
-	protected int getLimitForSegment(MemorySegment segment)
-	{
+	protected int getLimitForSegment(MemorySegment segment) {
 		return this.currentSegmentIndex == this.segments.size() - 1 ? this.limitInLastSegment : this.segmentSize;
 	}
 }

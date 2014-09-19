@@ -73,14 +73,10 @@ public class MemorySegment {
 	// code paths of the checks (as dead code) when this constant is set to false.
 	private static final boolean CHECKED = true;
 	
-	/**
-	 * The array in which the data is stored.
-	 */
+	/** The array in which the data is stored.*/
 	protected byte[] memory;
 	
-	/**
-	 * Wrapper for I/O requests.
-	 */
+	/** Wrapper for I/O requests.*/
 	protected ByteBuffer wrapper;
 	
 	// -------------------------------------------------------------------------

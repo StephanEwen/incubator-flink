@@ -20,10 +20,6 @@ package org.apache.flink.runtime.memory;
 
 import java.util.Arrays;
 
-import org.apache.flink.runtime.memorymanager.CheckedMemorySegment;
-import org.apache.flink.runtime.memorymanager.SimpleMemorySegment;
-import org.apache.flink.runtime.memorymanager.UnsafeMemorySegment;
-
 /**
  *
  */

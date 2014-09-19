@@ -16,7 +16,6 @@
  * limitations under the License.
  */
 
-
 package org.apache.flink.runtime.io.disk;
 
 import java.io.EOFException;
@@ -27,8 +26,6 @@ import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.disk.iomanager.BlockChannelReader;
 import org.apache.flink.runtime.io.disk.iomanager.BlockChannelWriter;
 import org.apache.flink.runtime.io.disk.iomanager.FileIOChannel;
-import org.apache.flink.runtime.io.disk.iomanager.ChannelReaderInputView;
-import org.apache.flink.runtime.io.disk.iomanager.ChannelWriterOutputView;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
@@ -46,10 +43,8 @@ import org.junit.Before;
 import org.junit.Test;
 
 
-/**
- */
-public class ChannelViewsTest
-{
+public class ChannelViewsITCase {
+	
 	private static final long SEED = 649180756312423613L;
 
 	private static final int KEY_MAX = Integer.MAX_VALUE;
@@ -78,7 +73,7 @@ public class ChannelViewsTest
 
 	@Before
 	public void beforeTest() {
-		this.memoryManager = new DefaultMemoryManager(MEMORY_SIZE, 1, MEMORY_PAGE_SIZE);
+		this.memoryManager = new DefaultMemoryManager(MEMORY_SIZE, MEMORY_PAGE_SIZE);
 		this.ioManager = new IOManagerAsync();
 	}
 
@@ -100,8 +95,7 @@ public class ChannelViewsTest
 	// --------------------------------------------------------------------------------------------
 	
 	@Test
-	public void testWriteReadSmallRecords() throws Exception
-	{
+	public void testWriteReadSmallRecords() throws Exception {
 		final TestData.Generator generator = new TestData.Generator(SEED, KEY_MAX, VALUE_SHORT_LENGTH, KeyMode.RANDOM, ValueMode.RANDOM_LENGTH);
 		final FileIOChannel.ID channel = this.ioManager.createChannel();
 		
@@ -144,8 +138,7 @@ public class ChannelViewsTest
 	}
 	
 	@Test
-	public void testWriteAndReadLongRecords() throws Exception
-	{
+	public void testWriteAndReadLongRecords() throws Exception {
 		final TestData.Generator generator = new TestData.Generator(SEED, KEY_MAX, VALUE_LONG_LENGTH, KeyMode.RANDOM, ValueMode.RANDOM_LENGTH);
 		final FileIOChannel.ID channel = this.ioManager.createChannel();
 		
@@ -185,8 +178,7 @@ public class ChannelViewsTest
 	}
 	
 	@Test
-	public void testReadTooMany() throws Exception
-	{
+	public void testReadTooMany() throws Exception {
 		final TestData.Generator generator = new TestData.Generator(SEED, KEY_MAX, VALUE_SHORT_LENGTH, KeyMode.RANDOM, ValueMode.RANDOM_LENGTH);
 		final FileIOChannel.ID channel = this.ioManager.createChannel();
 		
@@ -236,8 +228,7 @@ public class ChannelViewsTest
 	}
 	
 	@Test
-	public void testReadWithoutKnownBlockCount() throws Exception
-	{
+	public void testReadWithoutKnownBlockCount() throws Exception {
 		final TestData.Generator generator = new TestData.Generator(SEED, KEY_MAX, VALUE_SHORT_LENGTH, KeyMode.RANDOM, ValueMode.RANDOM_LENGTH);
 		final FileIOChannel.ID channel = this.ioManager.createChannel();
 		
@@ -280,8 +271,7 @@ public class ChannelViewsTest
 	}
 	
 	@Test
-	public void testWriteReadOneBufferOnly() throws Exception
-	{
+	public void testWriteReadOneBufferOnly() throws Exception {
 		final TestData.Generator generator = new TestData.Generator(SEED, KEY_MAX, VALUE_SHORT_LENGTH, KeyMode.RANDOM, ValueMode.RANDOM_LENGTH);
 		final FileIOChannel.ID channel = this.ioManager.createChannel();
 		
@@ -324,8 +314,7 @@ public class ChannelViewsTest
 	}
 	
 	@Test
-	public void testWriteReadNotAll() throws Exception
-	{
+	public void testWriteReadNotAll() throws Exception {
 		final TestData.Generator generator = new TestData.Generator(SEED, KEY_MAX, VALUE_SHORT_LENGTH, KeyMode.RANDOM, ValueMode.RANDOM_LENGTH);
 		final FileIOChannel.ID channel = this.ioManager.createChannel();
 		

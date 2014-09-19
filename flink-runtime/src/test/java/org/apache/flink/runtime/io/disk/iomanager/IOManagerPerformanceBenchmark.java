@@ -16,7 +16,6 @@
  * limitations under the License.
  */
 
-
 package org.apache.flink.runtime.io.disk.iomanager;
 
 import java.io.BufferedInputStream;
@@ -33,17 +32,16 @@ import java.nio.channels.FileChannel;
 import java.util.List;
 
 import org.junit.Assert;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.flink.core.memory.InputViewDataInputStreamWrapper;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.OutputViewDataOutputStreamWrapper;
+import org.apache.flink.runtime.io.disk.ChannelReaderInputView;
+import org.apache.flink.runtime.io.disk.ChannelWriterOutputView;
 import org.apache.flink.runtime.io.disk.iomanager.BlockChannelReader;
 import org.apache.flink.runtime.io.disk.iomanager.BlockChannelWriter;
 import org.apache.flink.runtime.io.disk.iomanager.FileIOChannel;
-import org.apache.flink.runtime.io.disk.iomanager.ChannelReaderInputView;
-import org.apache.flink.runtime.io.disk.iomanager.ChannelWriterOutputView;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.memory.DefaultMemoryManagerTest;
@@ -53,10 +51,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/**
- *
- *
- */
+
 public class IOManagerPerformanceBenchmark {
 	
 	private static final Logger LOG = LoggerFactory.getLogger(IOManagerPerformanceBenchmark.class);
@@ -81,7 +76,7 @@ public class IOManagerPerformanceBenchmark {
 	
 	@Before
 	public void startup() {
-		memManager = new DefaultMemoryManager(MEMORY_SIZE,1);
+		memManager = new DefaultMemoryManager(MEMORY_SIZE);
 		ioManager = new IOManagerAsync();
 	}
 	
@@ -95,11 +90,10 @@ public class IOManagerPerformanceBenchmark {
 		memManager = null;
 	}
 	
-// ------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
 	
 	@Test
-	public void speedTestIOManager() throws Exception
-	{
+	public void speedTestIOManager() throws Exception {
 		LOG.info("Starting speed test with IO Manager...");
 		
 		for (int num : NUM_SEGMENTS) {
@@ -107,8 +101,7 @@ public class IOManagerPerformanceBenchmark {
 		}
 	}
 
-	private void testChannelWithSegments(int numSegments) throws Exception
-	{
+	private void testChannelWithSegments(int numSegments) throws Exception {
 		final List<MemorySegment> memory = this.memManager.allocatePages(memoryOwner, numSegments);
 		final FileIOChannel.ID channel = this.ioManager.createChannel();
 		
@@ -168,77 +161,17 @@ public class IOManagerPerformanceBenchmark {
 		}
 	}
 
-//	@Test
-//	public void speedTestRandomAccessFile() throws IOException {
-//		LOG.info("Starting speed test with java random access file ...");
-//		
-//		Channel.ID tmpChannel = ioManager.createChannel();
-//		File tempFile = null;
-//		RandomAccessFile raf = null;
-//		
-//		try {
-//			tempFile = new File(tmpChannel.getPath()); 
-//			raf = new RandomAccessFile(tempFile, "rw");
-//			
-//			IntegerRecord rec = new IntegerRecord(0);
-//			
-//			long writeStart = System.currentTimeMillis();
-//			
-//			int valsLeft = NUM_INTS_WRITTEN;
-//			while (valsLeft-- > 0) {
-//				rec.setValue(valsLeft);
-//				rec.write(raf);
-//			}
-//			raf.close();
-//			raf = null;
-//			
-//			long writeElapsed = System.currentTimeMillis() - writeStart;
-//			
-//			// ----------------------------------------------------------------
-//			
-//			raf = new RandomAccessFile(tempFile, "r");
-//			
-//			long readStart = System.currentTimeMillis();
-//			
-//			valsLeft = NUM_INTS_WRITTEN;
-//			while (valsLeft-- > 0) {
-//				rec.read(raf);
-//			}
-//			raf.close();
-//			raf = null;
-//			
-//			long readElapsed = System.currentTimeMillis() - readStart;
-//			
-//			
-//			LOG.info("Random Access File: write " + (writeElapsed / 1000) + " secs, read " + (readElapsed / 1000) + " secs.");
-//		}
-//		finally {
-//			// close if possible
-//			if (raf != null) {
-//				raf.close();
-//			}
-//			
-//			// try to delete the file
-//			if (tempFile != null) {
-//				tempFile.delete();
-//			}
-//		}
-//	}
-
 	@Test
-	public void speedTestFileStream() throws Exception
-	{
+	public void speedTestFileStream() throws Exception {
 		LOG.info("Starting speed test with java io file stream and ALIGNED buffer sizes ...");
 		
-		for (int bufferSize : SEGMENT_SIZES_ALIGNED)
-		{
+		for (int bufferSize : SEGMENT_SIZES_ALIGNED) {
 			speedTestStream(bufferSize);
 		}
 		
 		LOG.info("Starting speed test with java io file stream and UNALIGNED buffer sizes ...");
 		
-		for (int bufferSize : SEGMENT_SIZES_UNALIGNED)
-		{
+		for (int bufferSize : SEGMENT_SIZES_UNALIGNED) {
 			speedTestStream(bufferSize);
 		}
 		
@@ -306,41 +239,34 @@ public class IOManagerPerformanceBenchmark {
 	// ------------------------------------------------------------------------
 	
 	@Test
-	public void speedTestNIO() throws Exception
-	{
+	public void speedTestNIO() throws Exception {
 		LOG.info("Starting speed test with java NIO heap buffers and ALIGNED buffer sizes ...");
 		
-		for (int bufferSize : SEGMENT_SIZES_ALIGNED)
-		{
+		for (int bufferSize : SEGMENT_SIZES_ALIGNED) {
 			speedTestNIO(bufferSize, false);
 		}
 		
 		LOG.info("Starting speed test with java NIO heap buffers and UNALIGNED buffer sizes ...");
 		
-		for (int bufferSize : SEGMENT_SIZES_UNALIGNED)
-		{
+		for (int bufferSize : SEGMENT_SIZES_UNALIGNED) {
 			speedTestNIO(bufferSize, false);
 		}
 		
 		LOG.info("Starting speed test with java NIO direct buffers and ALIGNED buffer sizes ...");
 		
-		for (int bufferSize : SEGMENT_SIZES_ALIGNED)
-		{
+		for (int bufferSize : SEGMENT_SIZES_ALIGNED) {
 			speedTestNIO(bufferSize, true);
 		}
 		
 		LOG.info("Starting speed test with java NIO direct buffers and UNALIGNED buffer sizes ...");
 		
-		for (int bufferSize : SEGMENT_SIZES_UNALIGNED)
-		{
+		for (int bufferSize : SEGMENT_SIZES_UNALIGNED) {
 			speedTestNIO(bufferSize, true);
 		}
-		
 	}
 		
 	@SuppressWarnings("resource")
-	private void speedTestNIO(int bufferSize, boolean direct) throws IOException
-	{
+	private void speedTestNIO(int bufferSize, boolean direct) throws IOException {
 		final FileIOChannel.ID tmpChannel = ioManager.createChannel();
 		
 		File tempFile = null;
@@ -419,5 +345,13 @@ public class IOManagerPerformanceBenchmark {
 			}
 		}
 	}
-
+	
+	public static void main(String[] args) throws Exception {
+		IOManagerPerformanceBenchmark bm = new IOManagerPerformanceBenchmark();
+		
+		bm.startup();
+		
+		bm.speedTestNIO();
+		bm.speedTestIOManager();
+	}
 }

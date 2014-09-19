@@ -16,7 +16,6 @@
  * limitations under the License.
  */
 
-
 package org.apache.flink.runtime.memorymanager;
 
 import java.io.EOFException;
@@ -25,7 +24,6 @@ import java.io.UTFDataFormatException;
 
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.MemorySegment;
-
 
 /**
  * The base class for all input views that are backed by multiple memory pages. This base class contains all
@@ -191,12 +189,12 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	// --------------------------------------------------------------------------------------------
 
 	@Override
-	public int read(byte[] b) throws IOException{
+	public final int read(byte[] b) throws IOException{
 		return read(b,0,b.length);
 	}
 
 	@Override
-	public int read(byte[] b, int off, int len) throws IOException{
+	public final int read(byte[] b, int off, int len) throws IOException{
 		if (off < 0 || len < 0 || off + len > b.length) {
 			throw new IndexOutOfBoundsException();
 		}
@@ -243,12 +241,12 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 	
 	@Override
-	public void readFully(byte[] b) throws IOException {
+	public final void readFully(byte[] b) throws IOException {
 		readFully(b, 0, b.length);
 	}
 
 	@Override
-	public void readFully(byte[] b, int off, int len) throws IOException {
+	public final void readFully(byte[] b, int off, int len) throws IOException {
 		int bytesRead = read(b,off,len);
 
 		if(bytesRead < len){
@@ -257,12 +255,12 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 
 	@Override
-	public boolean readBoolean() throws IOException {
+	public final boolean readBoolean() throws IOException {
 		return readByte() == 1;
 	}
 
 	@Override
-	public byte readByte() throws IOException {
+	public final byte readByte() throws IOException {
 		if (this.positionInSegment < this.limitInSegment) {
 			return this.currentSegment.get(this.positionInSegment++);
 		}
@@ -273,12 +271,12 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 
 	@Override
-	public int readUnsignedByte() throws IOException {
+	public final int readUnsignedByte() throws IOException {
 		return readByte() & 0xff;
 	}
 
 	@Override
-	public short readShort() throws IOException {
+	public final short readShort() throws IOException {
 		if (this.positionInSegment < this.limitInSegment - 1) {
 			final short v = this.currentSegment.getShort(this.positionInSegment);
 			this.positionInSegment += 2;
@@ -294,7 +292,7 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 
 	@Override
-	public int readUnsignedShort() throws IOException {
+	public final int readUnsignedShort() throws IOException {
 		if (this.positionInSegment < this.limitInSegment - 1) {
 			final int v = this.currentSegment.getShort(this.positionInSegment) & 0xffff;
 			this.positionInSegment += 2;
@@ -310,7 +308,7 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 
 	@Override
-	public char readChar() throws IOException  {
+	public final char readChar() throws IOException  {
 		if (this.positionInSegment < this.limitInSegment - 1) {
 			final char v = this.currentSegment.getChar(this.positionInSegment);
 			this.positionInSegment += 2;
@@ -326,7 +324,7 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 
 	@Override
-	public int readInt() throws IOException {
+	public final int readInt() throws IOException {
 		if (this.positionInSegment < this.limitInSegment - 3) {
 			final int v = this.currentSegment.getIntBigEndian(this.positionInSegment);
 			this.positionInSegment += 4;
@@ -345,7 +343,7 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 
 	@Override
-	public long readLong() throws IOException {
+	public final long readLong() throws IOException {
 		if (this.positionInSegment < this.limitInSegment - 7) {
 			final long v = this.currentSegment.getLongBigEndian(this.positionInSegment);
 			this.positionInSegment += 8;
@@ -370,17 +368,17 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 
 	@Override
-	public float readFloat() throws IOException {
+	public final float readFloat() throws IOException {
 		return Float.intBitsToFloat(readInt());
 	}
 
 	@Override
-	public double readDouble() throws IOException {
+	public final double readDouble() throws IOException {
 		return Double.longBitsToDouble(readLong());
 	}
 
 	@Override
-	public String readLine() throws IOException {
+	public final String readLine() throws IOException {
 		final StringBuilder bld = new StringBuilder(32);
 		
 		try {
@@ -406,7 +404,7 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 
 	@Override
-	public String readUTF() throws IOException {
+	public final String readUTF() throws IOException {
 		final int utflen = readUnsignedShort();
 		
 		final byte[] bytearr;
@@ -491,7 +489,7 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 	
 	@Override
-	public int skipBytes(int n) throws IOException {
+	public final int skipBytes(int n) throws IOException {
 		if (n < 0) {
 			throw new IllegalArgumentException();
 		}
@@ -535,7 +533,7 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	}
 
 	@Override
-	public void skipBytesToRead(int numBytes) throws IOException {
+	public final void skipBytesToRead(int numBytes) throws IOException {
 		if (numBytes < 0) {
 			throw new IllegalArgumentException();
 		}

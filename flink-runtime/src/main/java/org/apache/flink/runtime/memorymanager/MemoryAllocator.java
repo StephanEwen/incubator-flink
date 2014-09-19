@@ -16,34 +16,33 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.io.disk.iomanager;
+package org.apache.flink.runtime.memorymanager;
 
-import java.io.IOException;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.Collection;
 
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.core.memory.MemorySegmentSource;
 
-/**
- * A {@link RequestDoneCallback} that adds the memory segments to a blocking queue.
- */
-public class QueuingCallback implements RequestDoneCallback {
-
-	private final LinkedBlockingQueue<MemorySegment> queue;
+public interface MemoryAllocator extends MemorySegmentSource {
 	
-	public QueuingCallback(LinkedBlockingQueue<MemorySegment> queue) {
-		this.queue = queue;
-	}
-
+	public int getMemorySegmentSize();
+	
+	public int getGuaranteedNumberOfSegments();
+	
 	@Override
-	public void requestSuccessful(MemorySegment buffer) {
-		queue.add(buffer);
-	}
+	public MemorySegment nextSegment();
 
-	@Override
-	public void requestFailed(MemorySegment buffer, IOException e) {
-		// this callback does not report the error. it assumes that
-		// the I/O error is recorded in the writer already (and will be observed
-		// the latest when the writer is closed)
-		queue.add(buffer);
-	}
+	public void returnSegment(MemorySegment segment);
+	
+	public void returnSegments(Collection<MemorySegment> segments);
+	
+	public void releaseSegment(MemorySegment segment);
+	
+	public void releaseSegments(Collection<MemorySegment> segments);
+	
+	public void returnAndReleaseSegments(Collection<MemorySegment> segments, int numToReturnOnly);
+	
+	public void closeAndReleaseAll();
+	
+	public void failOwner(Throwable cause);
 }

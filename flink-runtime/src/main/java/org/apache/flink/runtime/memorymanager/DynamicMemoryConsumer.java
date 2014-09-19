@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,17 +16,12 @@
  * limitations under the License.
  */
 
-package org.apache.flink.core.memory;
+package org.apache.flink.runtime.memorymanager;
 
-/**
- * Interface describing entities that can provide memory segments.
- */
-public interface MemorySegmentSource {
+
+public interface DynamicMemoryConsumer {
+
+	void releaseMemory(int numPages) throws Exception;
 	
-	/**
-	 * Gets the next memory segment. If no more segments are available, it returns null.
-	 * 
-	 * @return The next memory segment, or null, if none is available.
-	 */
-	public MemorySegment nextSegment();
+	void notifyMoreMemoryAvailable(int numPages);
 }

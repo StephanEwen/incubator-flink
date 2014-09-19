@@ -16,23 +16,19 @@
  * limitations under the License.
  */
 
-
-package org.apache.flink.runtime.io.disk;
+package org.apache.flink.runtime.memorymanager;
 
 import java.io.EOFException;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.SeekableDataOutputView;
-import org.apache.flink.runtime.memorymanager.AbstractPagedOutputView;
 import org.apache.flink.runtime.util.MathUtils;
-
 
 /**
  *
- *
  */
-public class RandomAccessOutputView extends AbstractPagedOutputView implements SeekableDataOutputView
-{
+public class RandomAccessOutputView extends AbstractPagedOutputView implements SeekableDataOutputView {
+	
 	private final MemorySegment[] segments;
 	
 	private int currentSegmentIndex;

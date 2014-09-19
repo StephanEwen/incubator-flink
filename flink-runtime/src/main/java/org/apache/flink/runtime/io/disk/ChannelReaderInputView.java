@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.io.disk.iomanager;
+package org.apache.flink.runtime.io.disk;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.runtime.io.disk.iomanager.BlockChannelReader;
 import org.apache.flink.runtime.memorymanager.AbstractPagedInputView;
 
 /**

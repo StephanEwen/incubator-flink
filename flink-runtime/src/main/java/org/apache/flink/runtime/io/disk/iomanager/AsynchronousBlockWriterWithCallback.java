@@ -59,7 +59,11 @@ public class AsynchronousBlockWriterWithCallback extends AsynchronousFileIOChann
 		if (this.closed || this.requestQueue.isClosed()) {
 			// if we found ourselves closed after the counter increment,
 			// decrement the counter again and do not forward the request
-			this.requestsNotReturned.decrementAndGet();
+			if (0 == this.requestsNotReturned.decrementAndGet()) {
+				synchronized (closeLock) {
+					closeLock.notifyAll();
+				}
+			}
 			throw new IOException("The writer has been closed.");
 		}
 		this.requestQueue.add(new SegmentWriteRequest(this, segment));

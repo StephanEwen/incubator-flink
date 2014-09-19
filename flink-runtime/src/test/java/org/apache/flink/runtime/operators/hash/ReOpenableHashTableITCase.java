@@ -120,7 +120,7 @@ public class ReOpenableHashTableITCase {
 		this.recordProbeSideComparator = new RecordComparator(keyPos, keyType);
 		this.pactRecordComparator = new HashTableITCase.RecordPairComparatorFirstInt();
 		
-		this.memoryManager = new DefaultMemoryManager(MEMORY_SIZE,1, PAGE_SIZE);
+		this.memoryManager = new DefaultMemoryManager(MEMORY_SIZE, PAGE_SIZE);
 		this.ioManager = new IOManagerAsync();
 	}
 

@@ -16,13 +16,22 @@
  * limitations under the License.
  */
 
-
 package org.apache.flink.runtime.util;
 
 /**
  * Collection of simple mathematical routines.
  */
 public final class MathUtils {
+	
+	/**
+	 * Checks if the given value is a power of two. This implies that the value is non-negative.
+	 * 
+	 * @param value The value to check.
+	 * @return True, if the value is a power of two, false otherwise.
+	 */
+	public static final boolean isPowerOf2(long value) {
+		return (value >= 0) && ((value & (value - 1)) == 0);
+	}
 	
 	/**
 	 * Computes the logarithm of the given value to the base of 2, rounded down. It corresponds to the

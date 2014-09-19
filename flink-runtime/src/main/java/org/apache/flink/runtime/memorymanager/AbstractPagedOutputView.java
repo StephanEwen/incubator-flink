@@ -16,7 +16,6 @@
  * limitations under the License.
  */
 
-
 package org.apache.flink.runtime.memorymanager;
 
 import java.io.IOException;
@@ -26,6 +25,7 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.MemorySegment;
 
+import com.google.common.base.Preconditions;
 
 /**
  * The base class for all output views that are backed by multiple memory pages. This base class contains all
@@ -61,9 +61,10 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	 * @param headerLength The number of bytes to skip at the beginning of each segment for the header.
 	 */
 	protected AbstractPagedOutputView(MemorySegment initialSegment, int segmentSize, int headerLength) {
-		if (initialSegment == null) {
-			throw new NullPointerException("Initial Segment may not be null");
-		}
+		Preconditions.checkNotNull(initialSegment);
+		Preconditions.checkArgument(segmentSize > 0);
+		Preconditions.checkArgument(headerLength < segmentSize);
+		
 		this.segmentSize = segmentSize;
 		this.headerLength = headerLength;
 		this.currentSegment = initialSegment;
@@ -74,12 +75,23 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	 * @param segmentSize The size of the memory segments.
 	 * @param headerLength The number of bytes to skip at the beginning of each segment for the header.
 	 */
-	protected AbstractPagedOutputView(int segmentSize, int headerLength)
-	{
+	protected AbstractPagedOutputView(int segmentSize, int headerLength) {
+		Preconditions.checkArgument(segmentSize > 0);
+		Preconditions.checkArgument(headerLength < segmentSize);
+		
 		this.segmentSize = segmentSize;
 		this.headerLength = headerLength;
 	}
 	
+	protected void initializeFirstSegment(MemorySegment first) {
+		Preconditions.checkNotNull(first);
+		
+		if (currentSegment == null) {
+			currentSegment = first;
+		} else {
+			throw new IllegalStateException();
+		}
+	}
 
 	// --------------------------------------------------------------------------------------------
 	//                                  Page Management
@@ -169,17 +181,17 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	// --------------------------------------------------------------------------------------------
 	
 	@Override
-	public void write(int b) throws IOException {
+	public final void write(int b) throws IOException {
 		writeByte(b);
 	}
 
 	@Override
-	public void write(byte[] b) throws IOException {
+	public final void write(byte[] b) throws IOException {
 		write(b, 0, b.length);
 	}
 
 	@Override
-	public void write(byte[] b, int off, int len) throws IOException {
+	public final void write(byte[] b, int off, int len) throws IOException {
 		int remaining = this.segmentSize - this.positionInSegment;
 		if (remaining >= len) {
 			this.currentSegment.put(this.positionInSegment, b, off, len);
@@ -210,12 +222,12 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	}
 
 	@Override
-	public void writeBoolean(boolean v) throws IOException {
+	public final void writeBoolean(boolean v) throws IOException {
 		writeByte(v ? 1 : 0);
 	}
 
 	@Override
-	public void writeByte(int v) throws IOException {
+	public final void writeByte(int v) throws IOException {
 		if (this.positionInSegment < this.segmentSize) {
 			this.currentSegment.put(this.positionInSegment++, (byte) v);
 		}
@@ -226,7 +238,7 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	}
 
 	@Override
-	public void writeShort(int v) throws IOException {
+	public final void writeShort(int v) throws IOException {
 		if (this.positionInSegment < this.segmentSize - 1) {
 			this.currentSegment.putShort(this.positionInSegment, (short) v);
 			this.positionInSegment += 2;
@@ -242,7 +254,7 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	}
 
 	@Override
-	public void writeChar(int v) throws IOException {
+	public final void writeChar(int v) throws IOException {
 		if (this.positionInSegment < this.segmentSize - 1) {
 			this.currentSegment.putChar(this.positionInSegment, (char) v);
 			this.positionInSegment += 2;
@@ -258,7 +270,7 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	}
 
 	@Override
-	public void writeInt(int v) throws IOException {
+	public final void writeInt(int v) throws IOException {
 		if (this.positionInSegment < this.segmentSize - 3) {
 			this.currentSegment.putIntBigEndian(this.positionInSegment, v);
 			this.positionInSegment += 4;
@@ -276,7 +288,7 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	}
 
 	@Override
-	public void writeLong(long v) throws IOException {
+	public final void writeLong(long v) throws IOException {
 		if (this.positionInSegment < this.segmentSize - 7) {
 			this.currentSegment.putLongBigEndian(this.positionInSegment, v);
 			this.positionInSegment += 8;
@@ -298,31 +310,31 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	}
 
 	@Override
-	public void writeFloat(float v) throws IOException {
+	public final void writeFloat(float v) throws IOException {
 		writeInt(Float.floatToRawIntBits(v));
 	}
 
 	@Override
-	public void writeDouble(double v) throws IOException {
+	public final void writeDouble(double v) throws IOException {
 		writeLong(Double.doubleToRawLongBits(v));
 	}
 
 	@Override
-	public void writeBytes(String s) throws IOException {
+	public final void writeBytes(String s) throws IOException {
 		for (int i = 0; i < s.length(); i++) {
 			writeByte(s.charAt(i));
 		}
 	}
 
 	@Override
-	public void writeChars(String s) throws IOException {
+	public final void writeChars(String s) throws IOException {
 		for (int i = 0; i < s.length(); i++) {
 			writeChar(s.charAt(i));
 		}
 	}
 
 	@Override
-	public void writeUTF(String str) throws IOException {
+	public final void writeUTF(String str) throws IOException {
 		int strlen = str.length();
 		int utflen = 0;
 		int c, count = 0;
@@ -379,7 +391,7 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	}
 
 	@Override
-	public void skipBytesToWrite(int numBytes) throws IOException {
+	public final void skipBytesToWrite(int numBytes) throws IOException {
 		while (numBytes > 0) {
 			final int remaining = this.segmentSize - this.positionInSegment;
 			if (numBytes <= remaining) {
@@ -394,7 +406,7 @@ public abstract class AbstractPagedOutputView implements DataOutputView {
 	}
 
 	@Override
-	public void write(DataInputView source, int numBytes) throws IOException {
+	public final void write(DataInputView source, int numBytes) throws IOException {
 		while (numBytes > 0) {
 			final int remaining = this.segmentSize - this.positionInSegment;
 			if (numBytes <= remaining) {

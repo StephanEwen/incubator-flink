@@ -17,7 +17,7 @@
  */
 
 
-package org.apache.flink.runtime.io.disk;
+package org.apache.flink.runtime.memorymanager;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -25,7 +25,6 @@ import java.util.List;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentSource;
-import org.apache.flink.runtime.memorymanager.AbstractPagedOutputView;
 import org.apache.flink.runtime.util.MathUtils;
 
 /**

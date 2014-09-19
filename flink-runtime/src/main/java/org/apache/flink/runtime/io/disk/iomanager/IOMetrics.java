@@ -18,32 +18,16 @@
 
 package org.apache.flink.runtime.io.disk.iomanager;
 
-import java.io.IOException;
-import java.util.concurrent.LinkedBlockingQueue;
-
-import org.apache.flink.core.memory.MemorySegment;
-
 /**
- * A {@link RequestDoneCallback} that adds the memory segments to a blocking queue.
+ * Interface for the collection of simple I/O statistics.
  */
-public class QueuingCallback implements RequestDoneCallback {
+public interface IOMetrics {
 
-	private final LinkedBlockingQueue<MemorySegment> queue;
+	void incrementBuffersWritten();
 	
-	public QueuingCallback(LinkedBlockingQueue<MemorySegment> queue) {
-		this.queue = queue;
-	}
-
-	@Override
-	public void requestSuccessful(MemorySegment buffer) {
-		queue.add(buffer);
-	}
-
-	@Override
-	public void requestFailed(MemorySegment buffer, IOException e) {
-		// this callback does not report the error. it assumes that
-		// the I/O error is recorded in the writer already (and will be observed
-		// the latest when the writer is closed)
-		queue.add(buffer);
-	}
+	void incrementBuffersWritten(int num);
+	
+	void incrementBuffersRead();
+	
+	void incrementBuffersRead(int num);
 }
