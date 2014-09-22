@@ -34,7 +34,7 @@ public class KeySelectorTest {
 			
 			try {
 				TypeExtractor.getKeySelectorTypes(selector, 
-						new TupleTypeInfo<Tuple2<String, Integer>>(BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.INT_TYPE_INFO));
+						new TupleTypeInfo<Tuple2<String, Integer>>(BasicTypeInfo<T>.STRING_TYPE_INFO, BasicTypeInfo.INT_TYPE_INFO));
 				Assert.fail("No unsupported lambdas exception");
 			}
 			catch (UnsupportedLambdaExpressionException e) {

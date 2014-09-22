@@ -297,6 +297,7 @@ public abstract class TypeComparator<T> implements Serializable {
 	 * Get the field comparators. This is used together with {@link #extractKeys(Object)} to provide
 	 * interoperability between different record types.
 	 */
+	@SuppressWarnings("rawtypes")
 	public abstract TypeComparator[] getComparators();
 
 	// --------------------------------------------------------------------------------------------
