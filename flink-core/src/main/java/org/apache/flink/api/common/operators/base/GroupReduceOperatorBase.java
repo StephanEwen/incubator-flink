@@ -38,9 +38,9 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeComparator;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-
 
 /**
  * @see org.apache.flink.api.common.functions.GroupReduceFunction
@@ -146,6 +146,7 @@ public class GroupReduceOperatorBase<IN, OUT, FT extends GroupReduceFunction<IN,
 
 		int[] inputColumns = getKeyColumns(0);
 		boolean[] inputOrderings = new boolean[inputColumns.length];
+		@SuppressWarnings("unchecked")
 		final TypeComparator<IN> inputComparator =
 				((CompositeType<IN>) inputType).createComparator(inputColumns, inputOrderings);
 
@@ -156,10 +157,10 @@ public class GroupReduceOperatorBase<IN, OUT, FT extends GroupReduceFunction<IN,
 		ArrayList<OUT> result = new ArrayList<OUT>(inputData.size());
 		ListCollector<OUT> collector = new ListCollector<OUT>(result);
 
-		inputData.sort( new Comparator<IN>() {
+		Collections.sort(inputData, new Comparator<IN>() {
 			@Override
 			public int compare(IN o1, IN o2) {
-				return - inputComparator.compare(o1, o2);
+				return inputComparator.compare(o2, o1);
 			}
 		});
 		ListKeyGroupedIterator<IN> keyedIterator =
