@@ -105,22 +105,22 @@ public class JoinOperatorBase<IN1, IN2, OUT, FT extends FlatJoinFunction<IN1, IN
 		List<OUT> result = new ArrayList<OUT>();
 		ListCollector<OUT> collector = new ListCollector<OUT>(result);
 
-		Map<Integer, Set<IN2>> probeTable = new HashMap<Integer, Set<IN2>>();
+		Map<Integer, List<IN2>> probeTable = new HashMap<Integer, List<IN2>>();
 
 		//Build probe table
 		for(IN2 element: inputData2){
-			Set<IN2> set = probeTable.get(rightComparator.hash(element));
-			if(set == null){
-				set = new HashSet<IN2>();
-				probeTable.put(rightComparator.hash(element), set);
+			List<IN2> list = probeTable.get(rightComparator.hash(element));
+			if(list == null){
+				list = new ArrayList<IN2>();
+				probeTable.put(rightComparator.hash(element), list);
 			}
 
-			set.add(element);
+			list.add(element);
 		}
 
 		//Probing
 		for(IN1 left: inputData1){
-			Set<IN2> matchingHashes = probeTable.get(leftComparator.hash(left));
+			List<IN2> matchingHashes = probeTable.get(leftComparator.hash(left));
 
 			pairComparator.setReference(left);
 
