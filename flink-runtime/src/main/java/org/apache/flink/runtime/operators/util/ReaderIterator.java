@@ -16,7 +16,6 @@
  * limitations under the License.
  */
 
-
 package org.apache.flink.runtime.operators.util;
 
 import java.io.IOException;
@@ -25,7 +24,6 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.io.network.api.MutableReader;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.util.MutableObjectIterator;
-
 
 /**
  * A {@link MutableObjectIterator} that wraps a Nephele Reader producing records of a certain type.
@@ -58,7 +56,22 @@ public final class ReaderIterator<T> implements MutableObjectIterator<T> {
 
 		}
 		catch (InterruptedException e) {
-			throw new IOException("Reader interrupted.", e);
+			throw new ReaderInterruptedException(e);
+		}
+	}
+	
+	// --------------------------------------------------------------------------------------------
+	
+	/**
+	 * A special IOException thrown when a thread was interrupted while waiting for a record
+	 * in the {@link ReaderIterator}.
+	 */
+	public static final class ReaderInterruptedException extends IOException {
+		
+		private static final long serialVersionUID = 2325857023471993401L;
+
+		public ReaderInterruptedException(InterruptedException cause) {
+			super(cause);
 		}
 	}
 }
