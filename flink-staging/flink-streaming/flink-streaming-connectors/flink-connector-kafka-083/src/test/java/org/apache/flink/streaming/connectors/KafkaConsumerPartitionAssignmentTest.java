@@ -18,8 +18,8 @@
 
 package org.apache.flink.streaming.connectors;
 
-import org.apache.flink.kafka_backport.common.TopicPartition;
 
+import org.apache.kafka.common.TopicPartition;
 import org.junit.Test;
 
 import java.util.Arrays;

@@ -30,9 +30,6 @@ import org.apache.curator.test.TestingServer;
 import org.apache.flink.client.program.ProgramInvocationException;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.kafka_backport.clients.consumer.KafkaConsumer;
-import org.apache.flink.kafka_backport.common.PartitionInfo;
-import org.apache.flink.kafka_backport.common.serialization.ByteArrayDeserializer;
 import org.apache.flink.runtime.StreamingMode;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.net.NetUtils;
@@ -41,6 +38,7 @@ import org.apache.flink.streaming.connectors.internals.ZooKeeperStringSerializer
 import org.apache.flink.streaming.connectors.testutils.SuccessException;
 import org.apache.flink.test.util.ForkableFlinkMiniCluster;
 
+import org.apache.kafka.common.PartitionInfo;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
@@ -300,20 +298,15 @@ public abstract class KafkaTestBase {
 		creator.close();
 		
 		// validate that the topic has been created
-
-		try (KafkaConsumer<byte[], byte[]> consumer = new KafkaConsumer<>(
-				standardProps, null, new ByteArrayDeserializer(), new ByteArrayDeserializer()))
-		{
-			final long deadline = System.currentTimeMillis() + 30000;
-			do {
-				List<PartitionInfo> partitions = consumer.partitionsFor(topic);
-				if (partitions != null && partitions.size() > 0) {
-					return;
-				}
+		final long deadline = System.currentTimeMillis() + 30000;
+		do {
+			List<PartitionInfo> partitions = FlinkKafkaConsumer.getPartitionsForTopic(topic, standardProps);
+			if (partitions != null && partitions.size() > 0) {
+				return;
 			}
-			while (System.currentTimeMillis() < deadline);
-			fail("Test topic could not be created");
 		}
+		while (System.currentTimeMillis() < deadline);
+		fail ("Test topic could not be created");
 	}
 	
 	protected static void deleteTestTopic(String topic) {

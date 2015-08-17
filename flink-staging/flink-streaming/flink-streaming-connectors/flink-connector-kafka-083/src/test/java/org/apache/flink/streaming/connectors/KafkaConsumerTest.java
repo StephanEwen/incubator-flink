@@ -19,9 +19,9 @@
 package org.apache.flink.streaming.connectors;
 
 import org.apache.commons.collections.map.LinkedMap;
-import org.apache.flink.kafka_backport.clients.consumer.ConsumerConfig;
 
 import org.apache.flink.streaming.util.serialization.JavaDefaultStringSchema;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -130,8 +130,8 @@ public class KafkaConsumerTest {
 			props.setProperty("zookeeper.connect", "localhost:56794");
 			props.setProperty("bootstrap.servers", "localhost:11111, localhost:22222");
 			props.setProperty("group.id", "non-existent-group");
-			
-			new FlinkKafkaConsumer<String>("no op topic", new JavaDefaultStringSchema(), props,
+
+			new FlinkKafkaConsumer<>("no op topic", new JavaDefaultStringSchema(), props,
 					FlinkKafkaConsumer.OffsetStore.FLINK_ZOOKEEPER,
 					FlinkKafkaConsumer.FetcherType.LEGACY_LOW_LEVEL);
 		}
