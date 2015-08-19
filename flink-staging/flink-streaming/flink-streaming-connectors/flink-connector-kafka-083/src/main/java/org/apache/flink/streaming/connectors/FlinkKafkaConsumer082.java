@@ -23,8 +23,11 @@ import java.util.Properties;
 
 /**
  * Creates a Kafka consumer compatible with reading from Kafka 0.8.2.x brokers.
- * The consumer will use the new Kafka consumer API (early Flink backport version),
- * and manually commit offsets partition offsets to ZooKeeper.
+ * The consumer will internally use the old low-level Kafka API, and manually commit offsets
+ * partition offsets to ZooKeeper.
+ *
+ * Once Kafka released the new consumer with Kafka 0.8.3 Flink might use the 0.8.3 consumer API
+ * also against Kafka 0.8.2 installations.
  *
  * @param <T> The type of elements produced by this consumer.
  */
@@ -43,6 +46,6 @@ public class FlinkKafkaConsumer082<T> extends FlinkKafkaConsumer<T> {
 	 *           The properties used to configure the Kafka consumer client, and the ZooKeeper client.
 	 */
 	public FlinkKafkaConsumer082(String topic, DeserializationSchema<T> valueDeserializer, Properties props) {
-		super(topic, valueDeserializer, props, OffsetStore.FLINK_ZOOKEEPER, FetcherType.NEW_HIGH_LEVEL);
+		super(topic, valueDeserializer, props, OffsetStore.FLINK_ZOOKEEPER, FetcherType.LEGACY_LOW_LEVEL);
 	}
 }

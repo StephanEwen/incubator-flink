@@ -21,10 +21,14 @@ package org.apache.flink.streaming.connectors.testutils;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.checkpoint.Checkpointed;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.BitSet;
 
 public class ValidatingExactlyOnceSink implements SinkFunction<Integer>, Checkpointed<Tuple2<Integer, BitSet>> {
+
+	private static final Logger LOG = LoggerFactory.getLogger(ValidatingExactlyOnceSink.class);
 
 	private static final long serialVersionUID = 1748426382527469932L;
 	
@@ -48,7 +52,7 @@ public class ValidatingExactlyOnceSink implements SinkFunction<Integer>, Checkpo
 			throw new Exception("Received a duplicate");
 		}
 		duplicateChecker.set(value);
-		
+		LOG.info("Received {} elements", numElements);
 		if (numElements == numElementsTotal) {
 			// validate
 			if (duplicateChecker.cardinality() != numElementsTotal) {

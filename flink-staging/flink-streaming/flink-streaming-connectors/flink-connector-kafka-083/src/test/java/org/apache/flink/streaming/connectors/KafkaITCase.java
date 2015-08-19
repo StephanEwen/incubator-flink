@@ -24,7 +24,7 @@ import org.junit.Test;
 import java.util.Properties;
 
 
-public class Kafka081ITCase extends KafkaConsumerTestBase {
+public class KafkaITCase extends KafkaConsumerTestBase {
 	
 	@Override
 	protected <T> FlinkKafkaConsumer<T> getConsumer(String topic, DeserializationSchema<T> deserializationSchema, Properties props) {

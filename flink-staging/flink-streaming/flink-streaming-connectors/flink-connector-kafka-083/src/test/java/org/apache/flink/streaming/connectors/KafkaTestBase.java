@@ -30,9 +30,6 @@ import org.apache.curator.test.TestingServer;
 import org.apache.flink.client.program.ProgramInvocationException;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.kafka_backport.clients.consumer.KafkaConsumer;
-import org.apache.flink.kafka_backport.common.PartitionInfo;
-import org.apache.flink.kafka_backport.common.serialization.ByteArrayDeserializer;
 import org.apache.flink.runtime.StreamingMode;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.net.NetUtils;
@@ -41,6 +38,7 @@ import org.apache.flink.streaming.connectors.internals.ZooKeeperStringSerializer
 import org.apache.flink.streaming.connectors.testutils.SuccessException;
 import org.apache.flink.test.util.ForkableFlinkMiniCluster;
 
+import org.apache.kafka.common.PartitionInfo;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
@@ -116,7 +114,7 @@ public abstract class KafkaTestBase {
 		tmpKafkaParent = new File(tempDir, "kafkaITcase-kafka-dir*" + (UUID.randomUUID().toString()));
 		assertTrue("cannot create kafka temp dir", tmpKafkaParent.mkdirs());
 
-		List<File> tmpKafkaDirs = new ArrayList<File>(NUMBER_OF_KAFKA_SERVERS);
+		List<File> tmpKafkaDirs = new ArrayList<>(NUMBER_OF_KAFKA_SERVERS);
 		for (int i = 0; i < NUMBER_OF_KAFKA_SERVERS; i++) {
 			File tmpDir = new File(tmpKafkaParent, "server-" + i);
 			assertTrue("cannot create kafka temp dir", tmpDir.mkdir());
@@ -135,7 +133,7 @@ public abstract class KafkaTestBase {
 			zookeeper = new TestingServer(zkPort, tmpZkDir);
 			
 			LOG.info("Starting KafkaServer");
-			brokers = new ArrayList<KafkaServer>(NUMBER_OF_KAFKA_SERVERS);
+			brokers = new ArrayList<>(NUMBER_OF_KAFKA_SERVERS);
 			
 			for (int i = 0; i < NUMBER_OF_KAFKA_SERVERS; i++) {
 				brokers.add(getKafkaServer(i, tmpKafkaDirs.get(i), kafkaHost, zookeeperConnectionString));
@@ -158,6 +156,7 @@ public abstract class KafkaTestBase {
 		standardProps.setProperty("bootstrap.servers", brokerConnectionStrings);
 		standardProps.setProperty("group.id", "flink-tests");
 		standardProps.setProperty("auto.commit.enable", "false");
+		standardProps.setProperty("zookeeper.session.timeout.ms", "12000"); // 6 seconds is default. Seems to be too small for travis.
 		standardProps.setProperty("auto.offset.reset", "earliest"); // read from the beginning.
 		standardProps.setProperty("fetch.message.max.bytes", "256"); // make a lot of fetches (MESSAGES MUST BE SMALLER!)
 		
@@ -174,9 +173,6 @@ public abstract class KafkaTestBase {
 		flinkConfig.setInteger(ConfigConstants.TASK_MANAGER_MEMORY_SIZE_KEY, 16);
 		flinkConfig.setString(ConfigConstants.DEFAULT_EXECUTION_RETRY_DELAY_KEY, "0 s");
 
-//		flinkConfig.setBoolean(ConfigConstants.LOCAL_INSTANCE_MANAGER_START_WEBSERVER, true);
-//		flinkConfig.setInteger(ConfigConstants.JOB_MANAGER_WEB_PORT_KEY, 8080);
-		
 		flink = new ForkableFlinkMiniCluster(flinkConfig, false, StreamingMode.STREAMING);
 		flinkPort = flink.getJobManagerRPCPort();
 	}
@@ -300,20 +296,15 @@ public abstract class KafkaTestBase {
 		creator.close();
 		
 		// validate that the topic has been created
-
-		try (KafkaConsumer<byte[], byte[]> consumer = new KafkaConsumer<>(
-				standardProps, null, new ByteArrayDeserializer(), new ByteArrayDeserializer()))
-		{
-			final long deadline = System.currentTimeMillis() + 30000;
-			do {
-				List<PartitionInfo> partitions = consumer.partitionsFor(topic);
-				if (partitions != null && partitions.size() > 0) {
-					return;
-				}
+		final long deadline = System.currentTimeMillis() + 30000;
+		do {
+			List<PartitionInfo> partitions = FlinkKafkaConsumer.getPartitionsForTopic(topic, standardProps);
+			if (partitions != null && partitions.size() > 0) {
+				return;
 			}
-			while (System.currentTimeMillis() < deadline);
-			fail("Test topic could not be created");
 		}
+		while (System.currentTimeMillis() < deadline);
+		fail ("Test topic could not be created");
 	}
 	
 	protected static void deleteTestTopic(String topic) {

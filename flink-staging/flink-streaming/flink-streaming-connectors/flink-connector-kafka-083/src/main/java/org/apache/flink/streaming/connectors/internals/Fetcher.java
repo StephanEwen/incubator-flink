@@ -19,7 +19,7 @@ package org.apache.flink.streaming.connectors.internals;
 
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.util.serialization.DeserializationSchema;
-import org.apache.flink.kafka_backport.common.TopicPartition;
+import org.apache.kafka.common.TopicPartition;
 
 import java.io.IOException;
 import java.util.List;

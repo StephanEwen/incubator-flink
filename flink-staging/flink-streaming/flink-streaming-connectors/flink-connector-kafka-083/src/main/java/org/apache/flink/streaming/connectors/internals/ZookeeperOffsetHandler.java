@@ -23,9 +23,9 @@ import kafka.utils.ZKGroupTopicDirs;
 import kafka.utils.ZkUtils;
 
 import org.I0Itec.zkclient.ZkClient;
-import org.apache.flink.kafka_backport.clients.consumer.ConsumerConfig;
-import org.apache.flink.kafka_backport.common.TopicPartition;
 import org.apache.flink.streaming.connectors.FlinkKafkaConsumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.zookeeper.data.Stat;
 
 import org.slf4j.Logger;

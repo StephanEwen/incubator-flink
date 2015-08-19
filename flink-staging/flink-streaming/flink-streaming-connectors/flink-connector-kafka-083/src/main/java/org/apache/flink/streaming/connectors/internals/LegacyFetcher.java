@@ -32,10 +32,10 @@ import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.connectors.FlinkKafkaConsumer;
 import org.apache.flink.streaming.util.serialization.DeserializationSchema;
 import org.apache.flink.util.StringUtils;
-import org.apache.flink.kafka_backport.common.Node;
-import org.apache.flink.kafka_backport.common.PartitionInfo;
-import org.apache.flink.kafka_backport.common.TopicPartition;
 
+import org.apache.kafka.common.Node;
+import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,11 +81,6 @@ public class LegacyFetcher implements Fetcher {
 	/** Flag to shot the fetcher down */
 	private volatile boolean running = true;
 
-
-	public LegacyFetcher(String topic, Properties props) {
-		this(topic, props, "");
-	}
-	
 	public LegacyFetcher(String topic, Properties props, String taskName) {
 		this.config = checkNotNull(props, "The config properties cannot be null");
 		this.topic = checkNotNull(topic, "The topic cannot be null");
@@ -99,7 +94,7 @@ public class LegacyFetcher implements Fetcher {
 	
 	@Override
 	public void setPartitionsToRead(List<TopicPartition> partitions) {
-		partitionsToRead = new HashMap<TopicPartition, Long>(partitions.size());
+		partitionsToRead = new HashMap<>(partitions.size());
 		for (TopicPartition tp: partitions) {
 			partitionsToRead.put(tp, FlinkKafkaConsumer.OFFSET_NOT_SET);
 		}
@@ -156,7 +151,7 @@ public class LegacyFetcher implements Fetcher {
 		
 		// brokers to fetch partitions from.
 		int fetchPartitionsCount = 0;
-		Map<Node, List<FetchPartition>> fetchBrokers = new HashMap<Node, List<FetchPartition>>();
+		Map<Node, List<FetchPartition>> fetchBrokers = new HashMap<>();
 		
 		for (PartitionInfo partitionInfo : allPartitionsInTopic) {
 			if (partitionInfo.leader() == null) {
@@ -172,7 +167,7 @@ public class LegacyFetcher implements Fetcher {
 				if (topicPartition.partition() == partitionInfo.partition()) {
 					List<FetchPartition> partitions = fetchBrokers.get(partitionInfo.leader());
 					if (partitions == null) {
-						partitions = new ArrayList<FetchPartition>();
+						partitions = new ArrayList<>();
 						fetchBrokers.put(partitionInfo.leader(), partitions);
 					}
 					
@@ -198,11 +193,11 @@ public class LegacyFetcher implements Fetcher {
 			
 			FetchPartition[] partitions = partitionsList.toArray(new FetchPartition[partitionsList.size()]);
 
-			SimpleConsumerThread<T> thread = new SimpleConsumerThread<T>(this, config, topic,
+			SimpleConsumerThread<T> thread = new SimpleConsumerThread<>(this, config, topic,
 					broker, partitions, sourceContext, valueDeserializer, lastOffsets);
 
 			thread.setName(String.format("SimpleConsumer - %s - broker-%s (%s:%d)",
-					taskName, broker.idString(), broker.host(), broker.port()));
+					taskName, broker.id(), broker.host(), broker.port()));
 			thread.setDaemon(true);
 			consumers.add(thread);
 		}
@@ -346,10 +341,9 @@ public class LegacyFetcher implements Fetcher {
 		public void run() {
 			try {
 				// set up the config values
-				final String clientId = "flink-kafka-consumer-legacy-" + broker.idString();
+				final String clientId = "flink-kafka-consumer-legacy-" + broker.id();
 
 				// these are the actual configuration values of Kafka + their original default values.
-				
 				final int soTimeout = Integer.valueOf(config.getProperty("socket.timeout.ms", "30000"));
 				final int bufferSize = Integer.valueOf(config.getProperty("socket.receive.buffer.bytes", "65536"));
 				final int fetchSize = Integer.valueOf(config.getProperty("fetch.message.max.bytes", "1048576"));
@@ -357,13 +351,13 @@ public class LegacyFetcher implements Fetcher {
 				final int minBytes = Integer.valueOf(config.getProperty("fetch.min.bytes", "1"));
 				
 				// create the Kafka consumer that we actually use for fetching
-				consumer = new SimpleConsumer(broker.host(), broker.port(), bufferSize, soTimeout, clientId);
+				consumer = new SimpleConsumer(broker.host(), broker.port(), soTimeout, bufferSize, clientId);
 
 				// make sure that all partitions have some offsets to start with
 				// those partitions that do not have an offset from a checkpoint need to get
 				// their start offset from ZooKeeper
 				
-				List<FetchPartition> partitionsToGetOffsetsFor = new ArrayList<FetchPartition>();
+				List<FetchPartition> partitionsToGetOffsetsFor = new ArrayList<>();
 
 				for (FetchPartition fp : partitions) {
 					if (fp.nextOffsetToRead == FlinkKafkaConsumer.OFFSET_NOT_SET) {
@@ -494,7 +488,7 @@ public class LegacyFetcher implements Fetcher {
 		 */
 		private static void getLastOffset(SimpleConsumer consumer, String topic, List<FetchPartition> partitions, long whichTime) {
 
-			Map<TopicAndPartition, PartitionOffsetRequestInfo> requestInfo = new HashMap<TopicAndPartition, PartitionOffsetRequestInfo>();
+			Map<TopicAndPartition, PartitionOffsetRequestInfo> requestInfo = new HashMap<>();
 			for (FetchPartition fp: partitions) {
 				TopicAndPartition topicAndPartition = new TopicAndPartition(topic, fp.partition);
 				requestInfo.put(topicAndPartition, new PartitionOffsetRequestInfo(whichTime, 1));
