@@ -16,22 +16,17 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics.groups.scope;
+package org.apache.flink.runtime.metrics.scope;
 
-import org.apache.flink.annotation.Internal;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.JobManagerJobScopeFormat;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.JobManagerScopeFormat;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.OperatorScopeFormat;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.TaskManagerJobScopeFormat;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.TaskManagerScopeFormat;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.TaskScopeFormat;
+import org.apache.flink.configuration.ConfigConstants;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.groups.scope.ScopeFormat;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * A container for component scope formats.
  */
-@Internal
 public class ScopeFormats {
 
 	private final JobManagerScopeFormat jobManagerFormat;
@@ -50,16 +45,16 @@ public class ScopeFormats {
 		this.jobManagerFormat = new JobManagerScopeFormat(ScopeFormat.DEFAULT_SCOPE_JOBMANAGER_COMPONENT);
 
 		this.jobManagerJobFormat = new JobManagerJobScopeFormat(
-			ScopeFormat.DEFAULT_SCOPE_JOBMANAGER_JOB_GROUP, this.jobManagerFormat);
+				ScopeFormat.DEFAULT_SCOPE_JOBMANAGER_JOB_GROUP, this.jobManagerFormat);
 
 		this.taskManagerFormat = new TaskManagerScopeFormat(ScopeFormat.DEFAULT_SCOPE_TASKMANAGER_COMPONENT);
 
 		this.taskManagerJobFormat = new TaskManagerJobScopeFormat(
 				ScopeFormat.DEFAULT_SCOPE_TASKMANAGER_JOB_GROUP, this.taskManagerFormat);
-		
+
 		this.taskFormat = new TaskScopeFormat(
 				ScopeFormat.DEFAULT_SCOPE_TASK_GROUP, this.taskManagerJobFormat);
-		
+
 		this.operatorFormat = new OperatorScopeFormat(
 				ScopeFormat.DEFAULT_SCOPE_OPERATOR_GROUP, this.taskFormat);
 	}
@@ -103,6 +98,8 @@ public class ScopeFormats {
 	}
 
 	// ------------------------------------------------------------------------
+	//  Accessors
+	// ------------------------------------------------------------------------
 
 	public JobManagerScopeFormat getJobManagerFormat() {
 		return this.jobManagerFormat;
@@ -126,5 +123,32 @@ public class ScopeFormats {
 
 	public OperatorScopeFormat getOperatorFormat() {
 		return this.operatorFormat;
+	}
+
+	// ------------------------------------------------------------------------
+	//  Parsing from Config
+	// ------------------------------------------------------------------------
+
+	/**
+	 * Creates the scope formats as defined in the given configuration
+	 * 
+	 * @param config The configuration that defines the formats
+	 * @return The ScopeFormats parsed from the configuration
+	 */
+	public static ScopeFormats fromConfig(Configuration config) {
+		String jmFormat = config.getString(
+				ConfigConstants.METRICS_SCOPE_NAMING_JM, ScopeFormat.DEFAULT_SCOPE_JOBMANAGER_GROUP);
+		String jmJobFormat = config.getString(
+				ConfigConstants.METRICS_SCOPE_NAMING_JM_JOB, ScopeFormat.DEFAULT_SCOPE_JOBMANAGER_JOB_GROUP);
+		String tmFormat = config.getString(
+				ConfigConstants.METRICS_SCOPE_NAMING_TM, ScopeFormat.DEFAULT_SCOPE_TASKMANAGER_GROUP);
+		String tmJobFormat = config.getString(
+				ConfigConstants.METRICS_SCOPE_NAMING_TM_JOB, ScopeFormat.DEFAULT_SCOPE_TASKMANAGER_JOB_GROUP);
+		String taskFormat = config.getString(
+				ConfigConstants.METRICS_SCOPE_NAMING_TASK, ScopeFormat.DEFAULT_SCOPE_TASK_GROUP);
+		String operatorFormat = config.getString(
+				ConfigConstants.METRICS_SCOPE_NAMING_OPERATOR, ScopeFormat.DEFAULT_SCOPE_OPERATOR_GROUP);
+
+		return new ScopeFormats(jmFormat, jmJobFormat, tmFormat, tmJobFormat, taskFormat, operatorFormat);
 	}
 }

@@ -16,10 +16,24 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics;
+package org.apache.flink.runtime.metrics.scope;
+
+import org.apache.flink.metrics.groups.ScopeFormat;
 
 /**
- * Common super interface for all metrics.
+ * The scope format for the {@link org.apache.flink.runtime.metrics.JobManagerMetricGroup}.
  */
-public interface Metric {
+public class JobManagerScopeFormat extends ScopeFormat {
+
+	public JobManagerScopeFormat(String format) {
+		super(format, null, new String[] {
+			SCOPE_ACTOR_HOST
+		});
+	}
+
+	public String[] formatScope(String hostname) {
+		final String[] template = copyTemplate();
+		final String[] values = { hostname };
+		return bindVariables(template, values);
+	}
 }

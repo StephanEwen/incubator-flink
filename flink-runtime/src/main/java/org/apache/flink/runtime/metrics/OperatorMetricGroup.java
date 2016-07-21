@@ -16,11 +16,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics.groups;
+package org.apache.flink.runtime.metrics;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.MetricRegistry;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.OperatorScopeFormat;
+import org.apache.flink.runtime.metrics.scope.OperatorScopeFormat;
+import org.apache.flink.runtime.metrics.scope.ScopeFormats;
 
 import java.util.Collections;
 
@@ -29,14 +29,13 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * Special {@link org.apache.flink.metrics.MetricGroup} representing an Operator.
  */
-@Internal
 public class OperatorMetricGroup extends ComponentMetricGroup {
 
 	/** The task metric group that contains this operator metric groups */
 	private final TaskMetricGroup parent;
 
 	public OperatorMetricGroup(MetricRegistry registry, TaskMetricGroup parent, String operatorName) {
-		this(registry, parent, registry.getScopeFormats().getOperatorFormat(), operatorName);
+		this(registry, parent, parent.getScopeFormats().getOperatorFormat(), operatorName);
 	}
 
 	public OperatorMetricGroup(
@@ -55,8 +54,17 @@ public class OperatorMetricGroup extends ComponentMetricGroup {
 		return parent;
 	}
 	
+	// ------------------------------------------------------------------------
+	//  Component Metric Group Specifics
+	// ------------------------------------------------------------------------
+
 	@Override
 	protected Iterable<? extends ComponentMetricGroup> subComponents() {
 		return Collections.emptyList();
+	}
+
+	@Override
+	protected ScopeFormats getScopeFormats() {
+		return parent.getScopeFormats();
 	}
 }

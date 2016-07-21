@@ -18,7 +18,7 @@
 
 package org.apache.flink.metrics.reporter;
 
-import org.apache.flink.annotation.PublicEvolving;
+
 import org.apache.flink.metrics.CharacterFilter;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
@@ -34,7 +34,6 @@ import java.util.Map;
 /**
  * Base interface for custom metric reporters.
  */
-@PublicEvolving
 public abstract class AbstractReporter implements MetricReporter, CharacterFilter {
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 

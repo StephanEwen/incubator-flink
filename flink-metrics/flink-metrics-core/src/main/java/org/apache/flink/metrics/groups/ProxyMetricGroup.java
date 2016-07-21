@@ -18,26 +18,25 @@
 
 package org.apache.flink.metrics.groups;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.CharacterFilter;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.Histogram;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.util.Preconditions;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Metric group which forwards all registration calls to its parent metric group.
  *
  * @param <P> Type of the parent metric group
  */
-@Internal
 public class ProxyMetricGroup<P extends MetricGroup> implements MetricGroup {
 
 	private final P parentMetricGroup;
 
 	public ProxyMetricGroup(P parentMetricGroup) {
-		this.parentMetricGroup = Preconditions.checkNotNull(parentMetricGroup);
+		this.parentMetricGroup = requireNonNull(parentMetricGroup);
 	}
 
 	@Override

@@ -16,27 +16,19 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics.groups.scope;
+package org.apache.flink.metrics.groups;
 
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.metrics.CharacterFilter;
-import org.apache.flink.metrics.groups.JobManagerMetricGroup;
-import org.apache.flink.metrics.groups.JobMetricGroup;
-import org.apache.flink.metrics.groups.TaskManagerJobMetricGroup;
-import org.apache.flink.metrics.groups.TaskManagerMetricGroup;
-import org.apache.flink.metrics.groups.TaskMetricGroup;
-import org.apache.flink.util.AbstractID;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-import static org.apache.flink.util.Preconditions.checkNotNull;
+import static java.util.Objects.requireNonNull;
 
 /**
  * This class represents the format after which the "scope" (or namespace) of the various
- * component metric groups is built. Component metric groups
- * ({@link org.apache.flink.metrics.groups.ComponentMetricGroup}), are for example
+ * component metric groups is built. Component metric groups are for example
  * "TaskManager", "Task", or "Operator".
  *
  * <p>User defined scope formats allow users to include or exclude
@@ -61,8 +53,8 @@ public abstract class ScopeFormat {
 	 * If the scope format starts with this character, then the parent components scope
 	 * format will be used as a prefix.
 	 * 
-	 * <p>For example, if the {@link JobMetricGroup} format is {@code "*.<job_name>"}, and the
-	 * {@link TaskManagerMetricGroup} format is {@code "<host>"}, then the job's metrics
+	 * <p>For example, if the TaskManager's job format is {@code "*.<job_name>"}, and the
+	 * TaskManager format is {@code "<host>"}, then the job's metrics
 	 * will have {@code "<host>.<job_name>"} as their scope.
 	 */
 	public static final String SCOPE_INHERIT_PARENT = "*";
@@ -147,182 +139,7 @@ public abstract class ScopeFormat {
 	 * {@code "<host>.taskmanager.<tm_id>.<job_name>.<operator_name>.<subtask_index>"} */
 	public static final String DEFAULT_SCOPE_OPERATOR_GROUP =
 			concat(DEFAULT_SCOPE_TASKMANAGER_JOB_GROUP, DEFAULT_SCOPE_OPERATOR_COMPONENT);
-
-	// ------------------------------------------------------------------------
-	//  Formatters form the individual component types
-	// ------------------------------------------------------------------------
-
-	/**
-	 * The scope format for the {@link JobManagerMetricGroup}.
-	 */
-	public static class JobManagerScopeFormat extends ScopeFormat {
-
-		public JobManagerScopeFormat(String format) {
-			super(format, null, new String[] {
-				SCOPE_ACTOR_HOST
-			});
-		}
-
-		public String[] formatScope(String hostname) {
-			final String[] template = copyTemplate();
-			final String[] values = { hostname };
-			return bindVariables(template, values);
-		}
-	}
-
-	/**
-	 * The scope format for the {@link TaskManagerMetricGroup}.
-	 */
-	public static class TaskManagerScopeFormat extends ScopeFormat {
-
-		public TaskManagerScopeFormat(String format) {
-			super(format, null, new String[] {
-					SCOPE_ACTOR_HOST,
-					SCOPE_TASKMANAGER_ID
-			});
-		}
-
-		public String[] formatScope(String hostname, String taskManagerId) {
-			final String[] template = copyTemplate();
-			final String[] values = { hostname, taskManagerId };
-			return bindVariables(template, values);
-		}
-	}
-
-	// ------------------------------------------------------------------------
-
-	/**
-	 * The scope format for the {@link JobMetricGroup}.
-	 */
-	public static class JobManagerJobScopeFormat extends ScopeFormat {
-
-		public JobManagerJobScopeFormat(String format, JobManagerScopeFormat parentFormat) {
-			super(format, parentFormat, new String[] {
-				SCOPE_ACTOR_HOST,
-				SCOPE_JOB_ID,
-				SCOPE_JOB_NAME
-			});
-		}
-
-		public String[] formatScope(JobManagerMetricGroup parent, JobID jid, String jobName) {
-			final String[] template = copyTemplate();
-			final String[] values = {
-				parent.hostname(),
-				valueOrNull(jid),
-				valueOrNull(jobName)
-			};
-			return bindVariables(template, values);
-		}
-	}
-
-	/**
-	 * The scope format for the {@link JobMetricGroup}.
-	 */
-	public static class TaskManagerJobScopeFormat extends ScopeFormat {
-
-		public TaskManagerJobScopeFormat(String format, TaskManagerScopeFormat parentFormat) {
-			super(format, parentFormat, new String[] {
-					SCOPE_ACTOR_HOST,
-					SCOPE_TASKMANAGER_ID,
-					SCOPE_JOB_ID,
-					SCOPE_JOB_NAME
-			});
-		}
-
-		public String[] formatScope(TaskManagerMetricGroup parent, JobID jid, String jobName) {
-			final String[] template = copyTemplate();
-			final String[] values = {
-					parent.hostname(),
-					parent.taskManagerId(),
-					valueOrNull(jid),
-					valueOrNull(jobName)
-			};
-			return bindVariables(template, values);
-		}
-	}
-
-	// ------------------------------------------------------------------------
-
-	/**
-	 * The scope format for the {@link TaskMetricGroup}.
-	 */
-	public static class TaskScopeFormat extends ScopeFormat {
-
-		public TaskScopeFormat(String format, TaskManagerJobScopeFormat parentFormat) {
-			super(format, parentFormat, new String[] {
-					SCOPE_ACTOR_HOST,
-					SCOPE_TASKMANAGER_ID,
-					SCOPE_JOB_ID,
-					SCOPE_JOB_NAME,
-					SCOPE_TASK_VERTEX_ID,
-					SCOPE_TASK_ATTEMPT_ID,
-					SCOPE_TASK_NAME,
-					SCOPE_TASK_SUBTASK_INDEX,
-					SCOPE_TASK_ATTEMPT_NUM
-			});
-		}
-
-		public String[] formatScope(
-				TaskManagerJobMetricGroup parent,
-				AbstractID vertexId, AbstractID attemptId,
-				String taskName, int subtask, int attemptNumber) {
-
-			final String[] template = copyTemplate();
-			final String[] values = {
-					parent.parent().hostname(),
-					parent.parent().taskManagerId(),
-					valueOrNull(parent.jobId()),
-					valueOrNull(parent.jobName()),
-					valueOrNull(vertexId),
-					valueOrNull(attemptId),
-					valueOrNull(taskName),
-					String.valueOf(subtask),
-					String.valueOf(attemptNumber)
-			};
-			return bindVariables(template, values);
-		}
-	}
-
-	// ------------------------------------------------------------------------
-
-	/**
-	 * The scope format for the {@link org.apache.flink.metrics.groups.OperatorMetricGroup}.
-	 */
-	public static class OperatorScopeFormat extends ScopeFormat {
-
-		public OperatorScopeFormat(String format, TaskScopeFormat parentFormat) {
-			super(format, parentFormat, new String[] {
-					SCOPE_ACTOR_HOST,
-					SCOPE_TASKMANAGER_ID,
-					SCOPE_JOB_ID,
-					SCOPE_JOB_NAME,
-					SCOPE_TASK_VERTEX_ID,
-					SCOPE_TASK_ATTEMPT_ID,
-					SCOPE_TASK_NAME,
-					SCOPE_TASK_SUBTASK_INDEX,
-					SCOPE_TASK_ATTEMPT_NUM,
-					SCOPE_OPERATOR_NAME
-			});
-		}
-
-		public String[] formatScope(TaskMetricGroup parent, String operatorName) {
-
-			final String[] template = copyTemplate();
-			final String[] values = {
-					parent.parent().parent().hostname(),
-					parent.parent().parent().taskManagerId(),
-					valueOrNull(parent.parent().jobId()),
-					valueOrNull(parent.parent().jobName()),
-					valueOrNull(parent.vertexId()),
-					valueOrNull(parent.executionId()),
-					valueOrNull(parent.taskName()),
-					String.valueOf(parent.subtaskIndex()),
-					String.valueOf(parent.attemptNumber()),
-					valueOrNull(operatorName)
-			};
-			return bindVariables(template, values);
-		}
-	}
+	
 
 	// ------------------------------------------------------------------------
 	//  Scope Format Base
@@ -341,7 +158,7 @@ public abstract class ScopeFormat {
 	// ------------------------------------------------------------------------
 
 	protected ScopeFormat(String format, ScopeFormat parent, String[] variables) {
-		checkNotNull(format, "format is null");
+		requireNonNull(format, "format is null");
 
 		final String[] rawComponents = format.split("\\" + SCOPE_SEPARATOR);
 
@@ -466,12 +283,12 @@ public abstract class ScopeFormat {
 		return sb.toString();
 	}
 	
-	static String valueOrNull(Object value) {
+	protected static String valueOrNull(Object value) {
 		return (value == null || (value instanceof String && ((String) value).isEmpty())) ?
 				"null" : value.toString();
 	}
 
-	static HashMap<String, Integer> arrayToMap(String[] array) {
+	protected static HashMap<String, Integer> arrayToMap(String[] array) {
 		HashMap<String, Integer> map = new HashMap<>(array.length);
 		for (int i = 0; i < array.length; i++) {
 			map.put(array[i], i);

@@ -15,12 +15,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.metrics.groups;
 
-import org.apache.flink.annotation.Internal;
+package org.apache.flink.runtime.metrics;
+
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.metrics.MetricRegistry;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.JobManagerScopeFormat;
+import org.apache.flink.runtime.metrics.scope.JobManagerScopeFormat;
+import org.apache.flink.runtime.metrics.scope.ScopeFormats;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -31,24 +32,27 @@ import java.util.Map;
  * <p>Contains extra logic for adding jobs with tasks, and removing jobs when they do
  * not contain tasks any more
  */
-@Internal
 public class JobManagerMetricGroup extends ComponentMetricGroup {
 
 	private final Map<JobID, JobManagerJobMetricGroup> jobs = new HashMap<>();
 
 	private final String hostname;
+	
+	private final ScopeFormats formats;
 
-	public JobManagerMetricGroup(MetricRegistry registry, String hostname) {
-		this(registry, registry.getScopeFormats().getJobManagerFormat(), hostname);
+	public JobManagerMetricGroup(MetricRegistry registry, ScopeFormats formats, String hostname) {
+		this(registry, formats, formats.getJobManagerFormat(), hostname);
 	}
 
 	public JobManagerMetricGroup(
 		MetricRegistry registry,
+		ScopeFormats formats,
 		JobManagerScopeFormat scopeFormat,
 		String hostname) {
 
 		super(registry, scopeFormat.formatScope(hostname));
 		this.hostname = hostname;
+		this.formats = formats;
 	}
 
 	public String hostname() {
@@ -96,9 +100,18 @@ public class JobManagerMetricGroup extends ComponentMetricGroup {
 		return jobs.size();
 	}
 
+	// ------------------------------------------------------------------------
+	//  Component Metric Group Specifics
+	// ------------------------------------------------------------------------
+
 	@Override
 	protected Iterable<? extends ComponentMetricGroup> subComponents() {
 		return jobs.values();
+	}
+
+	@Override
+	protected ScopeFormats getScopeFormats() {
+		return formats;
 	}
 }
 

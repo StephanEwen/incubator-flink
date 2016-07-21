@@ -16,11 +16,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics.groups;
+package org.apache.flink.runtime.metrics;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.MetricRegistry;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.TaskScopeFormat;
+import org.apache.flink.runtime.metrics.scope.ScopeFormats;
+import org.apache.flink.runtime.metrics.scope.TaskScopeFormat;
 import org.apache.flink.util.AbstractID;
 
 import javax.annotation.Nullable;
@@ -34,7 +34,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * 
  * <p>Contains extra logic for adding operators.
  */
-@Internal
 public class TaskMetricGroup extends ComponentMetricGroup {
 
 	/** The job metrics group containing this task metrics group */
@@ -68,7 +67,7 @@ public class TaskMetricGroup extends ComponentMetricGroup {
 			int subtaskIndex,
 			int attemptNumber) {
 		
-		this(registry, parent, registry.getScopeFormats().getTaskFormat(),
+		this(registry, parent, parent.getScopeFormats().getTaskFormat(),
 				vertexId, executionId, taskName, subtaskIndex, attemptNumber);
 	}
 
@@ -137,6 +136,7 @@ public class TaskMetricGroup extends ComponentMetricGroup {
 	// ------------------------------------------------------------------------
 	//  operators and cleanup
 	// ------------------------------------------------------------------------
+
 	public OperatorMetricGroup addOperator(String name) {
 		OperatorMetricGroup operator = new OperatorMetricGroup(this.registry, this, name);
 
@@ -161,9 +161,16 @@ public class TaskMetricGroup extends ComponentMetricGroup {
 	}
 
 	// ------------------------------------------------------------------------
+	//  Component Metric Group Specifics
+	// ------------------------------------------------------------------------
 
 	@Override
 	protected Iterable<? extends ComponentMetricGroup> subComponents() {
 		return operators.values();
+	}
+
+	@Override
+	protected ScopeFormats getScopeFormats() {
+		return parent.getScopeFormats();
 	}
 }

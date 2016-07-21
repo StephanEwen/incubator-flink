@@ -18,12 +18,9 @@
 
 package org.apache.flink.metrics.reporter;
 
-import org.apache.flink.annotation.PublicEvolving;
-
 /**
  * Interface for reporters that actively send out data periodically.
  */
-@PublicEvolving
 public interface Scheduled {
 
 	/**

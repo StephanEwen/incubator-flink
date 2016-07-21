@@ -16,10 +16,25 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics;
+package org.apache.flink.runtime.metrics.scope;
+
+import org.apache.flink.metrics.groups.ScopeFormat;
 
 /**
- * Common super interface for all metrics.
+ * The scope format for the {@link org.apache.flink.runtime.metrics.TaskManagerMetricGroup}.
  */
-public interface Metric {
+public class TaskManagerScopeFormat extends ScopeFormat {
+
+	public TaskManagerScopeFormat(String format) {
+		super(format, null, new String[] {
+				SCOPE_ACTOR_HOST,
+				SCOPE_TASKMANAGER_ID
+		});
+	}
+
+	public String[] formatScope(String hostname, String taskManagerId) {
+		final String[] template = copyTemplate();
+		final String[] values = { hostname, taskManagerId };
+		return bindVariables(template, values);
+	}
 }

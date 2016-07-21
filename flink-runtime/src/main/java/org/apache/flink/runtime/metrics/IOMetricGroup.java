@@ -16,9 +16,10 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics.groups;
+package org.apache.flink.runtime.metrics;
 
 import org.apache.flink.metrics.Counter;
+import org.apache.flink.metrics.groups.ProxyMetricGroup;
 
 /**
  * Metric group that contains shareable pre-defined IO-related metrics. The metrics registration is

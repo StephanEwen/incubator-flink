@@ -36,7 +36,7 @@ import org.apache.flink.configuration.{ConfigConstants, Configuration, GlobalCon
 import org.apache.flink.core.fs.FileSystem
 import org.apache.flink.core.io.InputSplitAssigner
 import org.apache.flink.metrics.{Gauge, MetricGroup, MetricRegistry => FlinkMetricRegistry}
-import org.apache.flink.metrics.groups.{JobManagerMetricGroup, UnregisteredMetricsGroup}
+import org.apache.flink.metrics.groups.UnregisteredMetricsGroup
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot
 import org.apache.flink.runtime.akka.{AkkaUtils, ListeningBehaviour}
 import org.apache.flink.runtime.blob.BlobServer
@@ -70,6 +70,8 @@ import org.apache.flink.runtime.messages.checkpoint.{DeclineCheckpoint, Abstract
 
 import org.apache.flink.runtime.messages.webmonitor.InfoMessage
 import org.apache.flink.runtime.messages.webmonitor._
+import org.apache.flink.runtime.metrics.JobManagerMetricGroup
+import org.apache.flink.runtime.metrics.scope.ScopeFormats
 import org.apache.flink.runtime.process.ProcessReaper
 import org.apache.flink.runtime.security.SecurityUtils
 import org.apache.flink.runtime.security.SecurityUtils.FlinkSecuredRunner
@@ -157,8 +159,17 @@ class JobManager(
   protected val jobManagerMetricGroup : Option[JobManagerMetricGroup] = metricsRegistry match {
     case Some(registry) =>
       val host = flinkConfiguration.getString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, null)
+      val formats: ScopeFormats = try {
+        ScopeFormats.fromConfig(flinkConfiguration)
+      } catch {
+        case t: Throwable =>
+          log.warn("Failed to parse scope format, using default scope formats", t)
+          new ScopeFormats()
+      }
+      
       Option(new JobManagerMetricGroup(
-        registry, NetUtils.ipAddressToUrlString(InetAddress.getByName(host))))
+        registry, formats, NetUtils.ipAddressToUrlString(InetAddress.getByName(host))))
+
     case None =>
       log.warn("Could not instantiate JobManager metrics.")
       None

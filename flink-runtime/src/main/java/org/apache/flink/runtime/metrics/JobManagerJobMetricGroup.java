@@ -15,12 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.metrics.groups;
+package org.apache.flink.runtime.metrics;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.metrics.MetricRegistry;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.JobManagerJobScopeFormat;
+import org.apache.flink.runtime.metrics.scope.JobManagerJobScopeFormat;
+import org.apache.flink.runtime.metrics.scope.ScopeFormats;
 
 import javax.annotation.Nullable;
 import java.util.Collections;
@@ -31,7 +31,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * Special {@link org.apache.flink.metrics.MetricGroup} representing everything belonging to
  * a specific job, running on the JobManager.
  */
-@Internal
 public class JobManagerJobMetricGroup extends JobMetricGroup {
 
 	/** The metrics group that contains this group */
@@ -43,7 +42,7 @@ public class JobManagerJobMetricGroup extends JobMetricGroup {
 		JobID jobId,
 		@Nullable String jobName) {
 
-		this(registry, checkNotNull(parent), registry.getScopeFormats().getJobManagerJobFormat(), jobId, jobName);
+		this(registry, checkNotNull(parent), parent.getScopeFormats().getJobManagerJobFormat(), jobId, jobName);
 	}
 
 	public JobManagerJobMetricGroup(
@@ -62,8 +61,17 @@ public class JobManagerJobMetricGroup extends JobMetricGroup {
 		return parent;
 	}
 
+	// ------------------------------------------------------------------------
+	//  Component Metric Group Specifics
+	// ------------------------------------------------------------------------
+
 	@Override
 	protected Iterable<? extends ComponentMetricGroup> subComponents() {
 		return Collections.emptyList();
+	}
+
+	@Override
+	protected ScopeFormats getScopeFormats() {
+		return parent.getScopeFormats();
 	}
 }

@@ -18,7 +18,6 @@
 
 package org.apache.flink.metrics.groups;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.CharacterFilter;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
@@ -32,7 +31,6 @@ import org.apache.flink.metrics.SimpleCounter;
  * 
  * <p>This metrics group appears always closed ({@link #isClosed()}).
  */
-@Internal
 public class UnregisteredMetricsGroup implements MetricGroup {
 
 	@Override
@@ -103,14 +101,7 @@ public class UnregisteredMetricsGroup implements MetricGroup {
 		return metricName;
 	}
 
-	/**
-	 * Returns the fully qualified metric name, for example
-	 * {@code "host-7.taskmanager-2.window_word_count.my-mapper.metricName"}
-	 *
-	 * @param metricName metric name
-	 * @param filter character filter which is applied to the scope components if not null.
-	 * @return fully qualified metric name
-	 */
+	@Override
 	public String getMetricIdentifier(String metricName, CharacterFilter filter) {
 		return metricName;
 	}

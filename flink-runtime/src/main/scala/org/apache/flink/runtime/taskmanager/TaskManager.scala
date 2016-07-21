@@ -38,7 +38,6 @@ import grizzled.slf4j.Logger
 import org.apache.flink.configuration._
 import org.apache.flink.core.fs.FileSystem
 import org.apache.flink.core.memory.{HeapMemorySegment, HybridMemorySegment, MemorySegmentFactory, MemoryType}
-import org.apache.flink.metrics.groups.TaskManagerMetricGroup
 import org.apache.flink.metrics.{MetricGroup, Gauge => FlinkGauge, MetricRegistry => FlinkMetricRegistry}
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot
 import org.apache.flink.runtime.clusterframework.messages.StopCluster
@@ -65,6 +64,8 @@ import org.apache.flink.runtime.messages.StackTraceSampleMessages.{ResponseStack
 import org.apache.flink.runtime.messages.TaskManagerMessages._
 import org.apache.flink.runtime.messages.TaskMessages._
 import org.apache.flink.runtime.messages.checkpoint.{AbstractCheckpointMessage, NotifyCheckpointComplete, TriggerCheckpoint}
+import org.apache.flink.runtime.metrics.TaskManagerMetricGroup
+import org.apache.flink.runtime.metrics.scope.ScopeFormats
 import org.apache.flink.runtime.process.ProcessReaper
 import org.apache.flink.runtime.security.SecurityUtils
 import org.apache.flink.runtime.security.SecurityUtils.FlinkSecuredRunner
@@ -815,7 +816,7 @@ class TaskManager(
       jobManager: ActorRef)
     : Unit = {
     val logFilePathOption = Option(config.configuration.getString(
-      ConfigConstants.TASK_MANAGER_LOG_PATH_KEY, System.getProperty("log.file")));
+      ConfigConstants.TASK_MANAGER_LOG_PATH_KEY, System.getProperty("log.file")))
     logFilePathOption match {
       case None => throw new IOException("TaskManager log files are unavailable. " +
         "Log file location not found in environment variable log.file or configuration key "
@@ -826,10 +827,10 @@ class TaskManager(
           case StdOutFileRequest =>
             new File(logFilePath.substring(0, logFilePath.length - 4) + ".out");
         }
-        val fis = new FileInputStream(file);
+        val fis = new FileInputStream(file)
         Future {
           val client: BlobClient = blobService.get.createClient()
-          client.put(fis);
+          client.put(fis)
         }(context.dispatcher)
           .onComplete {
             case Success(value) => 
@@ -944,8 +945,16 @@ class TaskManager(
 
     metricsRegistry = new FlinkMetricRegistry(config.configuration)
     
+    val formats: ScopeFormats = try {
+      ScopeFormats.fromConfig(config.configuration)
+    } catch {
+      case t: Throwable =>
+        log.warn("Failed to parse scope format, using default scope formats", t)
+        new ScopeFormats()
+    }
+    
     taskManagerMetricGroup = 
-      new TaskManagerMetricGroup(metricsRegistry, this.runtimeInfo.getHostname, id.toString)
+      new TaskManagerMetricGroup(metricsRegistry, formats, this.runtimeInfo.getHostname, id.toString)
     
     TaskManager.instantiateStatusMetrics(taskManagerMetricGroup)
     

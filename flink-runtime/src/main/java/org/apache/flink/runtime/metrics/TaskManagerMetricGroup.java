@@ -16,12 +16,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics.groups;
+package org.apache.flink.runtime.metrics;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.metrics.MetricRegistry;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.TaskManagerScopeFormat;
+import org.apache.flink.runtime.metrics.scope.ScopeFormats;
 import org.apache.flink.util.AbstractID;
 
 import java.util.HashMap;
@@ -33,7 +32,6 @@ import java.util.Map;
  * <p>Contains extra logic for adding jobs with tasks, and removing jobs when they do
  * not contain tasks any more
  */
-@Internal
 public class TaskManagerMetricGroup extends ComponentMetricGroup {
 
 	private final Map<JobID, TaskManagerJobMetricGroup> jobs = new HashMap<>();
@@ -41,20 +39,19 @@ public class TaskManagerMetricGroup extends ComponentMetricGroup {
 	private final String hostname;
 
 	private final String taskManagerId;
+	
+	private final ScopeFormats scopeFormats;
 
-
-	public TaskManagerMetricGroup(MetricRegistry registry, String hostname, String taskManagerId) {
-		this(registry, registry.getScopeFormats().getTaskManagerFormat(), hostname, taskManagerId);
-	}
 
 	public TaskManagerMetricGroup(
 			MetricRegistry registry,
-			TaskManagerScopeFormat scopeFormat,
+			ScopeFormats scopeFormats,
 			String hostname, String taskManagerId) {
 
-		super(registry, scopeFormat.formatScope(hostname, taskManagerId));
+		super(registry, scopeFormats.getTaskManagerFormat().formatScope(hostname, taskManagerId));
 		this.hostname = hostname;
 		this.taskManagerId = taskManagerId;
+		this.scopeFormats = scopeFormats;
 	}
 
 	public String hostname() {
@@ -126,9 +123,18 @@ public class TaskManagerMetricGroup extends ComponentMetricGroup {
 		return jobs.size();
 	}
 
+	// ------------------------------------------------------------------------
+	//  Component Metric Group Specifics
+	// ------------------------------------------------------------------------
+
 	@Override
 	protected Iterable<? extends ComponentMetricGroup> subComponents() {
 		return jobs.values();
+	}
+
+	@Override
+	public ScopeFormats getScopeFormats() {
+		return scopeFormats;
 	}
 }
 

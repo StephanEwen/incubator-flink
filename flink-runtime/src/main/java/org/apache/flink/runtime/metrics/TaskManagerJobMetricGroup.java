@@ -15,12 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.metrics.groups;
+package org.apache.flink.runtime.metrics;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.metrics.MetricRegistry;
-import org.apache.flink.metrics.groups.scope.ScopeFormat.TaskManagerJobScopeFormat;
+import org.apache.flink.runtime.metrics.scope.ScopeFormats;
+import org.apache.flink.runtime.metrics.scope.TaskManagerJobScopeFormat;
 import org.apache.flink.util.AbstractID;
 
 import javax.annotation.Nullable;
@@ -35,7 +35,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * <p>Contains extra logic for adding Tasks ({@link TaskMetricGroup}).
  */
-@Internal
 public class TaskManagerJobMetricGroup extends JobMetricGroup {
 
 	/** The metrics group that contains this group */
@@ -47,20 +46,20 @@ public class TaskManagerJobMetricGroup extends JobMetricGroup {
 	// ------------------------------------------------------------------------
 
 	public TaskManagerJobMetricGroup(
-		MetricRegistry registry,
-		TaskManagerMetricGroup parent,
-		JobID jobId,
-		@Nullable String jobName) {
+			MetricRegistry registry,
+			TaskManagerMetricGroup parent,
+			JobID jobId,
+			@Nullable String jobName) {
 
-		this(registry, checkNotNull(parent), registry.getScopeFormats().getTaskManagerJobFormat(), jobId, jobName);
+		this(registry, checkNotNull(parent), parent.getScopeFormats().getTaskManagerJobFormat(), jobId, jobName);
 	}
 
 	public TaskManagerJobMetricGroup(
-		MetricRegistry registry,
-		TaskManagerMetricGroup parent,
-		TaskManagerJobScopeFormat scopeFormat,
-		JobID jobId,
-		@Nullable String jobName) {
+			MetricRegistry registry,
+			TaskManagerMetricGroup parent,
+			TaskManagerJobScopeFormat scopeFormat,
+			JobID jobId,
+			@Nullable String jobName) {
 
 		super(registry, jobId, jobName, scopeFormat.formatScope(parent, jobId, jobName));
 
@@ -115,8 +114,17 @@ public class TaskManagerJobMetricGroup extends JobMetricGroup {
 		}
 	}
 
+	// ------------------------------------------------------------------------
+	//  Component Metric Group Specifics
+	// ------------------------------------------------------------------------
+
 	@Override
 	protected Iterable<? extends ComponentMetricGroup> subComponents() {
 		return tasks.values();
+	}
+
+	@Override
+	protected ScopeFormats getScopeFormats() {
+		return parent.getScopeFormats();
 	}
 }

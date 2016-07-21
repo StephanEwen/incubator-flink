@@ -16,34 +16,47 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics.groups;
+package org.apache.flink.runtime.metrics;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.metrics.MetricRegistry;
 
+import javax.annotation.Nullable;
+
 /**
- * A simple named {@link org.apache.flink.metrics.MetricGroup} that is used to hold
- * subgroups of metrics.
+ * Special abstract {@link org.apache.flink.metrics.MetricGroup} representing everything belonging to
+ * a specific job.
  */
 @Internal
-public class GenericMetricGroup extends AbstractMetricGroup {
+public abstract class JobMetricGroup extends ComponentMetricGroup {
 
-	public GenericMetricGroup(MetricRegistry registry, AbstractMetricGroup parent, String name) {
-		super(registry, makeScopeComponents(parent, name));
-	}
+	/** The ID of the job represented by this metrics group */
+	protected final JobID jobId;
+
+	/** The name of the job represented by this metrics group */
+	@Nullable
+	protected final String jobName;
 
 	// ------------------------------------------------------------------------
 
-	private static String[] makeScopeComponents(AbstractMetricGroup parent, String name) {
-		if (parent != null) {
-			String[] parentComponents = parent.getScopeComponents();
-			if (parentComponents != null && parentComponents.length > 0) {
-				String[] parts = new String[parentComponents.length + 1];
-				System.arraycopy(parentComponents, 0, parts, 0, parentComponents.length);
-				parts[parts.length - 1] = name;
-				return parts;
-			}
-		}
-		return new String[] { name };
+	protected JobMetricGroup(
+			MetricRegistry registry,
+			JobID jobId,
+			@Nullable String jobName,
+			String[] scope) {
+		super(registry, scope);
+		
+		this.jobId = jobId;
+		this.jobName = jobName;
+	}
+
+	public JobID jobId() {
+		return jobId;
+	}
+
+	@Nullable
+	public String jobName() {
+		return jobName;
 	}
 }

@@ -18,7 +18,6 @@
 
 package org.apache.flink.metrics.groups;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.CharacterFilter;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
@@ -28,14 +27,14 @@ import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.MetricRegistry;
 import org.apache.flink.metrics.SimpleCounter;
 
-import org.apache.flink.metrics.groups.scope.ScopeFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.apache.flink.util.Preconditions.checkNotNull;
+import static java.util.Objects.requireNonNull;
+
 
 /**
  * Abstract {@link MetricGroup} that contains key functionality for adding metrics and groups.
@@ -50,7 +49,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * lock and calls a parent method that also acquires the lock, it will create a deadlock
  * condition.
  */
-@Internal
 public abstract class AbstractMetricGroup implements MetricGroup {
 
 	/** shared logger */
@@ -81,8 +79,8 @@ public abstract class AbstractMetricGroup implements MetricGroup {
 	// ------------------------------------------------------------------------
 
 	public AbstractMetricGroup(MetricRegistry registry, String[] scope) {
-		this.registry = checkNotNull(registry);
-		this.scopeComponents = checkNotNull(scope);
+		this.registry = requireNonNull(registry);
+		this.scopeComponents = requireNonNull(scope);
 	}
 
 	/**

@@ -18,8 +18,6 @@
 
 package org.apache.flink.metrics;
 
-import org.apache.flink.annotation.PublicEvolving;
-
 /**
  * A MetricGroup is a named container for {@link Metric Metrics} and further metric subgroups.
  * 
@@ -33,7 +31,6 @@ import org.apache.flink.annotation.PublicEvolving;
  * return Counters, Gauges, etc to the code, to prevent exceptions in the monitored code.
  * These metrics simply do not get reported any more, when created on a closed group.
  */
-@PublicEvolving
 public interface MetricGroup {
 
 	// ------------------------------------------------------------------------

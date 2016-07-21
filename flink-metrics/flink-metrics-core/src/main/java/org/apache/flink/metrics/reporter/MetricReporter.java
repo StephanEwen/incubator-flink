@@ -18,7 +18,6 @@
 
 package org.apache.flink.metrics.reporter;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.metrics.Metric;
 import org.apache.flink.metrics.MetricConfig;
 import org.apache.flink.metrics.MetricGroup;
@@ -29,7 +28,6 @@ import org.apache.flink.metrics.MetricGroup;
  * <p>Reporters are instantiated via reflection and must be public, non-abstract, and have a
  * public no-argument constructor.
  */
-@PublicEvolving
 public interface MetricReporter {
 
 	// ------------------------------------------------------------------------

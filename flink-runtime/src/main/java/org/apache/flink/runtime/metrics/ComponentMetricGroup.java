@@ -16,10 +16,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics.groups;
+package org.apache.flink.runtime.metrics;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.MetricRegistry;
+import org.apache.flink.metrics.groups.AbstractMetricGroup;
+import org.apache.flink.runtime.metrics.scope.ScopeFormats;
 
 /**
  * Abstract {@link org.apache.flink.metrics.MetricGroup} for system components (e.g., 
@@ -34,7 +35,6 @@ import org.apache.flink.metrics.MetricRegistry;
  * group could for example include the task attempt number (more fine grained identification), or
  * exclude it (for continuity of the namespace across failure and recovery).
  */
-@Internal
 public abstract class ComponentMetricGroup extends AbstractMetricGroup {
 
 	/**
@@ -43,10 +43,7 @@ public abstract class ComponentMetricGroup extends AbstractMetricGroup {
 	 * @param registry     registry to register new metrics with
 	 * @param scope        the scope of the group
 	 */
-	public ComponentMetricGroup(
-			MetricRegistry registry,
-			String[] scope) {
-
+	public ComponentMetricGroup(MetricRegistry registry, String[] scope) {
 		super(registry, scope);
 	}
 
@@ -71,8 +68,20 @@ public abstract class ComponentMetricGroup extends AbstractMetricGroup {
 	}
 
 	// ------------------------------------------------------------------------
-	//  sub components
+	//  Component Metric Group Specifics
 	// ------------------------------------------------------------------------
 
+	/**
+	 * Gets all component metric groups that are contained in this component metric group.
+	 * 
+	 * @return All component metric groups that are contained in this component metric group.
+	 */
 	protected abstract Iterable<? extends ComponentMetricGroup> subComponents();
+
+	/**
+	 * Gets the formats for the component metric groups names.
+	 * 
+	 * @return The formats for the component metric groups names.
+	 */
+	protected abstract ScopeFormats getScopeFormats();
 }

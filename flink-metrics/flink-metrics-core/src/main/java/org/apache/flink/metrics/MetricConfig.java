@@ -21,6 +21,44 @@ import java.util.Properties;
 
 public class MetricConfig extends Properties {
 
+	// ------------------------------------------------------------------------
+	//  Configuration keys
+	// ------------------------------------------------------------------------
+
+	/** The class of the reporter to use. */
+	public static final String METRICS_REPORTER_CLASS = "metrics.reporter.class";
+
+	/** A list of named parameters that are passed to the reporter. */
+	public static final String METRICS_REPORTER_ARGUMENTS = "metrics.reporter.arguments";
+
+	/** The interval between reports. */
+	public static final String METRICS_REPORTER_INTERVAL = "metrics.reporter.interval";
+
+	/** The delimiter used to assemble the metric identifier. */
+	public static final String METRICS_SCOPE_DELIMITER = "metrics.scope.delimiter";
+
+	/** The scope format string that is applied to all metrics scoped to a JobManager. */
+	public static final String METRICS_SCOPE_NAMING_JM = "metrics.scope.jm";
+
+	/** The scope format string that is applied to all metrics scoped to a TaskManager. */
+	public static final String METRICS_SCOPE_NAMING_TM = "metrics.scope.tm";
+
+	/** The scope format string that is applied to all metrics scoped to a job on a JobManager. */
+	public static final String METRICS_SCOPE_NAMING_JM_JOB = "metrics.scope.jm.job";
+
+	/** The scope format string that is applied to all metrics scoped to a job on a TaskManager. */
+	public static final String METRICS_SCOPE_NAMING_TM_JOB = "metrics.scope.tm.job";
+
+	/** The scope format string that is applied to all metrics scoped to a task. */
+	public static final String METRICS_SCOPE_NAMING_TASK = "metrics.scope.task";
+
+	/** The scope format string that is applied to all metrics scoped to an operator. */
+	public static final String METRICS_SCOPE_NAMING_OPERATOR = "metrics.scope.operator";
+
+	// ------------------------------------------------------------------------
+	//  Configuration keys
+	// ------------------------------------------------------------------------
+
 	public String getString(String key, String defaultValue) {
 		return getProperty(key, defaultValue);
 	}

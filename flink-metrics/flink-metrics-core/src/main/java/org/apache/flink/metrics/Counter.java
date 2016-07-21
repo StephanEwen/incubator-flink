@@ -18,12 +18,9 @@
 
 package org.apache.flink.metrics;
 
-import org.apache.flink.annotation.PublicEvolving;
-
 /**
  * A Counter is a {@link Metric} that measures a count.
  */
-@PublicEvolving
 public interface Counter extends Metric {
 
 	/**
