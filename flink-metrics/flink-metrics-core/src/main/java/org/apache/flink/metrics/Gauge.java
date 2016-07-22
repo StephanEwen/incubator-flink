@@ -16,19 +16,20 @@
  * limitations under the License.
  */
 
-package org.apache.flink.metrics.reporter;
+package org.apache.flink.metrics;
 
 import org.apache.flink.annotation.PublicEvolving;
 
 /**
- * Interface for reporters that actively send out data periodically.
+ * A Gauge is a {@link Metric} that calculates a specific value at a point in time.
  */
 @PublicEvolving
-public interface Scheduled {
+public interface Gauge<T> extends Metric {
 
 	/**
-	 * Report the current measurements. This method is called periodically by the
-	 * metrics registry that uses the reoprter.
+	 * Calculates and returns the measured value.
+	 *
+	 * @return calculated value
 	 */
-	void report();
+	T getValue();
 }

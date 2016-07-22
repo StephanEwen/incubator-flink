@@ -21,6 +21,8 @@ package org.apache.flink.metrics;
  * A simple low-overhead {@link org.apache.flink.metrics.Counter} that is not thread-safe.
  */
 public class SimpleCounter implements Counter {
+
+	/** the current count */
 	private long count;
 
 	/**
