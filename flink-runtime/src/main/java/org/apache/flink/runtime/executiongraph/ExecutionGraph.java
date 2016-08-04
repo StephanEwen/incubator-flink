@@ -1245,7 +1245,7 @@ public class ExecutionGraph {
 				// the RUNNING state (e.g. failing from RESTARTING)
 				return stateTimestamps[state.ordinal()] - restartingTimestamp;
 			} else {
-				// we're still somwhere between RESTARTING and RUNNING
+				// we're still somewhere between RESTARTING and RUNNING
 				return System.currentTimeMillis() - restartingTimestamp;
 			}
 		}
