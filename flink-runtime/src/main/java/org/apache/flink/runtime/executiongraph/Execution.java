@@ -81,13 +81,20 @@ import static org.apache.flink.runtime.messages.TaskMessages.SubmitTask;
 import static org.apache.flink.runtime.messages.TaskMessages.UpdatePartitionInfo;
 import static org.apache.flink.runtime.messages.TaskMessages.UpdateTaskSinglePartitionInfo;
 import static org.apache.flink.runtime.messages.TaskMessages.createUpdateTaskMultiplePartitionInfos;
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * A single execution of a vertex. While an {@link ExecutionVertex} can be executed multiple times (for recovery,
  * or other re-computation), this class tracks the state of a single execution of that vertex and the resources.
  * 
- * <p>NOTE ABOUT THE DESIGN RATIONAL:
+ * <h1>Implementation Notes</h1>
+ * 
+ * <h3>Actions</h3>
+ * 
+ * 
+ * 
+ * <h3>Atomic State Transitions</h3>
  * 
  * <p>In several points of the code, we need to deal with possible concurrent state changes and actions.
  * For example, while the call to deploy a task (send it to the TaskManager) happens, the task gets cancelled.
@@ -114,31 +121,40 @@ public class Execution {
 
 	// --------------------------------------------------------------------------------------------
 
+	/** The task vertex to which this execution attempt belongs */ 
 	private final ExecutionVertex vertex;
 
+	/** The unique ID that marks messages and calls for this execution attempts */
 	private final ExecutionAttemptID attemptId;
 
+	/** The timestamps for the transitions between the execution states */
 	private final long[] stateTimestamps;
 
+	/** The attempt number, increasing with each new attempt */
 	private final int attemptNumber;
 
+	/** The id of the checkpoint that this execution starts from */
+	private final long staringCheckpointId;
+	
+	/** The state with which the execution attempt should start */
+	private final SerializedValue<StateHandle<?>> staringCheckpointState;
+
+	private final ConcurrentLinkedQueue<PartialInputChannelDeploymentDescriptor> partialInputChannelDeploymentDescriptors;
+	
+	/** The execution context which is used to execute futures. */
+	private final ExecutionContext executionContext;
+	
+	/** The timeout for all remote messaging roundtrips (deploy, cancel, update) */
 	private final FiniteDuration timeout;
 
-	private ConcurrentLinkedQueue<PartialInputChannelDeploymentDescriptor> partialInputChannelDeploymentDescriptors;
-
+	/** The current status of the execution */
 	private volatile ExecutionState state = CREATED;
 
-	private volatile SimpleSlot assignedResource;     // once assigned, never changes until the execution is archived
+	/** The resource executing the task. Once assigned, never changes. */
+	private volatile SimpleSlot assignedResource;
 
-	private volatile Throwable failureCause;          // once assigned, never changes
-
-	private volatile InstanceConnectionInfo assignedResourceLocation; // for the archived execution
-
-	/** The state with which the execution attempt should start */
-	private SerializedValue<StateHandle<?>> operatorState;
-
-	/** The execution context which is used to execute futures. */
-	private ExecutionContext executionContext;
+	/** The reason why this execution failed (null while not failed). Once assigned, never changes. */
+	private volatile Throwable failureCause;
 
 	// ------------------------- Accumulators ---------------------------------
 	
@@ -159,20 +175,26 @@ public class Execution {
 			ExecutionVertex vertex,
 			int attemptNumber,
 			long startTimestamp,
-			FiniteDuration timeout) {
-		this.executionContext = checkNotNull(executionContext);
+			FiniteDuration timeout,
+			long staringCheckpointId,
+			SerializedValue<StateHandle<?>> staringCheckpointState) {
 
 		this.vertex = checkNotNull(vertex);
 		this.attemptId = new ExecutionAttemptID();
-
-		this.attemptNumber = attemptNumber;
-
 		this.stateTimestamps = new long[ExecutionState.values().length];
+		this.attemptNumber = attemptNumber;
+		this.staringCheckpointId = staringCheckpointId;
+		this.staringCheckpointState = staringCheckpointState;
+		this.partialInputChannelDeploymentDescriptors = new ConcurrentLinkedQueue<>();
+		this.executionContext = checkNotNull(executionContext);
+		this.timeout = checkNotNull(timeout);
+
+		// some sanity checks
+		checkArgument(attemptNumber >= 0);
+		checkArgument(staringCheckpointId >= -1L);
+		checkArgument(staringCheckpointState == null || staringCheckpointId >= 0);
+
 		markTimestamp(ExecutionState.CREATED, startTimestamp);
-
-		this.timeout = timeout;
-
-		this.partialInputChannelDeploymentDescriptors = new ConcurrentLinkedQueue<PartialInputChannelDeploymentDescriptor>();
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -200,7 +222,8 @@ public class Execution {
 	}
 
 	public InstanceConnectionInfo getAssignedResourceLocation() {
-		return assignedResourceLocation;
+		SimpleSlot slot = this.assignedResource;
+		return slot == null ? null : slot.getInstance().getInstanceConnectionInfo();
 	}
 
 	public Throwable getFailureCause() {
@@ -220,33 +243,27 @@ public class Execution {
 	}
 
 	/**
+	 * Gets the ID of the checkpoint from which the execution starts.
+	 */
+	public long getStaringCheckpointId() {
+		return staringCheckpointId;
+	}
+
+	/**
+	 * Gets the state from which the executed task should start
+	 */
+	public SerializedValue<StateHandle<?>> getStaringCheckpointState() {
+		return staringCheckpointState;
+	}
+
+	/**
 	 * This method cleans fields that are irrelevant for the archived execution attempt.
 	 */
 	public void prepareForArchiving() {
 		if (assignedResource != null && assignedResource.isAlive()) {
 			throw new IllegalStateException("Cannot archive Execution while the assigned resource is still running.");
 		}
-		assignedResource = null;
-
-		executionContext = null;
-
 		partialInputChannelDeploymentDescriptors.clear();
-		partialInputChannelDeploymentDescriptors = null;
-	}
-
-	public void setInitialState(
-			SerializedValue<StateHandle<?>> initialState,
-			Map<Integer, SerializedValue<StateHandle<?>>> initialKvState) {
-
-		if (initialKvState != null && initialKvState.size() > 0) {
-			throw new UnsupportedOperationException("Error: inconsistent handling of key/value state snapshots");
-		}
-
-		if (state != ExecutionState.CREATED) {
-			throw new IllegalArgumentException("Can only assign operator state when execution attempt is in CREATED");
-		}
-
-		this.operatorState = initialState;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -357,7 +374,6 @@ public class Execution {
 				throw new JobException("Could not assign the ExecutionVertex to the slot " + slot);
 			}
 			this.assignedResource = slot;
-			this.assignedResourceLocation = slot.getInstance().getInstanceConnectionInfo();
 
 			// race double check, did we fail/cancel and do we need to release the slot?
 			if (this.state != DEPLOYING) {
@@ -373,7 +389,7 @@ public class Execution {
 			final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
 				attemptId,
 				slot,
-				operatorState,
+				staringCheckpointState,
 				attemptNumber);
 
 			// register this execution at the execution graph, to receive call backs

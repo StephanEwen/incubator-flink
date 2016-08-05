@@ -25,12 +25,12 @@ package org.apache.flink.runtime.execution;
  * <pre>{@code
  *
  *     CREATED  -> SCHEDULED -> DEPLOYING -> RUNNING -> FINISHED
- *                     |            |          |
- *                     |            |   +------+
- *                     |            V   V
- *                     |         CANCELLING -----+----> CANCELED
- *                     |                         |
- *                     +-------------------------+
+ *        |            |            |          |
+ *        |            |            |   +------+
+ *        |            |            V   V
+ *        |            |         CANCELLING -----+----> CANCELED
+ *        |            |                         |
+ *        +------------+-------------------------+
  *
  *                                               ... -> FAILED
  * }</pre>
