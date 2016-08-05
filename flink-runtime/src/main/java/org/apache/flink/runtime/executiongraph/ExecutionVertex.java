@@ -624,6 +624,7 @@ public class ExecutionVertex {
 	 * Simply forward this notification. This is for logs and event archivers.
 	 */
 	void notifyStateTransition(ExecutionAttemptID executionId, ExecutionState newState, Throwable error) {
+		ufgasduzfgsaukgdf
 		getExecutionGraph().notifyExecutionChange(getJobvertexId(), subTaskIndex, executionId, newState, error);
 	}
 
@@ -702,7 +703,7 @@ public class ExecutionVertex {
 	 * @return A simple name representation.
 	 */
 	public String getSimpleName() {
-		return getTaskName() + " (" + (getParallelSubtaskIndex()+1) + '/' + getTotalNumberOfParallelSubtasks() + ')';
+		return taskNameWithSubtask;
 	}
 
 	@Override
