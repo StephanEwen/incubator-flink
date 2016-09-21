@@ -98,7 +98,7 @@ public class AkkaRpcService implements RpcService {
 		final AskableActorSelection asker = new AskableActorSelection(actorSel);
 
 		final Future<Object> identify = asker.ask(new Identify(42), timeout);
-		return identify.map(new Mapper<Object, C>(){
+		return identify.map(new Mapper<Object, C>() {
 			@Override
 			public C checkedApply(Object obj) throws Exception {
 
