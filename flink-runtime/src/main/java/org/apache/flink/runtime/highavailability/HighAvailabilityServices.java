@@ -32,6 +32,7 @@ import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
  *     <li>JobManager leader election and leader retrieval</li>
  *     <li>Persistence for checkpoint metadata</li>
  *     <li>Registering the latest completed checkpoint(s)</li>
+ *     <li>Persistence for submitted job graph</li>
  * </ul>
  */
 public interface HighAvailabilityServices {
@@ -43,8 +44,6 @@ public interface HighAvailabilityServices {
 
 	/**
 	 * Gets the leader election service for the cluster's resource manager.
-	 * @return
-	 * @throws Exception
 	 */
 	LeaderElectionService getResourceManagerLeaderElectionService() throws Exception;
 
@@ -53,7 +52,14 @@ public interface HighAvailabilityServices {
 	 *
 	 * @param jobID The identifier of the job running the election.
 	 */
-	LeaderElectionService getJobMasterLeaderElectionService(JobID jobID) throws Exception;
+	LeaderRetrievalService getJobManagerLeaderRetrieverService(JobID jobID) throws Exception;
+
+	/**
+	 * Gets the leader election service for the given job.
+	 *
+	 * @param jobID The identifier of the job running the election.
+	 */
+	LeaderElectionService getJobManagerLeaderElectionService(JobID jobID) throws Exception;
 
 	/**
 	 * Gets the checkpoint recovery factory for the job manager

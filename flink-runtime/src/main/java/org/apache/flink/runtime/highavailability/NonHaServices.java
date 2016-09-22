@@ -28,6 +28,8 @@ import org.apache.flink.runtime.leaderelection.StandaloneLeaderElectionService;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.leaderretrieval.StandaloneLeaderRetrievalService;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -36,8 +38,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * An implementation of the {@link HighAvailabilityServices} for the non-high-availability case.
  * This implementation can be used for testing, and for cluster setups that do not
  * tolerate failures of the master processes (JobManager, ResourceManager).
- * 
- * <p>This implementation has no dependencies on any external services. It returns fix
+ * <p>
+ * This implementation has no dependencies on any external services. It returns fix
  * pre-configured leaders, and stores checkpoints and metadata simply on the heap and therefore
  * in volatile memory.
  */
@@ -46,13 +48,29 @@ public class NonHaServices implements HighAvailabilityServices {
 	/** The fix address of the ResourceManager */
 	private final String resourceManagerAddress;
 
+	/** The default address of JobManager for all jobs */
+	private final String defaultJobManagerAddress;
+
+	/** The address of JobManager for specified job */
+	private final Map<JobID, String> jobManagerAddressMap;
+
 	/**
 	 * Creates a new services class for the fix pre-defined leaders.
-	 * 
-	 * @param resourceManagerAddress    The fix address of the ResourceManager
+	 *
+	 * @param resourceManagerAddress   The fix address of the ResourceManager
+	 * @param defaultJobManagerAddress The default address of JobManager for all jobs
 	 */
-	public NonHaServices(String resourceManagerAddress) {
+	public NonHaServices(final String resourceManagerAddress, final String defaultJobManagerAddress) {
 		this.resourceManagerAddress = checkNotNull(resourceManagerAddress);
+		this.defaultJobManagerAddress = checkNotNull(defaultJobManagerAddress);
+		this.jobManagerAddressMap = new HashMap<>();
+	}
+
+	/**
+	 * Set the JobManager address of the job to a specified address
+	 */
+	public void setJobManagerAddress(final JobID jobID, final String address) {
+		jobManagerAddressMap.put(jobID, address);
 	}
 
 	// ------------------------------------------------------------------------
@@ -70,7 +88,16 @@ public class NonHaServices implements HighAvailabilityServices {
 	}
 
 	@Override
-	public LeaderElectionService getJobMasterLeaderElectionService(JobID jobID) throws Exception {
+	public LeaderRetrievalService getJobManagerLeaderRetrieverService(JobID jobID) throws Exception {
+		if (jobManagerAddressMap.containsKey(jobID)) {
+			return new StandaloneLeaderRetrievalService(jobManagerAddressMap.get(jobID), new UUID(0, 0));
+		} else {
+			return new StandaloneLeaderRetrievalService(defaultJobManagerAddress, new UUID(0, 0));
+		}
+	}
+
+	@Override
+	public LeaderElectionService getJobManagerLeaderElectionService(JobID jobID) throws Exception {
 		return new StandaloneLeaderElectionService();
 	}
 

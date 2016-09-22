@@ -32,7 +32,9 @@ public class TestingHighAvailabilityServices implements HighAvailabilityServices
 
 	private volatile LeaderRetrievalService resourceManagerLeaderRetriever;
 
-	private volatile LeaderElectionService jobMasterLeaderElectionService;
+	private volatile LeaderRetrievalService jobManagerLeaderRetrieverService;
+
+	private volatile LeaderElectionService jobManagerLeaderElectionService;
 
 	private volatile LeaderElectionService resourceManagerLeaderElectionService;
 
@@ -48,8 +50,12 @@ public class TestingHighAvailabilityServices implements HighAvailabilityServices
 		this.resourceManagerLeaderRetriever = resourceManagerLeaderRetriever;
 	}
 
-	public void setJobMasterLeaderElectionService(LeaderElectionService leaderElectionService) {
-		this.jobMasterLeaderElectionService = leaderElectionService;
+	public void setJobManagerLeaderRetrieverService(LeaderRetrievalService jobManagerLeaderRetrieverService) {
+		this.jobManagerLeaderRetrieverService = jobManagerLeaderRetrieverService;
+	}
+
+	public void setJobManagerLeaderElectionService(LeaderElectionService leaderElectionService) {
+		this.jobManagerLeaderElectionService = leaderElectionService;
 	}
 
 	public void setResourceManagerLeaderElectionService(LeaderElectionService leaderElectionService) {
@@ -79,13 +85,24 @@ public class TestingHighAvailabilityServices implements HighAvailabilityServices
 	}
 
 	@Override
-	public LeaderElectionService getJobMasterLeaderElectionService(JobID jobID) throws Exception {
-		LeaderElectionService service = jobMasterLeaderElectionService;
+	public LeaderRetrievalService getJobManagerLeaderRetrieverService(JobID jobID) throws Exception {
+		LeaderRetrievalService service = this.jobManagerLeaderRetrieverService;
 
 		if (service != null) {
 			return service;
 		} else {
-			throw new IllegalStateException("JobMasterLeaderElectionService has not been set");
+			throw new IllegalStateException("JobManagerLeaderRetrieverService has not been set");
+		}
+	}
+
+	@Override
+	public LeaderElectionService getJobManagerLeaderElectionService(JobID jobID) throws Exception {
+		LeaderElectionService service = jobManagerLeaderElectionService;
+
+		if (service != null) {
+			return service;
+		} else {
+			throw new IllegalStateException("JobManagerLeaderElectionService has not been set");
 		}
 	}
 

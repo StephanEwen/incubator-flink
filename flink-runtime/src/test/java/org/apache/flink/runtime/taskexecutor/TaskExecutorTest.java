@@ -49,7 +49,7 @@ public class TaskExecutorTest extends TestLogger {
 			ResourceManagerGateway rmGateway = mock(ResourceManagerGateway.class);
 			rpc.registerGateway(resourceManagerAddress, rmGateway);
 
-			NonHaServices haServices = new NonHaServices(resourceManagerAddress);
+			NonHaServices haServices = new NonHaServices(resourceManagerAddress, "");
 			TaskExecutor taskManager = TaskExecutor.startTaskManagerComponentsAndActor(
 				new Configuration(), resourceID, rpc, "localhost", haServices, true);
 			String taskManagerAddress = taskManager.getAddress();
