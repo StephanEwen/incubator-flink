@@ -20,6 +20,8 @@ package org.apache.flink.runtime.jobmanager;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.hadoop.mapred.jobcontrol.Job;
+
 import scala.Option;
 
 import java.util.List;
@@ -62,6 +64,14 @@ public interface SubmittedJobGraphStore {
 	 * Removes the {@link SubmittedJobGraph} with the given {@link JobID} if it exists.
 	 */
 	void removeJobGraph(JobID jobId) throws Exception;
+
+	/**
+	 * Check whether the given {@link JobID} is exist.
+	 *
+	 * <p>It's also a flag indicates whether we should recover this job before we can do anything else, since all
+	 * global terminated job will be removed from this store.
+	 */
+	boolean contains(final JobID jobId) throws Exception;
 
 	/**
 	 * A listener for {@link SubmittedJobGraph} instances. This is used to react to races between

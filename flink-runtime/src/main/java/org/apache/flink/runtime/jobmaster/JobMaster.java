@@ -19,48 +19,62 @@
 package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.io.InputSplit;
+import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
-import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
-import org.apache.flink.runtime.checkpoint.savepoint.SavepointLoader;
 import org.apache.flink.runtime.checkpoint.savepoint.SavepointStore;
 import org.apache.flink.runtime.checkpoint.stats.CheckpointStatsTracker;
 import org.apache.flink.runtime.checkpoint.stats.DisabledCheckpointStatsTracker;
 import org.apache.flink.runtime.checkpoint.stats.SimpleCheckpointStatsTracker;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.client.JobSubmissionException;
+import org.apache.flink.runtime.client.SerializedJobExecutionResult;
+import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
+import org.apache.flink.runtime.executiongraph.Execution;
+import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.instance.Slot;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobgraph.tasks.JobSnapshottingSettings;
-import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
+import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmanager.scheduler.Scheduler;
-import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.jobmaster.message.NextInputSplit;
+import org.apache.flink.runtime.jobmaster.message.PartitionState;
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcMethod;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
+import org.apache.flink.runtime.util.SerializedThrowable;
+import org.apache.flink.util.InstantiationUtil;
+import org.apache.flink.util.SerializedValue;
 
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.FiniteDuration;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -110,14 +124,19 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	/** The execution context which is used to execute futures */
 	private final ExecutionContext executionContext;
 
+	private final OnCompletionActions jobCompletionActions;
+
 	/** The execution graph of this job */
 	private volatile ExecutionGraph executionGraph;
 
 	/** The checkpoint recovery factory used by this job */
 	private CheckpointRecoveryFactory checkpointRecoveryFactory;
 
-	/** Store for all submitted job graphs */
-	private SubmittedJobGraphStore submittedJobGraphs;
+	private ClassLoader userCodeLoader;
+
+	private RestartStrategy restartStrategy;
+
+	private MetricGroup jobMetrics;
 
 	public JobMaster(
 		JobGraph jobGraph,
@@ -129,9 +148,11 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 		SavepointStore savepointStore,
 		FiniteDuration timeout,
 		Scheduler scheduler,
-		JobManagerMetricGroup jobManagerMetricGroup)
+		JobManagerMetricGroup jobManagerMetricGroup,
+		OnCompletionActions jobCompletionActions)
 	{
 		super(rpcService);
+
 		this.jobGraph = checkNotNull(jobGraph);
 		this.configuration = checkNotNull(configuration);
 		this.highAvailabilityServices = checkNotNull(highAvailabilityService);
@@ -142,9 +163,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 		this.scheduler = checkNotNull(scheduler);
 		this.jobManagerMetricGroup = checkNotNull(jobManagerMetricGroup);
 		this.executionContext = checkNotNull(rpcService.getExecutionContext());
-		this.executionGraph = null;
-		this.checkpointRecoveryFactory = null;
-		this.submittedJobGraphs = null;
+		this.jobCompletionActions = checkNotNull(jobCompletionActions);
 	}
 
 	public ResourceManagerGateway getResourceManager() {
@@ -155,49 +174,14 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	// Lifecycle management
 	//----------------------------------------------------------------------------------------------
 
-	@Override
-	public void start() {
-		super.start();
-
-		try {
-			checkpointRecoveryFactory = highAvailabilityServices.getCheckpointRecoveryFactory();
-		} catch (Exception e) {
-			log.error("Could not get the checkpoint recovery factory.", e);
-			throw new RuntimeException("Could not get the checkpoint recovery factory.", e);
-		}
-
-		try {
-			submittedJobGraphs = highAvailabilityServices.getSubmittedJobGraphStore();
-		} catch (Exception e) {
-			log.error("Could not start the JobManager because we cannot get the job graph store.", e);
-			throw new RuntimeException("Could not get the job graph store.", e);
-		}
-
-	}
-
-	@Override
-	public void shutDown() {
-		super.shutDown();
-
-		suspendJob(new Exception("JobManager is shutting down."));
-	}
-
-	//----------------------------------------------------------------------------------------------
-	// RPC methods
-	//----------------------------------------------------------------------------------------------
-
-
 	/**
-	 * Submits a job to the job manager. The job is registered at the libraryCacheManager which
-	 * creates the job's class loader. The job graph is appended to the corresponding execution
-	 * graph and be prepared to run.
+	 * Initializing the job execution environment, should be called before start. Any error occurred during
+	 * initialization will be treated as job submission failure.
 	 *
-	 * @param isRecovery Flag indicating whether this is a recovery or initial submission
-	 * @return Flag indicating whether this job has been accepted
+	 * @throws JobSubmissionException
 	 */
-	@RpcMethod
-	public boolean submitJob(final boolean isRecovery) {
-		log.info("Submitting job {} ({}) " + (isRecovery ? "(Recovery)" : ""), jobGraph.getJobID(), jobGraph.getName());
+	public void init() throws JobSubmissionException {
+		log.info("Initializing job {} ({}).", jobGraph.getName(), jobGraph.getJobID());
 
 		try {
 			// IMPORTANT: We need to make sure that the library registration is the first action,
@@ -211,7 +195,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 					"Cannot set up the user code libraries: " + t.getMessage(), t);
 			}
 
-			final ClassLoader userCodeLoader = libraryCacheManager.getClassLoader(jobGraph.getJobID());
+			userCodeLoader = libraryCacheManager.getClassLoader(jobGraph.getJobID());
 			if (userCodeLoader == null) {
 				throw new JobSubmissionException(jobGraph.getJobID(),
 					"The user code class loader could not be initialized.");
@@ -225,15 +209,14 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 				jobGraph.getSerializedExecutionConfig()
 					.deserializeValue(userCodeLoader)
 					.getRestartStrategy();
-			final RestartStrategy restartStrategy;
 			if (restartStrategyConfiguration != null) {
 				restartStrategy = RestartStrategyFactory.createRestartStrategy(restartStrategyConfiguration);
 			} else {
 				restartStrategy = restartStrategyFactory.createRestartStrategy();
 			}
-			log.info("Using restart strategy {} for {}.", restartStrategy, jobGraph.getJobID());
 
-			MetricGroup jobMetrics = null;
+			log.info("Using restart strategy {} for {} ({}).", restartStrategy, jobGraph.getName(), jobGraph.getJobID());
+
 			if (jobManagerMetricGroup != null) {
 				jobMetrics = jobManagerMetricGroup.addJob(jobGraph);
 			}
@@ -241,23 +224,69 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 				jobMetrics = new UnregisteredMetricsGroup();
 			}
 
-			if (executionGraph != null) {
-				executionGraph = new ExecutionGraph(
-					executionContext,
-					jobGraph.getJobID(),
-					jobGraph.getName(),
-					jobGraph.getJobConfiguration(),
-					jobGraph.getSerializedExecutionConfig(),
-					timeout,
-					restartStrategy,
-					jobGraph.getUserJarBlobKeys(),
-					jobGraph.getClasspaths(),
-					userCodeLoader,
-					jobMetrics);
-			} else {
-				// TODO: update last active time in JobInfo
+			try {
+				checkpointRecoveryFactory = highAvailabilityServices.getCheckpointRecoveryFactory();
+			} catch (Exception e) {
+				log.error("Could not get the checkpoint recovery factory.", e);
+				throw new JobSubmissionException(jobGraph.getJobID(), "Could not get the checkpoint recovery factory.", e);
 			}
 
+		} catch (Throwable t) {
+			log.error("Failed to initializing job {} ({})", jobGraph.getName(), jobGraph.getJobID(), t);
+
+			libraryCacheManager.unregisterJob(jobGraph.getJobID());
+
+			if (t instanceof JobSubmissionException) {
+				throw (JobSubmissionException) t;
+			} else {
+				throw new JobSubmissionException(jobGraph.getJobID(), "Failed to initialize job " +
+					jobGraph.getName() + " (" + jobGraph.getJobID() + ")", t);
+			}
+		}
+	}
+
+	@Override
+	public void start() {
+		super.start();
+	}
+
+	@Override
+	public void shutDown() {
+		super.shutDown();
+
+		suspendJob(new Exception("JobManager is shutting down."));
+	}
+
+	//----------------------------------------------------------------------------------------------
+	// RPC methods
+	//----------------------------------------------------------------------------------------------
+
+	/**
+	 * Start to run the job, runtime data structures like ExecutionGraph will be constructed now and checkpoint
+	 * being recovered. After this, we will begin to schedule the job.
+	 */
+	@RpcMethod
+	public void startJob() {
+		log.info("Starting job {} ({}).", jobGraph.getName(), jobGraph.getJobID());
+
+		if (executionGraph != null) {
+			executionGraph = new ExecutionGraph(
+				executionContext,
+				jobGraph.getJobID(),
+				jobGraph.getName(),
+				jobGraph.getJobConfiguration(),
+				jobGraph.getSerializedExecutionConfig(),
+				timeout,
+				restartStrategy,
+				jobGraph.getUserJarBlobKeys(),
+				jobGraph.getClasspaths(),
+				userCodeLoader,
+				jobMetrics);
+		} else {
+			// TODO: update last active time in JobInfo
+		}
+
+		try {
 			executionGraph.setScheduleMode(jobGraph.getScheduleMode());
 			executionGraph.setQueuedSchedulingAllowed(jobGraph.getAllowQueuedScheduling());
 
@@ -276,7 +305,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 			for (JobVertex vertex : jobGraph.getVertices()) {
 				final String executableClass = vertex.getInvokableClassName();
 				if (executableClass == null || executableClass.length() == 0) {
-					throw new JobSubmissionException(jobGraph.getJobID(),
+					throw new JobExecutionException(jobGraph.getJobID(),
 						"The vertex " + vertex.getID() + " (" + vertex.getName() + ") has no invokable class.");
 				}
 				if (vertex.getParallelism() == ExecutionConfig.PARALLELISM_AUTO_MAX) {
@@ -350,8 +379,12 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 					checkpointStatsTracker);
 			}
 
-			// TODO: register job status change listeners
-			// TODO: register client listeners
+			// TODO: register this class to execution graph as job status change listeners
+
+			// TODO: register client as job / execution status change listeners if they are interested
+
+			/*
+			TODO: decide whether we should take the savepoint before recovery
 
 			if (isRecovery) {
 				// this is a recovery of a master failure (this master takes over)
@@ -376,23 +409,14 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 						executionGraph.restoreLatestCheckpointedState();
 					}
 				}
-
-				// TODO: add this job to submitted job graph store
-
 			}
+			*/
 
-			// TODO: notify client about job submit success
-
-			return true;
 		} catch (Throwable t) {
-			log.error("Failed to submit job {} ({})", jobGraph.getJobID(), jobGraph.getName(), t);
+			log.error("Failed to start job {} ({})", jobGraph.getName(), jobGraph.getJobID(), t);
 
-			libraryCacheManager.unregisterJob(jobGraph.getJobID());
-
-			if (executionGraph != null) {
-				executionGraph.fail(t);
-				executionGraph = null;
-			}
+			executionGraph.fail(t);
+			executionGraph = null;
 
 			final Throwable rt;
 			if (t instanceof JobExecutionException) {
@@ -401,19 +425,12 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 				rt = new JobExecutionException(jobGraph.getJobID(),
 					"Failed to start job " + jobGraph.getJobID() + " (" + jobGraph.getName() + ")", t);
 			}
-			// TODO: notify client of this failure
 
-			// Any error occurred during submission phase will make this job as rejected
-			return false;
+			// TODO: notify client about this failure
+
+			jobCompletionActions.jobFailed(rt);
+			return;
 		}
-	}
-
-	/**
-	 * Making this job begins to run.
-	 */
-	@RpcMethod
-	public void startJob() {
-		log.info("Starting job {} ({}).", jobGraph.getJobID(), jobGraph.getName());
 
 		// start scheduling job in another thread
 		getRpcService().getExecutionContext().execute(new Runnable() {
@@ -431,8 +448,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	}
 
 	/**
-	 * Suspending job, all the running tasks will be cancelled, and runtime status will be cleared. Should re-submit
-	 * the job before restarting it.
+	 * Suspending job, all the running tasks will be cancelled, and runtime data will be cleared.
 	 *
 	 * @param cause The reason of why this job been suspended.
 	 */
@@ -451,9 +467,12 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	 * @return Acknowledge the task execution state update
 	 */
 	@RpcMethod
-	public Acknowledge updateTaskExecutionState(TaskExecutionState taskExecutionState) {
-		System.out.println("TaskExecutionState: " + taskExecutionState);
-		return Acknowledge.get();
+	public boolean updateTaskExecutionState(final TaskExecutionState taskExecutionState) {
+		if (taskExecutionState == null) {
+			return false;
+		} else {
+			return executionGraph.updateState(taskExecutionState);
+		}
 	}
 
 	/**
@@ -466,6 +485,128 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 		//TODO:: register at the RM
 	}
 
+	@RpcMethod
+	public NextInputSplit requestNextInputSplit(final JobVertexID vertexID, final ExecutionAttemptID executionAttempt) {
+		final byte[] serializedInputSplit;
+
+		final Execution execution = executionGraph.getRegisteredExecutions().get(executionAttempt);
+		if (execution == null) {
+			log.error("Can not find Execution for attempt {}.", executionAttempt);
+			return null;
+		} else {
+			final Slot slot = execution.getAssignedResource();
+			final int taskId = execution.getVertex().getParallelSubtaskIndex();
+			final String host = slot != null ? slot.getTaskManagerLocation().getHostname() : null;
+
+			final ExecutionJobVertex vertex = executionGraph.getJobVertex(vertexID);
+			if (vertex != null) {
+				final InputSplitAssigner splitAssigner = vertex.getSplitAssigner();
+				if (splitAssigner != null) {
+					final InputSplit nextInputSplit = splitAssigner.getNextInputSplit(host, taskId);
+
+					log.debug("Send next input split {}.", nextInputSplit);
+					try {
+						serializedInputSplit = InstantiationUtil.serializeObject(nextInputSplit);
+					} catch (Exception ex) {
+						log.error("Could not serialize the next input split of class {}.", nextInputSplit.getClass(), ex);
+						vertex.fail(new RuntimeException("Could not serialize the next input split of class " +
+							nextInputSplit.getClass() + ".", ex));
+						return null;
+					}
+				} else {
+					log.error("No InputSplitAssigner for vertex ID {}.", vertexID);
+					return null;
+				}
+			} else {
+				log.error("Cannot find execution vertex for vertex ID {}.", vertexID);
+				return null;
+			}
+		}
+		return new NextInputSplit(serializedInputSplit);
+	}
+
+	@RpcMethod
+	public PartitionState requestPartitionState(
+		final ResultPartitionID partitionId,
+		final ExecutionAttemptID taskExecutionId,
+		final IntermediateDataSetID taskResultId)
+	{
+		final Execution execution = executionGraph.getRegisteredExecutions().get(partitionId.getProducerId());
+		final ExecutionState state = execution != null ? execution.getState() : null;
+		return new PartitionState(taskExecutionId, taskResultId, partitionId.getPartitionId(), state);
+	}
+
+	@RpcMethod
+	public void jobStatusChanged(final JobStatus newJobStatus, long timestamp, final Throwable error) {
+		final JobID jobID = executionGraph.getJobID();
+		final String jobName = executionGraph.getJobName();
+		log.info("Status of job {} ({}) changed to {}.", jobID, jobName, newJobStatus, error);
+
+		if (newJobStatus.isGloballyTerminalState()) {
+			// TODO set job end time in JobInfo
+
+			/*
+			  TODO
+			  if (jobInfo.sessionAlive) {
+                jobInfo.setLastActive()
+                val lastActivity = jobInfo.lastActive
+                context.system.scheduler.scheduleOnce(jobInfo.sessionTimeout seconds) {
+                  // remove only if no activity occurred in the meantime
+                  if (lastActivity == jobInfo.lastActive) {
+                    self ! decorateMessage(RemoveJob(jobID, removeJobFromStateBackend = true))
+                  }
+                }(context.dispatcher)
+              } else {
+                self ! decorateMessage(RemoveJob(jobID, removeJobFromStateBackend = true))
+              }
+			 */
+
+			if (newJobStatus == JobStatus.FINISHED) {
+				try {
+					final Map<String, SerializedValue<Object>> accumulatorResults =
+						executionGraph.getAccumulatorsSerialized();
+					final SerializedJobExecutionResult result = new SerializedJobExecutionResult(
+						jobID, 0, accumulatorResults // TODO get correct job duration
+					);
+					jobCompletionActions.jobFinished(result.toJobExecutionResult(userCodeLoader));
+				} catch (Exception e) {
+					log.error("Cannot fetch final accumulators for job {} ({})", jobName, jobID, e);
+					final JobExecutionException exception = new JobExecutionException(
+						jobID, "Failed to retrieve accumulator results.", e);
+					// TODO should we also notify client?
+					jobCompletionActions.jobFailed(exception);
+				}
+			}
+			else if (newJobStatus == JobStatus.CANCELED) {
+				final Throwable unpackedError = SerializedThrowable.get(error, userCodeLoader);
+				final JobExecutionException exception = new JobExecutionException(
+					jobID, "Job was cancelled.", unpackedError);
+				// TODO should we also notify client?
+				jobCompletionActions.jobFailed(exception);
+			}
+			else if (newJobStatus == JobStatus.FAILED) {
+				final Throwable unpackedError = SerializedThrowable.get(error, userCodeLoader);
+				final JobExecutionException exception = new JobExecutionException(
+					jobID, "Job execution failed.", unpackedError);
+				// TODO should we also notify client?
+				jobCompletionActions.jobFailed(exception);
+			}
+			else {
+				final JobExecutionException exception = new JobExecutionException(
+					jobID, newJobStatus + " is not a terminal state.");
+				// TODO should we also notify client?
+				jobCompletionActions.jobFailed(exception);
+				throw new RuntimeException(exception);
+			}
+		}
+	}
+
+	@RpcMethod
+	public void scheduleOrUpdateConsumers(final ResultPartitionID partitionID) {
+		executionGraph.scheduleOrUpdateConsumers(partitionID);
+	}
+
+
 	//----------------------------------------------------------------------------------------------
 	// Helper methods
 	//----------------------------------------------------------------------------------------------
@@ -476,17 +617,17 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	 * @param executionGraph The execution graph that holds the relationship
 	 * @param vertexIDs      The vertexIDs need to be converted
 	 * @return The corresponding ExecutionJobVertexes
-	 * @throws JobSubmissionException
+	 * @throws JobExecutionException
 	 */
 	private static List<ExecutionJobVertex> getExecutionJobVertexWithId(
 		final ExecutionGraph executionGraph, final List<JobVertexID> vertexIDs)
-		throws JobSubmissionException
+		throws JobExecutionException
 	{
 		final List<ExecutionJobVertex> ret = new ArrayList<>(vertexIDs.size());
 		for (JobVertexID vertexID : vertexIDs) {
 			final ExecutionJobVertex executionJobVertex = executionGraph.getJobVertex(vertexID);
 			if (executionJobVertex == null) {
-				throw new JobSubmissionException(executionGraph.getJobID(),
+				throw new JobExecutionException(executionGraph.getJobID(),
 					"The snapshot checkpointing settings refer to non-existent vertex " + vertexID);
 			}
 			ret.add(executionJobVertex);

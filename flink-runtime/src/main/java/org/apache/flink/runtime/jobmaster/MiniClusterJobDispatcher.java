@@ -66,7 +66,7 @@ public class MiniClusterJobDispatcher {
 	private final int numJobManagers;
 
 	/** The runner for the job and master. non-null if a job is currently running */
-	private volatile JobMasterRunner[] runners;
+	private volatile JobManagerRunner[] runners;
 
 	/** flag marking the dispatcher as hut down */
 	private volatile boolean shutdown;
@@ -136,12 +136,12 @@ public class MiniClusterJobDispatcher {
 				// in this shutdown code we copy the references to the stack first,
 				// to avoid concurrent modification
 
-				JobMasterRunner[] runners = this.runners;
+				JobManagerRunner[] runners = this.runners;
 				if (runners != null) {
 					this.runners = null;
 
 					Exception shutdownException = new Exception("The MiniCluster is shutting down");
-					for (JobMasterRunner runner : runners) {
+					for (JobManagerRunner runner : runners) {
 						runner.shutdown(shutdownException);
 					}
 				}
@@ -159,7 +159,7 @@ public class MiniClusterJobDispatcher {
 	 *
 	 * @param job  The Flink job to execute
 	 *
-	 * @throws JobExecutionException Thrown if anything went amiss during initial job lauch,
+	 * @throws JobExecutionException Thrown if anything went amiss during initial job launch,
 	 *         or if the job terminally failed.
 	 */
 	public void runDetached(JobGraph job) throws JobExecutionException {
@@ -209,13 +209,13 @@ public class MiniClusterJobDispatcher {
 		}
 	}
 
-	private JobMasterRunner[] startJobRunners(JobGraph job, OnCompletionActions onCompletion) throws JobExecutionException {
+	private JobManagerRunner[] startJobRunners(JobGraph job, OnCompletionActions onCompletion) throws JobExecutionException {
 		LOG.info("Starting {} JobMaster(s) for job {} ({})", numJobManagers, job.getName(), job.getJobID());
 
-		JobMasterRunner[] runners = new JobMasterRunner[numJobManagers];
+		JobManagerRunner[] runners = new JobManagerRunner[numJobManagers];
 		for (int i = 0; i < numJobManagers; i++) {
 			try {
-				runners[i] = new JobMasterRunner(job, configuration, 
+				runners[i] = new JobManagerRunner(job, configuration,
 						rpcService, haServices, jobManagerServices, onCompletion);
 				runners[i].start();
 			}
@@ -245,10 +245,10 @@ public class MiniClusterJobDispatcher {
 	// ------------------------------------------------------------------------
 
 	public void killJobMaster(int which) {
-		checkArgument(which >= 0 && which <= numJobManagers, "no such job master");
+		checkArgument(which >= 0 && which < numJobManagers, "no such job master");
 		checkState(!shutdown, "mini cluster is shut down");
 
-		JobMasterRunner[] runners = this.runners;
+		JobManagerRunner[] runners = this.runners;
 		checkState(runners != null, "mini cluster it not executing a job right now");
 
 		runners[which].shutdown(new Throwable("kill JobManager"));

@@ -93,7 +93,7 @@ public class SlotProtocolTest extends TestLogger {
 
 		TestingSlotManager slotManager = Mockito.spy(new TestingSlotManager());
 		ResourceManager resourceManager =
-			new ResourceManager(testRpcService, new NonHaServices(rmAddress), slotManager);
+			new ResourceManager(testRpcService, new NonHaServices(rmAddress, ""), slotManager);
 		resourceManager.start();
 
 		Future<RegistrationResponse> registrationFuture =
@@ -165,7 +165,7 @@ public class SlotProtocolTest extends TestLogger {
 
 		TestingSlotManager slotManager = Mockito.spy(new TestingSlotManager());
 		ResourceManager resourceManager =
-			new ResourceManager(testRpcService, new NonHaServices(rmAddress), slotManager);
+			new ResourceManager(testRpcService, new NonHaServices(rmAddress, ""), slotManager);
 		resourceManager.start();
 
 		Future<RegistrationResponse> registrationFuture =
