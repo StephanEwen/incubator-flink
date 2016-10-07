@@ -26,6 +26,7 @@ import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
+import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.junit.After;
 import org.junit.Before;
@@ -42,7 +43,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -88,6 +88,7 @@ public class JobManagerRunnerMockTest {
 			mock(RpcService.class),
 			haServices,
 			mock(JobManagerServices.class),
+			jobCompletion,
 			jobCompletion));
 	}
 
@@ -98,7 +99,6 @@ public class JobManagerRunnerMockTest {
 	@Test
 	public void testStartAndShutdown() throws Exception {
 		runner.start();
-		verify(jobManager).init();
 		verify(jobManager).start();
 		verify(leaderElectionService).start(runner);
 
@@ -113,7 +113,6 @@ public class JobManagerRunnerMockTest {
 	@Test
 	public void testShutdownBeforeGrantLeadership() throws Exception {
 		runner.start();
-		verify(jobManager).init();
 		verify(jobManager).start();
 		verify(leaderElectionService).start(runner);
 
@@ -199,7 +198,7 @@ public class JobManagerRunnerMockTest {
 		verify(jobManagerGateway).startJob(leaderSessionID2);
 	}
 
-	private static class TestingOnCompletionActions implements OnCompletionActions {
+	private static class TestingOnCompletionActions implements OnCompletionActions, FatalErrorHandler {
 
 		private volatile JobExecutionResult result;
 

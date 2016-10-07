@@ -23,7 +23,11 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.checkpoint.savepoint.SavepointStore;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
+import org.apache.flink.util.ExceptionUtils;
+
 
 import java.util.concurrent.ExecutorService;
 
@@ -46,13 +50,16 @@ public class JobManagerServices {
 
 	public final JobManagerMetricGroup jobManagerMetricGroup;
 
+	public final JobManagerJobMetricGroup jobManagerJobMetricGroup;
+
 	public JobManagerServices(
 			ExecutorService executorService,
 			BlobLibraryCacheManager libraryCacheManager,
 			RestartStrategyFactory restartStrategyFactory,
 			SavepointStore savepointStore,
 			Time timeout,
-			JobManagerMetricGroup jobManagerMetricGroup) {
+			JobManagerMetricGroup jobManagerMetricGroup,
+			JobManagerJobMetricGroup jobManagerJobMetricGroup) {
 
 		this.executorService = checkNotNull(executorService);
 		this.libraryCacheManager = checkNotNull(libraryCacheManager);
@@ -60,14 +67,74 @@ public class JobManagerServices {
 		this.savepointStore = checkNotNull(savepointStore);
 		this.timeout = checkNotNull(timeout);
 		this.jobManagerMetricGroup = checkNotNull(jobManagerMetricGroup);
+		this.jobManagerJobMetricGroup = checkNotNull(jobManagerJobMetricGroup);
+	}
+
+	/**
+	 * 
+	 * <p>This method makes sure all services are closed or shut down, even when an exception occurred
+	 * in the shutdown of one component. The first encountered exception is thrown, with successive
+	 * exceptions added as suppressed exceptions.
+	 * 
+	 * @throws Exception The first Exception encountered during shutdown.
+	 */
+	public void shutdown() throws Exception {
+		Throwable firstException = null;
+
+		try {
+			executorService.shutdownNow();
+		} catch (Throwable t) {
+			firstException = t;
+		}
+
+		try {
+			jobManagerJobMetricGroup.close();
+			jobManagerMetricGroup.close();
+		}
+		catch (Throwable t) {
+			if (firstException == null) {
+				firstException = t;
+			} else {
+				firstException.addSuppressed(t);
+			}
+		}
+
+		try {
+			savepointStore.shutdown();
+		}
+		catch (Throwable t) {
+			if (firstException == null) {
+				firstException = t;
+			} else {
+				firstException.addSuppressed(t);
+			}
+		}
+
+		try {
+			libraryCacheManager.shutdown();
+		}
+		catch (Throwable t) {
+			if (firstException == null) {
+				firstException = t;
+			} else {
+				firstException.addSuppressed(t);
+			}
+		}
+
+		if (firstException != null) {
+			ExceptionUtils.rethrowException(firstException, "Error while shutting down JobManager services");
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	//  Creating the components from a configuration 
 	// ------------------------------------------------------------------------
 	
-	public static JobManagerServices fromConfiguration(Configuration config) throws Exception {
-		// TODO not yet implemented
+	public static JobManagerServices fromConfiguration(
+			Configuration config,
+			HighAvailabilityServices haServices) throws Exception {
+
+		// TODO - not implemented, yet
 		return null;
 	}
 }
