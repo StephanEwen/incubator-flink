@@ -19,17 +19,25 @@
 package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.savepoint.SavepointStore;
+import org.apache.flink.runtime.checkpoint.savepoint.SavepointStoreFactory;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
-import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
+import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.NetUtils;
 
-
+import javax.annotation.Nullable;
+import java.net.InetAddress;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -50,24 +58,20 @@ public class JobManagerServices {
 
 	public final JobManagerMetricGroup jobManagerMetricGroup;
 
-	public final JobManagerJobMetricGroup jobManagerJobMetricGroup;
-
 	public JobManagerServices(
 			ExecutorService executorService,
 			BlobLibraryCacheManager libraryCacheManager,
 			RestartStrategyFactory restartStrategyFactory,
 			SavepointStore savepointStore,
 			Time timeout,
-			JobManagerMetricGroup jobManagerMetricGroup,
-			JobManagerJobMetricGroup jobManagerJobMetricGroup) {
+			@Nullable JobManagerMetricGroup jobManagerMetricGroup) {
 
 		this.executorService = checkNotNull(executorService);
 		this.libraryCacheManager = checkNotNull(libraryCacheManager);
 		this.restartStrategyFactory = checkNotNull(restartStrategyFactory);
 		this.savepointStore = checkNotNull(savepointStore);
 		this.timeout = checkNotNull(timeout);
-		this.jobManagerMetricGroup = checkNotNull(jobManagerMetricGroup);
-		this.jobManagerJobMetricGroup = checkNotNull(jobManagerJobMetricGroup);
+		this.jobManagerMetricGroup = jobManagerMetricGroup;
 	}
 
 	/**
@@ -88,8 +92,9 @@ public class JobManagerServices {
 		}
 
 		try {
-			jobManagerJobMetricGroup.close();
-			jobManagerMetricGroup.close();
+			if (jobManagerMetricGroup != null) {
+				jobManagerMetricGroup.close();
+			}
 		}
 		catch (Throwable t) {
 			if (firstException == null) {
@@ -134,7 +139,30 @@ public class JobManagerServices {
 			Configuration config,
 			HighAvailabilityServices haServices) throws Exception {
 
-		// TODO - not implemented, yet
-		return null;
+		final BlobServer blobServer = new BlobServer(config);
+		final long cleanupInterval = config.getLong(
+			ConfigConstants.LIBRARY_CACHE_MANAGER_CLEANUP_INTERVAL,
+			ConfigConstants.DEFAULT_LIBRARY_CACHE_MANAGER_CLEANUP_INTERVAL) * 1000;
+		final BlobLibraryCacheManager libraryCacheManager = new BlobLibraryCacheManager(blobServer, cleanupInterval);
+
+		JobManagerMetricGroup jobManagerMetricGroup;
+		try {
+			final MetricRegistry metricRegistry = new MetricRegistry(
+				MetricRegistryConfiguration.fromConfiguration(config));
+			final String host = config.getString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, null);
+			jobManagerMetricGroup = new JobManagerMetricGroup(metricRegistry,
+				NetUtils.ipAddressToUrlString(InetAddress.getByName(host)));
+		} catch (Throwable t) {
+			jobManagerMetricGroup = null;
+		}
+
+		return new JobManagerServices(
+			new ForkJoinPool(),
+			libraryCacheManager,
+			RestartStrategyFactory.createRestartStrategyFactory(config),
+			SavepointStoreFactory.createFromConfig(config),
+			Time.of(5, TimeUnit.SECONDS), // TODO - read from proper configs
+			jobManagerMetricGroup
+		);
 	}
 }
