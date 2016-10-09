@@ -33,9 +33,7 @@ import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.client.JobSubmissionException;
 import org.apache.flink.runtime.client.SerializedJobExecutionResult;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.concurrent.BiFunction;
 import org.apache.flink.runtime.concurrent.Future;
-import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.runtime.concurrent.impl.FlinkFuture;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
@@ -57,9 +55,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmanager.scheduler.Scheduler;
 import org.apache.flink.runtime.jobmaster.message.ClassloadingProps;
-import org.apache.flink.runtime.jobmaster.message.DisposeSavepointResponse;
 import org.apache.flink.runtime.jobmaster.message.NextInputSplit;
-import org.apache.flink.runtime.jobmaster.message.TriggerSavepointResponse;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalListener;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.messages.checkpoint.AcknowledgeCheckpoint;
@@ -574,8 +570,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 			}
 			try {
 				executionGraph.getKvStateLocationRegistry().notifyKvStateUnregistered(
-					jobVertexId, keyGroupRange, registrationName
-				);
+					jobVertexId, keyGroupRange, registrationName);
 			} catch (Exception e) {
 				log.error("Failed to notify KvStateRegistry about registration {}.", registrationName);
 			}
@@ -585,62 +580,18 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	}
 
 	@RpcMethod
-	public Future<TriggerSavepointResponse> triggerSavepoint() throws Exception {
+	public Future<String> triggerSavepoint() throws Exception {
 		if (executionGraph != null) {
 			final CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
 			if (checkpointCoordinator != null) {
-				try {
-					Future<String> savepointFuture = new FlinkFuture<>(
-						checkpointCoordinator.triggerSavepoint(System.currentTimeMillis()));
-
-					return savepointFuture.handleAsync(new BiFunction<String, Throwable, TriggerSavepointResponse>() {
-						@Override
-						public TriggerSavepointResponse apply(String savepointPath, Throwable throwable) {
-							if (throwable == null) {
-								return new TriggerSavepointResponse.Success(jobGraph.getJobID(), savepointPath);
-							}
-							else {
-								return new TriggerSavepointResponse.Failure(jobGraph.getJobID(),
-									new Exception("Failed to complete savepoint", throwable));
-							}
-						}
-					}, getMainThreadExecutor());
-
-				} catch (Exception e) {
-					FlinkCompletableFuture<TriggerSavepointResponse> future = new FlinkCompletableFuture<>();
-					future.complete(new TriggerSavepointResponse.Failure(jobGraph.getJobID(),
-						new Exception("Failed to trigger savepoint", e)));
-					return future;
-				}
+					return new FlinkFuture<>(checkpointCoordinator.triggerSavepoint(System.currentTimeMillis()));
 			} else {
-				FlinkCompletableFuture<TriggerSavepointResponse> future = new FlinkCompletableFuture<>();
-				future.complete(new TriggerSavepointResponse.Failure(jobGraph.getJobID(),
-					new IllegalStateException("Checkpointing disabled. You can enable it via the execution " +
-						"environment of your job.")));
-				return future;
+				throw new IllegalStateException("Checkpointing disabled. You can enable it via the execution " +
+						"environment of your job.");
 			}
 		} else {
-			FlinkCompletableFuture<TriggerSavepointResponse> future = new FlinkCompletableFuture<>();
-			future.complete(new TriggerSavepointResponse.Failure(jobGraph.getJobID(),
-				new IllegalArgumentException("Received trigger savepoint request for unavailable job " +
-					jobGraph.getJobID())));
-			return future;
-		}
-	}
-
-	@RpcMethod
-	public DisposeSavepointResponse disposeSavepoint(final String savepointPath) {
-		try {
-			log.info("Disposing savepoint at {}.", savepointPath);
-
-			// check whether the savepoint exists
-			savepointStore.loadSavepoint(savepointPath);
-
-			savepointStore.disposeSavepoint(savepointPath);
-			return new DisposeSavepointResponse.Success();
-		} catch (Exception e) {
-			log.error("Failed to dispose savepoint at {}.", savepointPath, e);
-			return new DisposeSavepointResponse.Failure(e);
+			throw new IllegalStateException("Received trigger savepoint request for unavailable job " +
+				jobGraph.getJobID());
 		}
 	}
 

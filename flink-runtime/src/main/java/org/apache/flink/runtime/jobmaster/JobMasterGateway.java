@@ -29,9 +29,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmaster.message.ClassloadingProps;
-import org.apache.flink.runtime.jobmaster.message.DisposeSavepointResponse;
 import org.apache.flink.runtime.jobmaster.message.NextInputSplit;
-import org.apache.flink.runtime.jobmaster.message.TriggerSavepointResponse;
 import org.apache.flink.runtime.messages.checkpoint.AcknowledgeCheckpoint;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
 import org.apache.flink.runtime.query.KvStateID;
@@ -169,17 +167,9 @@ public interface JobMasterGateway extends RpcGateway {
 	/**
 	 * Notifies the JobManager to trigger a savepoint for this job.
 	 *
-	 * @return Future of the savepoint trigger response.
+	 * @return The savepoint path
 	 */
-	Future<TriggerSavepointResponse> triggerSavepoint();
-
-	/**
-	 * Notifies the Jobmanager to dispose specified savepoint.
-	 *
-	 * @param savepointPath The path of the savepoint.
-	 * @return The future of the savepoint disponse response.
-	 */
-	Future<DisposeSavepointResponse> disposeSavepoint(final String savepointPath);
+	Future<String> triggerSavepoint() throws Exception;
 
 	/**
 	 * Request the classloading props of this job.
