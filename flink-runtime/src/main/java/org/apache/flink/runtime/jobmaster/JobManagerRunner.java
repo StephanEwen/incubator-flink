@@ -32,7 +32,6 @@ import org.apache.flink.runtime.leaderelection.LeaderContender;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -172,8 +171,6 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, F
 	//----------------------------------------------------------------------------------------------
 
 	public void start() throws Exception {
-		jobManager.start();
-
 		try {
 			leaderElectionService.start(this);
 		}
@@ -329,7 +326,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, F
 					log.info("Job {} ({}) already finished by others.", jobGraph.getName(), jobGraph.getJobID());
 					jobFinishedByOther();
 				} else {
-					jobManager.getSelf().startJob(leaderSessionID);
+					jobManager.start(leaderSessionID);
 				}
 			}
 		}
@@ -346,7 +343,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, F
 			log.info("JobManager for job {} ({}) was revoked leadership at {}.",
 				jobGraph.getName(), jobGraph.getJobID(), getAddress());
 
-			jobManager.getSelf().suspendJob(new Exception("JobManager is no longer the leader."));
+			jobManager.suspend(new Exception("JobManager is no longer the leader."));
 		}
 	}
 
