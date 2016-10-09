@@ -42,6 +42,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionGraphBuilder;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
+import org.apache.flink.runtime.executiongraph.JobStatusListener;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -143,7 +144,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 
 	private final MetricGroup jobMetrics;
 
-	private UUID leaderSessionID;
+	private volatile UUID leaderSessionID;
 
 	// --------- resource manager --------
 
@@ -244,46 +245,40 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	// Lifecycle management
 	//----------------------------------------------------------------------------------------------
 
-	@Override
-	public void start() {
+	/**
+	 * Start the rpc service and begin to run the job.
+	 *
+	 * @param leaderSessionID The necessary leader id for running the job.
+	 */
+	public void start(final UUID leaderSessionID) {
 		// start the RPC endpoint so we can send and receive messages
+		// TODO - is it ok to start rpc service multiple times?
 		super.start();
 
-		// start the job execution
-	}
-
-	@Override
-	public void shutDown() {
-		try {
-			suspendJob(new Exception("JobManager is shutting down."));
-
-			// disconnect cleanly from all other components
-			disposeCommunicationWithResourceManager();
+		if (this.leaderSessionID != null) {
+			log.warn("Job already started with leaderId {}, ignoring this start request.", this.leaderSessionID);
+			return;
 		}
-		finally {
-			// only as the final step, we can shut down. Otherwise no RPC calls migh be able to go out.  
-			super.shutDown();
-		}
-	}
 
-
-
-	//----------------------------------------------------------------------------------------------
-	// RPC methods
-	//----------------------------------------------------------------------------------------------
-
-	/**
-	 * Start to run the job, runtime data structures like ExecutionGraph will be constructed now and checkpoint
-	 * being recovered. After this, we will begin to schedule the job.
-	 */
-	@RpcMethod
-	public void startJob(final UUID leaderSessionID) {
 		log.info("Starting job {} ({}) with leaderId {}.", jobGraph.getName(), jobGraph.getJobID(), leaderSessionID);
-
 		this.leaderSessionID = leaderSessionID;
 
 		try {
-			// TODO: register this class to execution graph as job status change listeners
+			// register self as job status change listener
+			executionGraph.registerJobStatusListener(new JobStatusListener() {
+				@Override
+				public void jobStatusChanges(
+					final JobID jobId, final JobStatus newJobStatus, final long timestamp, final Throwable error)
+				{
+					// run in rpc thread to avoid concurrency
+					runAsync(new Runnable() {
+						@Override
+						public void run() {
+							jobStatusChanged(newJobStatus, timestamp, error);
+						}
+					});
+				}
+			});
 
 			// TODO: register client as job / execution status change listeners if they are interested
 
@@ -316,7 +311,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 			}
 			*/
 
-			// job is good to go, try to locate resource manager's address
+			// job is ready to go, try to establish connection with resource manager
 			resourceManagerLeaderRetriever.start(new ResourceManagerLeaderListener());
 		} catch (Throwable t) {
 			log.error("Failed to start job {} ({})", jobGraph.getName(), jobGraph.getJobID(), t);
@@ -342,29 +337,61 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 		executionContext.execute(new Runnable() {
 			@Override
 			public void run() {
-				if (executionGraph != null) {
-					try {
-						executionGraph.scheduleForExecution(scheduler);
-					} catch (Throwable t) {
-						executionGraph.fail(t);
-					}
+				try {
+					executionGraph.scheduleForExecution(scheduler);
+				} catch (Throwable t) {
+					executionGraph.fail(t);
 				}
 			}
 		});
 	}
 
 	/**
-	 * Suspending job, all the running tasks will be cancelled, and runtime data will be cleared.
+	 * Suspending job, all the running tasks will be cancelled, and communication with other components
+	 * will be disposed.
+	 *
+	 * <p>Mostly job is suspended because of the leadership has been revoked, one can be restart this job by
+	 * calling the {@link #start(UUID)} method once we take the leadership back again.
 	 *
 	 * @param cause The reason of why this job been suspended.
 	 */
-	@RpcMethod
-	public void suspendJob(final Throwable cause) {
+	public void suspend(final Throwable cause) {
+		if (leaderSessionID == null) {
+			log.info("Job has already been suspended or shutdown.");
+			return;
+		}
+
 		leaderSessionID = null;
 		executionGraph.suspend(cause);
 
-		disposeCommunicationWithResourceManager();
+		// disconnect from resource manager:
+		try {
+			resourceManagerLeaderRetriever.stop();
+		} catch (Exception e) {
+			log.warn("Failed to stop resource manager leader retriever when suspending.");
+		}
+		closeResourceManagerConnection();
+
+		// TODO: disconnect from all registered task managers
 	}
+
+	/**
+	 * Suspend the job and shutdown all other services including rpc.
+	 */
+	@Override
+	public void shutDown() {
+		try {
+			suspend(new Exception("JobManager is shutting down."));
+		}
+		finally {
+			// only as the final step, we can shut down. Otherwise no RPC calls might be able to go out.
+			super.shutDown();
+		}
+	}
+
+	//----------------------------------------------------------------------------------------------
+	// RPC methods
+	//----------------------------------------------------------------------------------------------
 
 	/**
 	 * Updates the task execution state for a given task.
@@ -585,7 +612,6 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 		});
 	}
 
-	// TODO - wrap this as StatusListenerMessenger's callback with rpc main thread
 	private void jobStatusChanged(final JobStatus newJobStatus, long timestamp, final Throwable error) {
 		final JobID jobID = executionGraph.getJobID();
 		final String jobName = executionGraph.getJobName();
@@ -700,18 +726,6 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 				}
 			}
 		});
-	}
-
-	private void disposeCommunicationWithResourceManager() {
-		// 1. stop the leader retriever so we will not receiving updates anymore
-		try {
-			resourceManagerLeaderRetriever.stop();
-		} catch (Exception e) {
-			log.warn("Failed to stop resource manager leader retriever.");
-		}
-
-		// 2. close current connection with ResourceManager if exists
-		closeResourceManagerConnection();
 	}
 
 	private void closeResourceManagerConnection() {
