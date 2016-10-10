@@ -75,6 +75,7 @@ import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcMethod;
 import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.runtime.rpc.StartStoppable;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.runtime.util.SerializedThrowable;
@@ -87,6 +88,8 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -103,6 +106,11 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  */
 public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 
+	private static final AtomicReferenceFieldUpdater<JobMaster, UUID> LEADER_ID_UPDATER =
+			AtomicReferenceFieldUpdater.newUpdater(JobMaster.class, UUID.class, "leaderSessionID");
+
+	// ------------------------------------------------------------------------
+
 	/** Logical representation of the job */
 	private final JobGraph jobGraph;
 
@@ -115,23 +123,14 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	/** Blob cache manager used across jobs */
 	private final BlobLibraryCacheManager libraryCacheManager;
 
-	/** Factory to create restart strategy for this job */
-	private final RestartStrategyFactory restartStrategyFactory;
+	/** The metrics for the JobManager itself */
+	private final MetricGroup jobManagerMetricGroup;
 
-	/** Store for save points */
-	private final SavepointStore savepointStore;
-
-	/** The timeout for RPC calls in this job */
-	private final Time timeout;
-
-	/** The scheduler to use for scheduling new tasks as they are needed */
-	private final Scheduler scheduler;
-
-	/** The metrics group used across jobs */
-	private final JobManagerMetricGroup jobManagerMetricGroup;
+	/** The metrics for the job */
+	private final MetricGroup jobMetricGroup;
 
 	/** The execution context which is used to execute futures */
-	private final Executor executionContext;
+	private final ExecutorService executionContext;
 
 	private final OnCompletionActions jobCompletionActions;
 
@@ -142,7 +141,6 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	/** The execution graph of this job */
 	private final ExecutionGraph executionGraph;
 
-	private final MetricGroup jobMetrics;
 
 	private volatile UUID leaderSessionID;
 
@@ -154,6 +152,9 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	/** Connection with ResourceManager, null if not located address yet or we close it initiative */
 	private ResourceManagerConnection resourceManagerConnection;
 
+	// TODO - we need to replace this with the slot pool
+	private final Scheduler scheduler;
+	
 	// ------------------------------------------------------------------------
 
 	public JobMaster(
@@ -161,11 +162,11 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 			Configuration configuration,
 			RpcService rpcService,
 			HighAvailabilityServices highAvailabilityService,
+			ExecutorService executorService,
 			BlobLibraryCacheManager libraryCacheManager,
 			RestartStrategyFactory restartStrategyFactory,
 			SavepointStore savepointStore,
-			Time timeout,
-			Scheduler scheduler,
+			Time rpcAskTimeout,
 			@Nullable JobManagerMetricGroup jobManagerMetricGroup,
 			OnCompletionActions jobCompletionActions,
 			FatalErrorHandler errorHandler,
@@ -177,12 +178,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 		this.configuration = checkNotNull(configuration);
 		this.highAvailabilityServices = checkNotNull(highAvailabilityService);
 		this.libraryCacheManager = checkNotNull(libraryCacheManager);
-		this.restartStrategyFactory = checkNotNull(restartStrategyFactory);
-		this.savepointStore = checkNotNull(savepointStore);
-		this.timeout = checkNotNull(timeout);
-		this.scheduler = checkNotNull(scheduler);
-		this.jobManagerMetricGroup = jobManagerMetricGroup;
-		this.executionContext = checkNotNull(rpcService.getExecutor());
+		this.executionContext = checkNotNull(executorService);
 		this.jobCompletionActions = checkNotNull(jobCompletionActions);
 		this.errorHandler = checkNotNull(errorHandler);
 		this.userCodeLoader = checkNotNull(userCodeLoader);
@@ -190,13 +186,15 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 		final String jobName = jobGraph.getName();
 		final JobID jid = jobGraph.getJobID();
 
-		log.info("Initializing job {} ({}).", jobName, jid);
-
 		if (jobManagerMetricGroup != null) {
-			this.jobMetrics = jobManagerMetricGroup.addJob(jobGraph);
+			this.jobManagerMetricGroup = jobManagerMetricGroup;
+			this.jobMetricGroup = jobManagerMetricGroup.addJob(jobGraph);
 		} else {
-			this.jobMetrics = new UnregisteredMetricsGroup();
+			this.jobManagerMetricGroup = new UnregisteredMetricsGroup(); 
+			this.jobMetricGroup = new UnregisteredMetricsGroup();
 		}
+
+		log.info("Initializing job {} ({}).", jobName, jid);
 
 		final RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration =
 				jobGraph.getSerializedExecutionConfig()
@@ -230,45 +228,76 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 				null,
 				jobGraph,
 				configuration,
-				executionContext,
+				executorService,
 				userCodeLoader,
 				checkpointRecoveryFactory,
 				savepointStore,
-				timeout,
+				rpcAskTimeout,
 				restartStrategy,
-				jobMetrics,
+				jobMetricGroup,
 				-1,
 				log);
+
+		// TODO - temp fix
+		this.scheduler = new Scheduler(executorService);
 	}
 
 	//----------------------------------------------------------------------------------------------
 	// Lifecycle management
 	//----------------------------------------------------------------------------------------------
 
+
+	@Override
+	public void start() {
+		throw new UnsupportedOperationException("Should never call start() without leader ID");
+	}
+	
 	/**
 	 * Start the rpc service and begin to run the job.
+	 * 
+	 * <p>Since this 
 	 *
 	 * @param leaderSessionID The necessary leader id for running the job.
 	 */
 	public void start(final UUID leaderSessionID) {
-		// start the RPC endpoint so we can send and receive messages
-		// TODO - is it ok to start rpc service multiple times?
-		super.start();
+		if (LEADER_ID_UPDATER.compareAndSet(this, null, leaderSessionID)) {
+			super.start();
 
-		if (this.leaderSessionID != null) {
-			log.warn("Job already started with leaderId {}, ignoring this start request.", this.leaderSessionID);
-			return;
+			log.info("Starting JobManager for job {} ({})", jobGraph.getName(), jobGraph.getJobID());
+			getSelf().startJobExecution();
 		}
+		else {
+			log.warn("Job already started with leaderId {}, ignoring this start request.", leaderSessionID);
+		}
+	}
 
-		log.info("Starting job {} ({}) with leaderId {}.", jobGraph.getName(), jobGraph.getJobID(), leaderSessionID);
-		this.leaderSessionID = leaderSessionID;
+	/**
+	 * Suspend the job and shutdown all other services including rpc.
+	 */
+	@Override
+	public void shutDown() {
+		// make sure there is a graceful exit
+		getSelf().suspendExecution(new Exception("JobManager is shutting down."));
+		super.shutDown();
+	}
+
+	//----------------------------------------------------------------------------------------------
+	// RPC methods
+	//----------------------------------------------------------------------------------------------
+
+	//-- job starting and stopping  -----------------------------------------------------------------
+
+	@RpcMethod
+	public void startJobExecution() {
+		log.info("Starting execution of job {} ({}) with leaderId {}.",
+				jobGraph.getName(), jobGraph.getJobID(), leaderSessionID);
 
 		try {
 			// register self as job status change listener
 			executionGraph.registerJobStatusListener(new JobStatusListener() {
 				@Override
 				public void jobStatusChanges(
-					final JobID jobId, final JobStatus newJobStatus, final long timestamp, final Throwable error)
+						final JobID jobId, final JobStatus newJobStatus, final long timestamp, final Throwable error)
 				{
 					// run in rpc thread to avoid concurrency
 					runAsync(new Runnable() {
@@ -280,51 +309,25 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 				}
 			});
 
-			// TODO: register client as job / execution status change listeners if they are interested
-
-			/*
-			TODO: decide whether we should take the savepoint before recovery
-
-			if (isRecovery) {
-				// this is a recovery of a master failure (this master takes over)
-				executionGraph.restoreLatestCheckpointedState();
-			} else {
-				if (snapshotSettings != null) {
-					String savepointPath = snapshotSettings.getSavepointPath();
-					if (savepointPath != null) {
-						// got a savepoint
-						log.info("Starting job from savepoint {}.", savepointPath);
-
-						// load the savepoint as a checkpoint into the system
-						final CompletedCheckpoint savepoint = SavepointLoader.loadAndValidateSavepoint(
-							jobGraph.getJobID(), executionGraph.getAllVertices(), savepointStore, savepointPath);
-						executionGraph.getCheckpointCoordinator().getCheckpointStore().addCheckpoint(savepoint);
-
-						// Reset the checkpoint ID counter
-						long nextCheckpointId = savepoint.getCheckpointID() + 1;
-						log.info("Reset the checkpoint ID to " + nextCheckpointId);
-						executionGraph.getCheckpointCoordinator().getCheckpointIdCounter().setCount(nextCheckpointId);
-
-						executionGraph.restoreLatestCheckpointedState();
-					}
-				}
-			}
-			*/
-
 			// job is ready to go, try to establish connection with resource manager
 			resourceManagerLeaderRetriever.start(new ResourceManagerLeaderListener());
-		} catch (Throwable t) {
+		}
+		catch (Throwable t) {
+
+			// TODO - this should not result in a job failure, but another leader should take over
+			// TODO - either this master should retry the execution, or it should relinquish leadership / terminate
+
 			log.error("Failed to start job {} ({})", jobGraph.getName(), jobGraph.getJobID(), t);
 
 			executionGraph.fail(t);
 
-			final Throwable rt;
+			final JobExecutionException rt;
 			if (t instanceof JobExecutionException) {
 				rt = (JobExecutionException) t;
 			}
 			else {
 				rt = new JobExecutionException(jobGraph.getJobID(),
-					"Failed to start job " + jobGraph.getJobID() + " (" + jobGraph.getName() + ")", t);
+						"Failed to start job " + jobGraph.getJobID() + " (" + jobGraph.getName() + ")", t);
 			}
 
 			// TODO: notify client about this failure
@@ -355,9 +358,10 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	 *
 	 * @param cause The reason of why this job been suspended.
 	 */
-	public void suspend(final Throwable cause) {
+	@RpcMethod
+	public void suspendExecution(final Throwable cause) {
 		if (leaderSessionID == null) {
-			log.info("Job has already been suspended or shutdown.");
+			log.debug("Job has already been suspended or shutdown.");
 			return;
 		}
 
@@ -373,26 +377,13 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 		closeResourceManagerConnection();
 
 		// TODO: disconnect from all registered task managers
+
+		// receive no more messages until started again
+		((StartStoppable) getSelf()).stop();
 	}
-
-	/**
-	 * Suspend the job and shutdown all other services including rpc.
-	 */
-	@Override
-	public void shutDown() {
-		try {
-			suspend(new Exception("JobManager is shutting down."));
-		}
-		finally {
-			// only as the final step, we can shut down. Otherwise no RPC calls might be able to go out.
-			super.shutDown();
-		}
-	}
-
+	
 	//----------------------------------------------------------------------------------------------
-	// RPC methods
-	//----------------------------------------------------------------------------------------------
-
+	
 	/**
 	 * Updates the task execution state for a given task.
 	 *
@@ -401,11 +392,8 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	 */
 	@RpcMethod
 	public boolean updateTaskExecutionState(final TaskExecutionState taskExecutionState) {
-		if (taskExecutionState == null) {
-			return false;
-		} else {
-			return executionGraph.updateState(taskExecutionState);
-		}
+		checkNotNull(taskExecutionState);
+		return executionGraph.updateState(taskExecutionState);
 	}
 
 	@RpcMethod

@@ -45,6 +45,16 @@ import org.apache.flink.runtime.taskmanager.TaskExecutionState;
  */
 public interface JobMasterGateway extends RpcGateway {
 
+	// ------------------------------------------------------------------------
+	//  Job start and stop methods
+	// ------------------------------------------------------------------------
+
+	void startJobExecution();
+
+	void suspendExecution(Throwable cause);
+
+	// ------------------------------------------------------------------------
+
 	/**
 	 * Updates the task execution state for a given task.
 	 *

@@ -19,9 +19,15 @@
 package org.apache.flink.runtime.highavailability;
 
 import org.apache.curator.framework.CuratorFramework;
+
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.HighAvailabilityOptions;
+import org.apache.flink.configuration.IllegalConfigurationException;
+import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.blob.BlobStore;
+import org.apache.flink.runtime.blob.FileSystemBlobStore;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointRecoveryFactory;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
@@ -29,7 +35,10 @@ import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 
+import java.io.IOException;
+
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.StringUtils.isNullOrWhitespaceOnly;
 
 /**
  * An implementation of the {@link HighAvailabilityServices} using Apache ZooKeeper.
@@ -54,7 +63,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *                            |/persisted_job_graph
  * </pre>
  * 
- * <p>The root path "/flink" is configurable via the option {@link ConfigOptions#HA_ZOOKEEPER_ROOT}.
+ * <p>The root path "/flink" is configurable via the option {@link HighAvailabilityOptions#HA_ZOOKEEPER_ROOT}.
  * This makes sure Flink stores its data under specific subtrees in ZooKeeper, for example to
  * accommodate specific permission.
  * 
@@ -66,7 +75,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * automatically by the client or dispatcher that submits the Job to YARN or Mesos.
  * 
  * <p>In the case of a standalone cluster, that cluster-id needs to be configured via
- * {@link ConfigOptions#HA_CLUSTER_ID}. All nodes with the same cluster id will join the same
+ * {@link HighAvailabilityOptions#HA_CLUSTER_ID}. All nodes with the same cluster id will join the same
  * cluster and participate in the execution of the same set of jobs.
  */
 public class ZookeeperHaServices implements HighAvailabilityServices {
@@ -126,6 +135,41 @@ public class ZookeeperHaServices implements HighAvailabilityServices {
 		return ZooKeeperUtils.createSubmittedJobGraphs(client, configuration);
 	}
 
+	@Override
+	public RunningJobsRegistry getRunningJobsRegistry() throws Exception {
+		throw new UnsupportedOperationException("not yet implemented");
+	}
+
+	@Override
+	public BlobStore createBlobStore() throws IOException {
+		final String storagePath = configuration.getValue(HighAvailabilityOptions.HA_STORAGE_PATH);
+		if (isNullOrWhitespaceOnly(storagePath)) {
+			throw new IllegalConfigurationException("Configuration is missing the mandatory parameter: " +
+					HighAvailabilityOptions.HA_STORAGE_PATH);
+		}
+
+		final Path path;
+		try {
+			path = new Path(storagePath);
+		} catch (Exception e) {
+			throw new IOException("Invalid path for highly available storage (" +
+					HighAvailabilityOptions.HA_STORAGE_PATH.key() + ')', e);
+		}
+
+		final FileSystem fileSystem;
+		try {
+			fileSystem = path.getFileSystem();
+		} catch (Exception e) {
+			throw new IOException("Could not create FileSystem for highly available storage (" +
+					HighAvailabilityOptions.HA_STORAGE_PATH.key() + ')', e);
+		}
+
+		return new FileSystemBlobStore(fileSystem, storagePath);
+	}
+
+	// ------------------------------------------------------------------------
+	//  Utilities
+	// ------------------------------------------------------------------------
 
 	private static String getPathForJobManager(final JobID jobID) {
 		return "/" + jobID + JOB_MANAGER_LEADER_PATH;
