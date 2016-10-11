@@ -40,6 +40,8 @@ import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KvState;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 
+import java.util.UUID;
+
 /**
  * {@link JobMaster} rpc gateway interface
  */
@@ -58,21 +60,26 @@ public interface JobMasterGateway extends RpcGateway {
 	/**
 	 * Updates the task execution state for a given task.
 	 *
+	 * @param leaderSessionID    The leader id of JobManager
 	 * @param taskExecutionState New task execution state for a given task
 	 * @return Future flag of the task execution state update result
 	 */
-	Future<Boolean> updateTaskExecutionState(TaskExecutionState taskExecutionState);
+	Future<Boolean> updateTaskExecutionState(
+		final UUID leaderSessionID,
+		final TaskExecutionState taskExecutionState) throws Exception;
 
 	/**
 	 * Requesting next input split for the {@link ExecutionJobVertex}. The next input split is sent back to the sender
 	 * as a {@link NextInputSplit} message.
 	 *
+	 * @param leaderSessionID  The leader id of JobManager
 	 * @param vertexID         The job vertex id
 	 * @param executionAttempt The execution attempt id
 	 * @return The future of the input split. If there is no further input split, will return an empty object.
 	 * @throws Exception if some error occurred or information mismatch.
 	 */
 	Future<NextInputSplit> requestNextInputSplit(
+		final UUID leaderSessionID,
 		final JobVertexID vertexID,
 		final ExecutionAttemptID executionAttempt) throws Exception;
 
@@ -80,15 +87,17 @@ public interface JobMasterGateway extends RpcGateway {
 	 * Requests the current state of the partition.
 	 * The state of a partition is currently bound to the state of the producing execution.
 	 *
+	 * @param leaderSessionID The leader id of JobManager
 	 * @param partitionId     The partition ID of the partition to request the state of.
 	 * @param taskExecutionId The execution attempt ID of the task requesting the partition state.
 	 * @param taskResultId    The input gate ID of the task requesting the partition state.
 	 * @return The future of the partition state
 	 */
 	Future<PartitionState> requestPartitionState(
+		final UUID leaderSessionID,
 		final ResultPartitionID partitionId,
 		final ExecutionAttemptID taskExecutionId,
-		final IntermediateDataSetID taskResultId);
+		final IntermediateDataSetID taskResultId) throws Exception;
 
 	/**
 	 * Notifies the JobManager about available data for a produced partition.
@@ -99,9 +108,12 @@ public interface JobMasterGateway extends RpcGateway {
 	 * <p>
 	 * The JobManager then can decide when to schedule the partition consumers of the given session.
 	 *
-	 * @param partitionID The partition which has already produced data
+	 * @param leaderSessionID The leader id of JobManager
+	 * @param partitionID     The partition which has already produced data
 	 */
-	void scheduleOrUpdateConsumers(final ResultPartitionID partitionID);
+	void scheduleOrUpdateConsumers(
+		final UUID leaderSessionID,
+		final ResultPartitionID partitionID) throws Exception;
 
 	/**
 	 * Notifies the JobManager about the removal of a resource.
@@ -115,17 +127,19 @@ public interface JobMasterGateway extends RpcGateway {
 	/**
 	 * Notifies the JobManager that the checkpoint of an individual task is completed.
 	 *
-	 * @param acknowledge The acknowledge message of the checkpoint
+	 * @param leaderSessionID The leader id of JobManager
+	 * @param acknowledge     The acknowledge message of the checkpoint
 	 */
-	void acknowledgeCheckpoint(final AcknowledgeCheckpoint acknowledge);
+	void acknowledgeCheckpoint(final UUID leaderSessionID, final AcknowledgeCheckpoint acknowledge) throws Exception;
 
 	/**
 	 * Notifies the JobManager that a checkpoint request could not be heeded.
 	 * This can happen if a Task is already in RUNNING state but is internally not yet ready to perform checkpoints.
 	 *
-	 * @param decline The decline message of the checkpoint
+	 * @param leaderSessionID The leader id of JobManager
+	 * @param decline         The decline message of the checkpoint
 	 */
-	void declineCheckpoint(final DeclineCheckpoint decline);
+	void declineCheckpoint(final UUID leaderSessionID, final DeclineCheckpoint decline) throws Exception;
 
 	/**
 	 * Requests a {@link KvStateLocation} for the specified {@link KvState} registration name.
@@ -162,12 +176,13 @@ public interface JobMasterGateway extends RpcGateway {
 	/**
 	 * Notifies the JobManager to trigger a savepoint for this job.
 	 *
+	 * @param leaderSessionID The leader id of JobManager
 	 * @return The savepoint path
 	 */
-	Future<String> triggerSavepoint() throws Exception;
+	Future<String> triggerSavepoint(final UUID leaderSessionID) throws Exception;
 
 	/**
 	 * Request the classloading props of this job.
 	 */
-	Future<ClassloadingProps> requestClassloadingProps();
+	Future<ClassloadingProps> requestClassloadingProps() throws Exception;
 }

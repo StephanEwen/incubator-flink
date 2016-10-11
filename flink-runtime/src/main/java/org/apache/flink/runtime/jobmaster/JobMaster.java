@@ -100,7 +100,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * It offers the following methods as part of its rpc interface to interact with the JobMaster
  * remotely:
  * <ul>
- * <li>{@link #updateTaskExecutionState(TaskExecutionState)} updates the task execution state for
+ * <li>{@link #updateTaskExecutionState} updates the task execution state for
  * given task</li>
  * </ul>
  */
@@ -365,6 +365,9 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 			return;
 		}
 
+		// receive no more messages until started again, should be called before we clear self leader id
+		((StartStoppable) getSelf()).stop();
+
 		leaderSessionID = null;
 		executionGraph.suspend(cause);
 
@@ -378,8 +381,6 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 
 		// TODO: disconnect from all registered task managers
 
-		// receive no more messages until started again
-		((StartStoppable) getSelf()).stop();
 	}
 	
 	//----------------------------------------------------------------------------------------------
@@ -391,16 +392,31 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	 * @return Acknowledge the task execution state update
 	 */
 	@RpcMethod
-	public boolean updateTaskExecutionState(final TaskExecutionState taskExecutionState) {
+	public boolean updateTaskExecutionState(
+		final UUID leaderSessionID,
+		final TaskExecutionState taskExecutionState) throws Exception
+	{
 		checkNotNull(taskExecutionState);
+
+		if (!this.leaderSessionID.equals(leaderSessionID)) {
+			throw new Exception("Leader id not match, expected: " + this.leaderSessionID
+				+ ", actual: " + leaderSessionID);
+		}
+
 		return executionGraph.updateState(taskExecutionState);
 	}
 
 	@RpcMethod
 	public NextInputSplit requestNextInputSplit(
+		final UUID leaderSessionID,
 		final JobVertexID vertexID,
 		final ExecutionAttemptID executionAttempt) throws Exception
 	{
+		if (!this.leaderSessionID.equals(leaderSessionID)) {
+			throw new Exception("Leader id not match, expected: " + this.leaderSessionID
+				+ ", actual: " + leaderSessionID);
+		}
+
 		final Execution execution = executionGraph.getRegisteredExecutions().get(executionAttempt);
 		if (execution == null) {
 			// can happen when JobManager had already unregistered this execution upon on task failure,
@@ -447,17 +463,31 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 
 	@RpcMethod
 	public PartitionState requestPartitionState(
+		final UUID leaderSessionID,
 		final ResultPartitionID partitionId,
 		final ExecutionAttemptID taskExecutionId,
-		final IntermediateDataSetID taskResultId)
+		final IntermediateDataSetID taskResultId) throws Exception
 	{
+		if (!this.leaderSessionID.equals(leaderSessionID)) {
+			throw new Exception("Leader id not match, expected: " + this.leaderSessionID
+				+ ", actual: " + leaderSessionID);
+		}
+
 		final Execution execution = executionGraph.getRegisteredExecutions().get(partitionId.getProducerId());
 		final ExecutionState state = execution != null ? execution.getState() : null;
 		return new PartitionState(taskResultId, partitionId.getPartitionId(), state);
 	}
 
 	@RpcMethod
-	public void scheduleOrUpdateConsumers(final ResultPartitionID partitionID) {
+	public void scheduleOrUpdateConsumers(
+		final UUID leaderSessionID,
+		final ResultPartitionID partitionID) throws Exception
+	{
+		if (!this.leaderSessionID.equals(leaderSessionID)) {
+			throw new Exception("Leader id not match, expected: " + this.leaderSessionID
+				+ ", actual: " + leaderSessionID);
+		}
+
 		executionGraph.scheduleOrUpdateConsumers(partitionID);
 	}
 
@@ -467,7 +497,15 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	}
 
 	@RpcMethod
-	public void acknowledgeCheckpoint(final AcknowledgeCheckpoint acknowledge) {
+	public void acknowledgeCheckpoint(
+		final UUID leaderSessionID,
+		final AcknowledgeCheckpoint acknowledge) throws Exception
+	{
+		if (!this.leaderSessionID.equals(leaderSessionID)) {
+			throw new Exception("Leader id not match, expected: " + this.leaderSessionID
+				+ ", actual: " + leaderSessionID);
+		}
+
 		final CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
 		if (checkpointCoordinator != null) {
 			getRpcService().execute(new Runnable() {
@@ -490,7 +528,15 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	}
 
 	@RpcMethod
-	public void declineCheckpoint(final DeclineCheckpoint decline) {
+	public void declineCheckpoint(
+		final UUID leaderSessionID,
+		final DeclineCheckpoint decline) throws Exception
+	{
+		if (!this.leaderSessionID.equals(leaderSessionID)) {
+			throw new Exception("Leader id not match, expected: " + this.leaderSessionID
+				+ ", actual: " + leaderSessionID);
+		}
+
 		final CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
 		if (checkpointCoordinator != null) {
 			getRpcService().execute(new Runnable() {
@@ -568,7 +614,12 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 	}
 
 	@RpcMethod
-	public Future<String> triggerSavepoint() throws Exception {
+	public Future<String> triggerSavepoint(final UUID leaderSessionID) throws Exception {
+		if (!this.leaderSessionID.equals(leaderSessionID)) {
+			throw new Exception("Leader id not match, expected: " + this.leaderSessionID
+				+ ", actual: " + leaderSessionID);
+		}
+
 		final CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
 		if (checkpointCoordinator != null) {
 			return new FlinkFuture<>(checkpointCoordinator.triggerSavepoint(System.currentTimeMillis()));
