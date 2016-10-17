@@ -37,6 +37,8 @@ public class MiniClusterConfiguration {
 
 	private int numTaskManagers = 1;
 
+	private int numResourceManagers = 1;
+
 	private String commonBindAddress;
 
 	// ------------------------------------------------------------------------
@@ -79,6 +81,11 @@ public class MiniClusterConfiguration {
 		this.numTaskManagers = numTaskManagers;
 	}
 
+	public void setNumResourceManagers(int numResourceManagers) {
+		checkArgument(numResourceManagers >= 1, "must have at least one ResourceManager");
+		this.numResourceManagers = numResourceManagers;
+	}
+
 	public void setNumTaskManagerSlots(int numTaskSlots) {
 		checkArgument(numTaskSlots >= 1, "must have at least one task slot per TaskManager");
 		this.config.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, numTaskSlots);
@@ -109,6 +116,10 @@ public class MiniClusterConfiguration {
 		return numTaskManagers;
 	}
 
+	public int getNumResourceManagers() {
+		return numResourceManagers;
+	}
+
 	public int getNumSlotsPerTaskManager() {
 		return config.getInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, 1);
 	}
@@ -123,6 +134,12 @@ public class MiniClusterConfiguration {
 		return commonBindAddress != null ?
 				commonBindAddress :
 				config.getString(ConfigConstants.TASK_MANAGER_HOSTNAME_KEY, "localhost");
+	}
+
+	public String getResourceManagerBindAddress() {
+		return commonBindAddress != null ?
+			commonBindAddress :
+			config.getString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, "localhost"); // TODO: Introduce proper configuration constant for the resource manager hostname
 	}
 
 	public Time getRpcTimeout() {

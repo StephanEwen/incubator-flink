@@ -26,6 +26,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.UnmodifiableConfiguration;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.client.JobExecutionException;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.jobgraph.JobGraph;
@@ -33,6 +34,7 @@ import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcService;
+import org.apache.flink.runtime.taskexecutor.TaskManagerRunner;
 import org.apache.flink.util.ExceptionUtils;
 
 import javax.annotation.concurrent.GuardedBy;
@@ -63,7 +65,16 @@ public class MiniCluster {
 	private RpcService[] taskManagerRpcServices;
 
 	@GuardedBy("lock")
+	private RpcService[] resourceManagerRpcServices;
+
+	@GuardedBy("lock")
 	private HighAvailabilityServices haServices;
+
+	private @GuardedBy("lock")
+	private ResourceManagerRunner[] resourceManagerRunners;
+
+	@GuardedBy("lock")
+	private TaskManagerRunner[] taskManagerRunners;
 
 	@GuardedBy("lock")
 	private MiniClusterJobDispatcher jobDispatcher;
@@ -143,6 +154,7 @@ public class MiniCluster {
 			final Time rpcTimeout = config.getRpcTimeout();
 			final int numJobManagers = config.getNumJobManagers();
 			final int numTaskManagers = config.getNumTaskManagers();
+			final int numResourceManagers = config.getNumResourceManagers();
 			final boolean singleRpc = config.getUseSingleRpcSystem();
 
 			try {
@@ -150,6 +162,7 @@ public class MiniCluster {
 
 				RpcService[] jobManagerRpcServices = new RpcService[numJobManagers];
 				RpcService[] taskManagerRpcServices = new RpcService[numTaskManagers];
+				RpcService[] resourceManagerRpcServices = new RpcService[numResourceManagers];
 
 				// bring up all the RPC services
 				if (singleRpc) {
@@ -163,11 +176,19 @@ public class MiniCluster {
 					for (int i = 0; i < numTaskManagers; i++) {
 						taskManagerRpcServices[i] = commonRpcService;
 					}
+					for (int i = 0; i < numResourceManagers; i++) {
+						resourceManagerRpcServices[i] = commonRpcService;
+					}
+
+					this.resourceManagerRpcServices = null;
+					this.jobManagerRpcServices = null;
+					this.taskManagerRpcServices = null;
 				}
 				else {
 					// start a new service per component, possibly with custom bind addresses
 					final String jobManagerBindAddress = config.getJobManagerBindAddress();
 					final String taskManagerBindAddress = config.getTaskManagerBindAddress();
+					final String resourceManagerBindAddress = config.getResourceManagerBindAddress();
 
 					for (int i = 0; i < numJobManagers; i++) {
 						jobManagerRpcServices[i] = createRpcService(
@@ -185,6 +206,12 @@ public class MiniCluster {
 
 				// create the high-availability services
 				haServices = HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(configuration);
+
+				// bring up the resource manager for the mini cluster
+				this.resourceManagerRunner = startResourceManager(configuration, haServices, metricRegistry, numResourceManagers, resourceManagerRpcServices);
+
+				// bring up the task managers for the mini cluster
+				this.taskManagerRunners = startTaskManagers(configuration, haServices, metricRegistry, numTaskManagers, taskManagerRpcServices);
 
 				// bring up the dispatcher that launches JobManagers when jobs submitted
 				jobDispatcher = new MiniClusterJobDispatcher(
@@ -370,6 +397,32 @@ public class MiniCluster {
 		}
 
 		return new AkkaRpcService(actorSystem, askTimeout);
+	}
+
+	protected ResourceManagerRunner[] startResourceManagers() {
+		return null;
+	}
+
+	protected TaskManagerRunner[] startTaskManagers(
+		Configuration configuration,
+		HighAvailabilityServices haServices,
+		MetricRegistry metricRegistry,
+		int numTaskManagers,
+		RpcService[] taskManagerRpcServices) {
+
+		final TaskManagerRunner[] taskManagerRunners = new TaskManagerRunner[numTaskManagers];
+
+		for (int i = 0; i < numTaskManagers; i++) {
+			taskManagerRunners[i] = new TaskManagerRunner(
+				configuration,
+				new ResourceID(),
+				taskManagerRpcServices[i],
+				haServices);
+
+			taskManagerRunners[i].start();
+		}
+
+		return taskManagerRunners;
 	}
 
 	// ------------------------------------------------------------------------
