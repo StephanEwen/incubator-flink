@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.checkpoint;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.runtime.checkpoint.stats.CheckpointStatsTracker;
@@ -278,10 +279,10 @@ public class CheckpointCoordinator {
 
 		if (result.isSuccess()) {
 			return result.getPendingCheckpoint().getCompletionFuture();
-		} else {
+		}
+		else {
 			Throwable cause = new Exception("Failed to trigger savepoint: " + result.getFailureReason().message());
-			Future<CompletedCheckpoint> failed = FlinkCompletableFuture.completedExceptionally(cause);
-			return failed;
+			return FlinkCompletableFuture.completedExceptionally(cause);
 		}
 	}
 
@@ -299,6 +300,7 @@ public class CheckpointCoordinator {
 		return triggerCheckpoint(timestamp, checkpointProperties, checkpointDirectory, isPeriodic).isSuccess();
 	}
 
+	@VisibleForTesting
 	CheckpointTriggerResult triggerCheckpoint(
 			long timestamp,
 			CheckpointProperties props,
@@ -525,81 +527,61 @@ public class CheckpointCoordinator {
 	}
 
 	/**
-	 * Receives a {@link DeclineCheckpoint} message and returns whether the
-	 * message was associated with a pending checkpoint.
+	 * Receives a {@link DeclineCheckpoint} message for a pending checkpoint.
 	 *
 	 * @param message Checkpoint decline from the task manager
-	 *
-	 * @return Flag indicating whether the declined checkpoint was associated
-	 * with a pending checkpoint.
 	 */
-	public boolean receiveDeclineMessage(DeclineCheckpoint message) throws Exception {
+	public void receiveDeclineMessage(DeclineCheckpoint message) throws Exception {
 		if (shutdown || message == null) {
-			return false;
+			return;
 		}
 		if (!job.equals(message.getJob())) {
-			LOG.error("Received DeclineCheckpoint message for wrong job: {}", message);
-			return false;
+			throw new IllegalArgumentException("Received DeclineCheckpoint message for job " +
+				message.getJob() + " while this coordinator handles job " + job);
 		}
 
 		final long checkpointId = message.getCheckpointId();
+		final String reason = (message.getReason() != null ? message.getReason().getMessage() : "");
 
 		PendingCheckpoint checkpoint;
-
-		// Flag indicating whether the ack message was for a known pending
-		// checkpoint.
-		boolean isPendingCheckpoint;
 
 		synchronized (lock) {
 			// we need to check inside the lock for being shutdown as well, otherwise we
 			// get races and invalid error log messages
 			if (shutdown) {
-				return false;
+				return;
 			}
 
 			checkpoint = pendingCheckpoints.get(checkpointId);
 
 			if (checkpoint != null && !checkpoint.isDiscarded()) {
-				isPendingCheckpoint = true;
-
-				LOG.info("Discarding checkpoint " + checkpointId
-						+ " because of checkpoint decline from task " + message.getTaskExecutionId());
+				LOG.info("Discarding checkpoint " + checkpointId + " because of checkpoint decline from task " + 
+						message.getTaskExecutionId() + " : " + reason);
 
 				pendingCheckpoints.remove(checkpointId);
 				checkpoint.abortDeclined();
 				rememberRecentCheckpointId(checkpointId);
 
-				boolean haveMoreRecentPending = false;
-
-				for (PendingCheckpoint p : pendingCheckpoints.values()) {
-					if (!p.isDiscarded() && p.getCheckpointTimestamp() >= checkpoint.getCheckpointTimestamp()) {
-						haveMoreRecentPending = true;
-						break;
-					}
-				}
-				if (!haveMoreRecentPending && !triggerRequestQueued) {
-					LOG.info("Triggering new checkpoint because of discarded checkpoint " + checkpointId);
-					triggerCheckpoint(System.currentTimeMillis(), checkpoint.getProps(), checkpoint.getTargetDirectory(), checkpoint.isPeriodic());
-				} else if (!haveMoreRecentPending) {
-					LOG.info("Promoting queued checkpoint request because of discarded checkpoint " + checkpointId);
-					triggerQueuedRequests();
-				}
-			} else if (checkpoint != null) {
+				// we don't have to schedule another "dissolving" checkpoint any more because the
+				// cancellation barriers take care of breaking downstream alignments
+			}
+			else if (checkpoint != null) {
 				// this should not happen
 				throw new IllegalStateException(
 						"Received message for discarded but non-removed checkpoint " + checkpointId);
-			} else {
-				// message is for an unknown checkpoint, or comes too late (checkpoint disposed)
+			}
+			else if (LOG.isDebugEnabled()) {
 				if (recentPendingCheckpoints.contains(checkpointId)) {
-					isPendingCheckpoint = true;
-					LOG.info("Received another decline checkpoint message for now expired checkpoint attempt " + checkpointId);
+					// message is for an unknown checkpoint, or comes too late (checkpoint disposed)
+					LOG.debug("Received another decline message for now expired checkpoint attempt {} : {}",
+							checkpointId, reason);
 				} else {
-					isPendingCheckpoint = false;
+					// message is for an unknown checkpoint. might be so old that we don't even remember it any more
+					LOG.debug("Received decline message for unknown (too old?) checkpoint attempt {} : {}",
+							checkpointId, reason);
 				}
 			}
 		}
-
-		return isPendingCheckpoint;
 	}
 
 	/**
