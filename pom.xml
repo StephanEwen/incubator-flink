@@ -92,7 +92,6 @@ under the License.
 		<flink.forkCount>1C</flink.forkCount>
 		<flink.reuseForks>true</flink.reuseForks>
 		<log4j.configuration>log4j-test.properties</log4j.configuration>
-		<slf4j.version>1.7.7</slf4j.version>
 		<guava.version>18.0</guava.version>
 		<akka.version>2.3.7</akka.version>
 		<java.version>1.7</java.version>
@@ -141,19 +140,13 @@ under the License.
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-api</artifactId>
-			<version>${slf4j.version}</version>
+			<version>1.7.21</version>
 		</dependency>
 
 		<dependency>
-			<groupId>org.slf4j</groupId>
-			<artifactId>slf4j-log4j12</artifactId>
-			<version>${slf4j.version}</version>
-		</dependency>
-
-		<dependency>
-			<groupId>log4j</groupId>
-			<artifactId>log4j</artifactId>
-			<version>1.2.17</version>
+			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-slf4j-impl</artifactId>
+			<version>2.7</version>
 		</dependency>
 
 		<dependency>
