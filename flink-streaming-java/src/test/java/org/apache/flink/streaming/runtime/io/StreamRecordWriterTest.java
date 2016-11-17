@@ -121,7 +121,7 @@ public class StreamRecordWriterTest {
 		}
 
 		@Override
-		public void flush() throws IOException {
+		public void flush() throws IOException, InterruptedException {
 			if (flushesBeforeException-- <= 0) {
 				throw new IOException("Test Exception");
 			}

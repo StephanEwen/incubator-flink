@@ -124,7 +124,8 @@ public class LocalInputChannelTest {
 					partitionConsumableNotifier,
 					ioManager,
 					ASYNC,
-					true);
+					true,
+					0);
 
 			// Create a buffer pool for this partition
 			partition.registerBufferPool(

@@ -23,6 +23,7 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -40,7 +41,7 @@ public class ResultPartitionTest {
 			// Pipelined, send message => notify
 			ResultPartitionConsumableNotifier notifier = mock(ResultPartitionConsumableNotifier.class);
 			ResultPartition partition = createPartition(notifier, ResultPartitionType.PIPELINED, true);
-			partition.add(TestBufferFactory.createBuffer(), 0);
+			partition.add(TestBufferFactory.createBuffer(), 0, true);
 			verify(notifier, times(1)).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class));
 		}
 
@@ -48,7 +49,7 @@ public class ResultPartitionTest {
 			// Pipelined, don't send message => don't notify
 			ResultPartitionConsumableNotifier notifier = mock(ResultPartitionConsumableNotifier.class);
 			ResultPartition partition = createPartition(notifier, ResultPartitionType.PIPELINED, false);
-			partition.add(TestBufferFactory.createBuffer(), 0);
+			partition.add(TestBufferFactory.createBuffer(), 0, true);
 			verify(notifier, never()).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class));
 		}
 
@@ -56,7 +57,7 @@ public class ResultPartitionTest {
 			// Blocking, send message => don't notify
 			ResultPartitionConsumableNotifier notifier = mock(ResultPartitionConsumableNotifier.class);
 			ResultPartition partition = createPartition(notifier, ResultPartitionType.BLOCKING, true);
-			partition.add(TestBufferFactory.createBuffer(), 0);
+			partition.add(TestBufferFactory.createBuffer(), 0, true);
 			verify(notifier, never()).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class));
 		}
 
@@ -64,9 +65,33 @@ public class ResultPartitionTest {
 			// Blocking, don't send message => don't notify
 			ResultPartitionConsumableNotifier notifier = mock(ResultPartitionConsumableNotifier.class);
 			ResultPartition partition = createPartition(notifier, ResultPartitionType.BLOCKING, false);
-			partition.add(TestBufferFactory.createBuffer(), 0);
+			partition.add(TestBufferFactory.createBuffer(), 0, true);
 			verify(notifier, never()).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class));
 		}
+	}
+
+	/**
+	 * Tests that the pipelined bounded queue length config is correctly forwarded.
+	 */
+	@Test
+	public void testPipelinedBoundedQueueLengthConfig() throws Exception {
+		int queueLength = 28;
+
+		ResultPartition partition = new ResultPartition(
+			"The Owner",
+			new JobID(),
+			new ResultPartitionID(),
+			ResultPartitionType.PIPELINED_BOUNDED,
+			1,
+			new ResultPartitionManager(),
+			mock(ResultPartitionConsumableNotifier.class),
+			new IOManagerAsync(),
+			IOManager.IOMode.SYNC,
+			false,
+			queueLength);
+
+		PipelinedSubpartition subpartition = (PipelinedSubpartition) partition.getSubPartition(0);
+		assertEquals(queueLength, subpartition.getMaxAllowedQueueLength());
 	}
 
 	// ------------------------------------------------------------------------
@@ -84,6 +109,7 @@ public class ResultPartitionTest {
 			mock(ResultPartitionManager.class),
 			notifier,
 			mock(IOManager.class),
-			sendScheduleOrUpdateConsumersMessage);
+			sendScheduleOrUpdateConsumersMessage,
+			0);
 	}
 }

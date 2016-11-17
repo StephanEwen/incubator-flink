@@ -68,7 +68,7 @@ class SpillableSubpartition extends ResultSubpartition {
 	}
 
 	@Override
-	public boolean add(Buffer buffer) throws IOException {
+	public boolean add(Buffer buffer, boolean capacityConstrained) throws IOException {
 		checkNotNull(buffer);
 
 		synchronized (buffers) {
@@ -89,9 +89,14 @@ class SpillableSubpartition extends ResultSubpartition {
 	}
 
 	@Override
+	public boolean addIfCapacityAvailable(Buffer buffer) throws IOException {
+		return add(buffer, false);
+	}
+
+	@Override
 	public void finish() throws IOException {
 		synchronized (buffers) {
-			if (add(EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE))) {
+			if (add(EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE), false)) {
 				isFinished = true;
 			}
 		}
