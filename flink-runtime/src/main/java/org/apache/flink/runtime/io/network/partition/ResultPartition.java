@@ -132,7 +132,8 @@ public class ResultPartition implements BufferPoolOwner {
 		ResultPartitionConsumableNotifier partitionConsumableNotifier,
 		IOManager ioManager,
 		IOMode defaultIoMode,
-		boolean sendScheduleOrUpdateConsumersMessage) {
+		boolean sendScheduleOrUpdateConsumersMessage,
+		int pipelinedBoundedQueueLength) {
 
 		this.owningTaskName = checkNotNull(owningTaskName);
 		this.jobId = checkNotNull(jobId);
@@ -155,7 +156,15 @@ public class ResultPartition implements BufferPoolOwner {
 
 			case PIPELINED:
 				for (int i = 0; i < subpartitions.length; i++) {
-					subpartitions[i] = new PipelinedSubpartition(i, this);
+					// Regular pipelined partitions are always unbounded.
+					subpartitions[i] = new PipelinedSubpartition(i, this, 0);
+				}
+
+				break;
+
+			case PIPELINED_BOUNDED:
+				for (int i = 0; i < subpartitions.length; i++) {
+					subpartitions[i] = new PipelinedSubpartition(i, this, pipelinedBoundedQueueLength);
 				}
 
 				break;
@@ -217,6 +226,11 @@ public class ResultPartition implements BufferPoolOwner {
 		return totalNumberOfBytes;
 	}
 
+	// VisibleForTesting
+	public ResultSubpartition getSubPartition(int index) {
+		return subpartitions[index];
+	}
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -225,7 +239,7 @@ public class ResultPartition implements BufferPoolOwner {
 	 * <p> For PIPELINED results, this will trigger the deployment of consuming tasks after the
 	 * first buffer has been added.
 	 */
-	public void add(Buffer buffer, int subpartitionIndex) throws IOException {
+	public void add(Buffer buffer, int subpartitionIndex) throws IOException, InterruptedException {
 		boolean success = false;
 
 		try {
@@ -258,7 +272,7 @@ public class ResultPartition implements BufferPoolOwner {
 	 *
 	 * <p> For BLOCKING results, this will trigger the deployment of consuming tasks.
 	 */
-	public void finish() throws IOException {
+	public void finish() throws IOException, InterruptedException {
 		boolean success = false;
 
 		try {
@@ -394,7 +408,6 @@ public class ResultPartition implements BufferPoolOwner {
 	 * Notification when a subpartition is released.
 	 */
 	void onConsumedSubpartition(int subpartitionIndex) {
-
 		if (isReleased.get()) {
 			return;
 		}

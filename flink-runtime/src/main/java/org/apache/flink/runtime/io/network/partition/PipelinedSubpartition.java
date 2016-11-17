@@ -29,14 +29,24 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.ArrayDeque;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * A pipelined in-memory only subpartition, which can be consumed once.
  */
-class PipelinedSubpartition extends ResultSubpartition {
+public class PipelinedSubpartition extends ResultSubpartition {
 
 	private static final Logger LOG = LoggerFactory.getLogger(PipelinedSubpartition.class);
+
+	/**
+	 * The maximum allowed queue length for buffers. 0 indicates no limit. For
+	 * streaming jobs a fixed limit should help avoid that single downstream
+	 * operators get a disproportionally large backlog. For batch jobs, it will
+	 * be best to keep this unlimited and let the local buffer pools limit how
+	 * much is queued.
+	 */
+	private final int maxAllowedQueueLength;
 
 	/** Flag indicating whether the subpartition has been finished. */
 	private boolean isFinished;
@@ -54,14 +64,23 @@ class PipelinedSubpartition extends ResultSubpartition {
 	private PipelinedSubpartitionView readView;
 
 	/** All buffers of this subpartition. Access to the buffers is synchronized on this object. */
-	final ArrayDeque<Buffer> buffers = new ArrayDeque<Buffer>();
+	final ArrayDeque<Buffer> buffers = new ArrayDeque<>();
 
-	PipelinedSubpartition(int index, ResultPartition parent) {
+	/**
+	 * Flag for the consuming sub partition view to do a notification for the
+	 * producer.
+	 */
+	boolean notifyProducer;
+
+	PipelinedSubpartition(int index, ResultPartition parent, int maxAllowedQueueLength) {
 		super(index, parent);
+
+		checkArgument(maxAllowedQueueLength >= 0, "Maximum allowed queue length");
+		this.maxAllowedQueueLength = maxAllowedQueueLength;
 	}
 
 	@Override
-	public boolean add(Buffer buffer) {
+	public boolean add(Buffer buffer) throws InterruptedException {
 		checkNotNull(buffer);
 
 		final NotificationListener listener;
@@ -69,6 +88,16 @@ class PipelinedSubpartition extends ResultSubpartition {
 		synchronized (buffers) {
 			if (isReleased || isFinished) {
 				return false;
+			}
+
+			if (maxAllowedQueueLength > 0 && buffers.size() >= maxAllowedQueueLength) {
+				notifyProducer = true;
+				buffers.wait();
+
+				// Check again whether the partition was released in the meantime
+				if (isReleased) {
+					return false;
+				}
 			}
 
 			// Add the buffer and update the stats
@@ -89,12 +118,24 @@ class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	@Override
-	public void finish() throws IOException {
+	public void finish() throws IOException, InterruptedException {
 		final NotificationListener listener;
 
 		synchronized (buffers) {
 			if (isReleased || isFinished) {
 				return;
+			}
+
+			// Strictly speaking we don't need to really check the queue length
+			// here, because the buffers don't come from the local buffer pool.
+			if (maxAllowedQueueLength > 0 && buffers.size() >= maxAllowedQueueLength) {
+				notifyProducer = true;
+				buffers.wait();
+
+				// Check again whether the partition was released in the meantime
+				if (isReleased) {
+					return;
+				}
 			}
 
 			final Buffer buffer = EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE);
@@ -146,6 +187,9 @@ class PipelinedSubpartition extends ResultSubpartition {
 			// Make sure that no further buffers are added to the subpartition
 			isReleased = true;
 
+			// Notify after we have released everything
+			buffers.notifyAll();
+
 			LOG.debug("Released {}.", this);
 		}
 
@@ -196,6 +240,21 @@ class PipelinedSubpartition extends ResultSubpartition {
 							"finished? %s, read view? %s]",
 					getTotalNumberOfBuffers(), getTotalNumberOfBytes(), isFinished, readView != null);
 		}
+	}
+
+	@Override
+	public int getCurrentSize() {
+		return buffers.size();
+	}
+
+	// VisibleForTesting
+	public boolean isFinished() {
+		return isFinished;
+	}
+
+	// VisibleForTesting
+	public int getMaxAllowedQueueLength() {
+		return maxAllowedQueueLength;
 	}
 
 	/**

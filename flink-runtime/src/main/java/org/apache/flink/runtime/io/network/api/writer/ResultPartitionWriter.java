@@ -67,22 +67,22 @@ public final class ResultPartitionWriter implements EventListener<TaskEvent> {
 	// Data processing
 	// ------------------------------------------------------------------------
 
-	public void writeBuffer(Buffer buffer, int targetChannel) throws IOException {
+	public void writeBuffer(Buffer buffer, int targetChannel) throws IOException, InterruptedException {
 		partition.add(buffer, targetChannel);
 	}
 
-	public void writeEvent(AbstractEvent event, int targetChannel) throws IOException {
+	public void writeEvent(AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
 		partition.add(EventSerializer.toBuffer(event), targetChannel);
 	}
 
-	public void writeEventToAllChannels(AbstractEvent event) throws IOException {
+	public void writeEventToAllChannels(AbstractEvent event) throws IOException, InterruptedException {
 		for (int i = 0; i < partition.getNumberOfSubpartitions(); i++) {
 			Buffer buffer = EventSerializer.toBuffer(event);
 			partition.add(buffer, i);
 		}
 	}
 
-	public void writeEndOfSuperstep() throws IOException {
+	public void writeEndOfSuperstep() throws IOException, InterruptedException {
 		for (int i = 0; i < partition.getNumberOfSubpartitions(); i++) {
 			Buffer buffer = EventSerializer.toBuffer(EndOfSuperstepEvent.INSTANCE);
 			partition.add(buffer, i);

@@ -177,6 +177,11 @@ class SpillableSubpartition extends ResultSubpartition {
 	}
 
 	@Override
+	public int getCurrentSize() {
+		return 0;
+	}
+
+	@Override
 	public ResultSubpartitionView createReadView(BufferProvider bufferProvider) throws IOException {
 		synchronized (buffers) {
 			if (!isFinished) {

@@ -152,7 +152,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		targetPartition.writeEndOfSuperstep();
 	}
 
-	public void flush() throws IOException {
+	public void flush() throws IOException, InterruptedException {
 		for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
 			RecordSerializer<T> serializer = serializers[targetChannel];
 
@@ -214,7 +214,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 	private void writeAndClearBuffer(
 			Buffer buffer,
 			int targetChannel,
-			RecordSerializer<T> serializer) throws IOException {
+			RecordSerializer<T> serializer) throws IOException, InterruptedException {
 
 		try {
 			targetPartition.writeBuffer(buffer, targetChannel);

@@ -43,7 +43,14 @@ class PipelinedSubpartitionView implements ResultSubpartitionView {
 	@Override
 	public Buffer getNextBuffer() {
 		synchronized (parent.buffers) {
-			return parent.buffers.poll();
+			Buffer buffer = parent.buffers.poll();
+
+			if (parent.notifyProducer) {
+				parent.notifyProducer = false;
+				parent.buffers.notify();
+			}
+
+			return buffer;
 		}
 	}
 

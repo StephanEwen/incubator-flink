@@ -409,7 +409,7 @@ public class RecordWriterTest {
 	 */
 	private ResultPartitionWriter createCollectingPartitionWriter(
 			final Queue<BufferOrEvent>[] queues,
-			BufferProvider bufferProvider) throws IOException {
+			BufferProvider bufferProvider) throws IOException, InterruptedException {
 
 		int numChannels = queues.length;
 
@@ -471,7 +471,7 @@ public class RecordWriterTest {
 	}
 
 	private ResultPartitionWriter createResultPartitionWriter(BufferProvider bufferProvider)
-			throws IOException {
+			throws IOException, InterruptedException {
 
 		ResultPartitionWriter partitionWriter = mock(ResultPartitionWriter.class);
 		when(partitionWriter.getBufferProvider()).thenReturn(checkNotNull(bufferProvider));

@@ -325,6 +325,11 @@ public class Task implements Runnable {
 
 		int counter = 0;
 
+		// Queue capacity for bounded pipelined partitions
+		int pipelinedBoundedQueueLength = taskManagerConfig.getConfiguration().getInteger(
+			ConfigConstants.NETWORK_PIPELINED_BOUNDED_QUEUE_LENGTH_KEY,
+			ConfigConstants.DEFAULT_NETWORK_PIPELINED_BOUNDED_QUEUE_LENGTH);
+
 		for (ResultPartitionDeploymentDescriptor desc: resultPartitionDeploymentDescriptors) {
 			ResultPartitionID partitionId = new ResultPartitionID(desc.getPartitionId(), executionId);
 
@@ -338,7 +343,8 @@ public class Task implements Runnable {
 					networkEnvironment.getPartitionConsumableNotifier(),
 					ioManager,
 					networkEnvironment.getDefaultIOMode(),
-					desc.sendScheduleOrUpdateConsumersMessage());
+					desc.sendScheduleOrUpdateConsumersMessage(),
+					pipelinedBoundedQueueLength);
 
 			writers[counter] = new ResultPartitionWriter(producedPartitions[counter]);
 

@@ -20,9 +20,11 @@ package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -69,6 +71,30 @@ public class ResultPartitionTest {
 		}
 	}
 
+	/**
+	 * Tests that the pipelined bounded queue length config is correctly forwarded.
+	 */
+	@Test
+	public void testPipelinedBoundedQueueLengthConfig() throws Exception {
+		int queueLength = 28;
+
+		ResultPartition partition = new ResultPartition(
+			"The Owner",
+			new JobID(),
+			new ResultPartitionID(),
+			ResultPartitionType.PIPELINED_BOUNDED,
+			1,
+			new ResultPartitionManager(),
+			mock(ResultPartitionConsumableNotifier.class),
+			new IOManagerAsync(),
+			IOManager.IOMode.SYNC,
+			false,
+			queueLength);
+
+		PipelinedSubpartition subpartition = (PipelinedSubpartition) partition.getSubPartition(0);
+		assertEquals(queueLength, subpartition.getMaxAllowedQueueLength());
+	}
+
 	// ------------------------------------------------------------------------
 
 	private static ResultPartition createPartition(
@@ -85,6 +111,7 @@ public class ResultPartitionTest {
 			notifier,
 			mock(IOManager.class),
 			IOManager.IOMode.SYNC,
-			sendScheduleOrUpdateConsumersMessage);
+			sendScheduleOrUpdateConsumersMessage,
+			0);
 	}
 }

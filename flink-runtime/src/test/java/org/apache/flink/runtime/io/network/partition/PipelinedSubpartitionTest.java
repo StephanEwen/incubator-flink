@@ -20,10 +20,13 @@ package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
+import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.util.TestConsumerCallback;
+import org.apache.flink.runtime.io.network.util.TestInfiniteBufferProvider;
 import org.apache.flink.runtime.io.network.util.TestNotificationListener;
 import org.apache.flink.runtime.io.network.util.TestPooledBufferProvider;
 import org.apache.flink.runtime.io.network.util.TestProducerSource;
@@ -32,11 +35,15 @@ import org.apache.flink.runtime.io.network.util.TestSubpartitionProducer;
 import org.junit.AfterClass;
 import org.junit.Test;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.flink.runtime.io.network.util.TestBufferFactory.createBuffer;
+import static org.apache.flink.runtime.io.network.util.TestBufferFactory.getMockBuffer;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -59,7 +66,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 	PipelinedSubpartition createSubpartition() {
 		final ResultPartition parent = mock(ResultPartition.class);
 
-		return new PipelinedSubpartition(0, parent);
+		return new PipelinedSubpartition(0, parent, 0);
 	}
 
 	@Test
@@ -193,6 +200,252 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 	public void testConcurrentSlowProduceAndSlowConsume() throws Exception {
 		testProduceConsume(true, true);
 	}
+
+	/**
+	 * Test that the size bound is respected for add calls.
+	 */
+	@Test
+	public void testBoundedSubPartitionWaitingInAdd() throws Exception {
+		Thread producer = null;
+		try {
+			final int size = ThreadLocalRandom.current().nextInt(10) + 1;
+
+			ResultPartition partition = mock(ResultPartition.class);
+			final PipelinedSubpartition subpartition = new PipelinedSubpartition(0, partition, size);
+			final CountDownLatch latch = new CountDownLatch(1);
+			final AtomicReference<Throwable> error = new AtomicReference<>();
+
+			producer = new Thread() {
+				@Override
+				public void run() {
+					try {
+						// Add one more than the bounded size.
+						for (int i = 0; i < size + 1; i++) {
+							assertTrue(subpartition.add(getMockBuffer()));
+						}
+						latch.countDown();
+					} catch (Throwable e) {
+						error.set(e);
+					}
+				}
+			};
+
+			producer.start();
+
+			long deadline = System.currentTimeMillis() + 30 * 1_000;
+			while (System.currentTimeMillis() <= deadline && producer.getState() != Thread.State.WAITING) {
+				// Thread should be waiting for buffers. This is very much white
+				// box testing the behaviour, but what else can we do here?
+				Thread.sleep(1);
+			}
+
+			assertEquals(Thread.State.WAITING, producer.getState());
+			assertEquals(subpartition.getCurrentSize(), size);
+
+			PipelinedSubpartitionView read = subpartition.createReadView(new TestInfiniteBufferProvider());
+
+			// Read all buffers
+			for (int i = 0; i < size; i++) {
+				assertNotNull(read.getNextBuffer());
+			}
+
+			latch.await();
+			assertNotNull(read.getNextBuffer());
+
+			assertEquals(0, subpartition.getCurrentSize());
+
+			if (error.get() != null) {
+				error.get().printStackTrace();
+				fail("Producer failed: " + error.get().getMessage());
+			}
+		} finally {
+			if (producer != null) {
+				// Make sure the producer thread terminates
+				producer.interrupt();
+				producer.join();
+			}
+		}
+	}
+
+	/**
+	 * Test that the size bound is respected for finish calls.
+	 */
+	@Test
+	public void testBoundedSubPartitionWaitingInFinish() throws Exception {
+		Thread producer = null;
+		try {
+			final int size = ThreadLocalRandom.current().nextInt(10) + 1;
+
+			ResultPartition partition = mock(ResultPartition.class);
+			final PipelinedSubpartition subpartition = new PipelinedSubpartition(0, partition, size);
+			final CountDownLatch latch = new CountDownLatch(1);
+			final AtomicReference<Throwable> error = new AtomicReference<>();
+
+			producer = new Thread() {
+				@Override
+				public void run() {
+					try {
+						// Add as much as we can.
+						for (int i = 0; i < size; i++) {
+							assertTrue(subpartition.add(getMockBuffer()));
+						}
+
+						subpartition.finish();
+						latch.countDown();
+					} catch (Throwable e) {
+						error.set(e);
+					}
+				}
+			};
+
+			producer.start();
+
+			long deadline = System.currentTimeMillis() + 30 * 1_000;
+			while (System.currentTimeMillis() <= deadline && producer.getState() != Thread.State.WAITING) {
+				// Thread should be waiting for buffers. This is very much white
+				// box testing the behaviour, but what else can we do here?
+				Thread.sleep(1);
+			}
+
+			assertEquals(Thread.State.WAITING, producer.getState());
+			assertEquals(subpartition.getCurrentSize(), size);
+
+			PipelinedSubpartitionView read = subpartition.createReadView(new TestInfiniteBufferProvider());
+
+			// Read all buffers
+			for (int i = 0; i < size; i++) {
+				assertNotNull(read.getNextBuffer());
+			}
+
+			latch.await();
+
+			Buffer eopBuffer = read.getNextBuffer();
+			assertNotNull(eopBuffer);
+			assertFalse(eopBuffer.isBuffer());
+			assertEquals(EndOfPartitionEvent.class, EventSerializer.fromBuffer(eopBuffer, Thread.currentThread().getContextClassLoader()).getClass());
+
+			assertEquals(0, subpartition.getCurrentSize());
+
+			if (error.get() != null) {
+				error.get().printStackTrace();
+				fail("Producer failed: " + error.get().getMessage());
+			}
+		} finally {
+			if (producer != null) {
+				// Make sure the producer thread terminates
+				producer.interrupt();
+				producer.join();
+			}
+		}
+	}
+
+	/**
+	 * Test that a waiting add operation reacts to a cancellation.
+	 */
+	@Test
+	public void testBoundedSubPartitionReleasedWhileWaitingInAdd() throws Exception {
+		Thread producer = null;
+		try {
+			ResultPartition partition = mock(ResultPartition.class);
+			final PipelinedSubpartition subpartition = new PipelinedSubpartition(0, partition, 1);
+			final AtomicReference<Throwable> error = new AtomicReference<>();
+
+			producer = new Thread() {
+				@Override
+				public void run() {
+					try {
+						assertTrue(subpartition.add(getMockBuffer()));
+						assertFalse(subpartition.add(getMockBuffer()));
+					} catch (Throwable e) {
+						error.set(e);
+					}
+				}
+			};
+
+			producer.start();
+
+			long deadline = System.currentTimeMillis() + 30 * 1_000;
+			while (System.currentTimeMillis() <= deadline && producer.getState() != Thread.State.WAITING) {
+				// Thread should be waiting for buffers. This is very much white
+				// box testing the behaviour, but what else can we do here?
+				Thread.sleep(1);
+			}
+
+			assertEquals(Thread.State.WAITING, producer.getState());
+			assertEquals(subpartition.getCurrentSize(), 1);
+
+			// Release it
+			subpartition.release();
+
+			producer.join();
+
+			if (error.get() != null) {
+				error.get().printStackTrace();
+				fail("Producer failed: " + error.get().getMessage());
+			}
+		} finally {
+			if (producer != null) {
+				// Make sure the producer thread terminates
+				producer.interrupt();
+				producer.join();
+			}
+		}
+	}
+
+	/**
+	 * Test that a waiting add operation reacts to a cancellation.
+	 */
+	@Test
+	public void testBoundedSubPartitionReleasedWhileWaitingInFinish() throws Exception {
+		Thread producer = null;
+		try {
+			ResultPartition partition = mock(ResultPartition.class);
+			final PipelinedSubpartition subpartition = new PipelinedSubpartition(0, partition, 1);
+			final AtomicReference<Throwable> error = new AtomicReference<>();
+
+			producer = new Thread() {
+				@Override
+				public void run() {
+					try {
+						assertTrue(subpartition.add(getMockBuffer()));
+						subpartition.finish();
+						assertFalse(subpartition.isFinished());
+					} catch (Throwable t) {
+						error.set(t);
+					}
+				}
+			};
+
+			producer.start();
+
+			long deadline = System.currentTimeMillis() + 30 * 1_000;
+			while (System.currentTimeMillis() <= deadline && producer.getState() != Thread.State.WAITING) {
+				// Thread should be waiting for buffers. This is very much white
+				// box testing the behaviour, but what else can we do here?
+				Thread.sleep(1);
+			}
+
+			assertEquals(Thread.State.WAITING, producer.getState());
+			assertEquals(subpartition.getCurrentSize(), 1);
+
+			// Release it
+			subpartition.release();
+
+			producer.join();
+
+			if (error.get() != null) {
+				error.get().printStackTrace();
+				fail("Producer failed: " + error.get().getMessage());
+			}
+		} finally {
+			if (producer != null) {
+				// Make sure the producer thread terminates
+				producer.interrupt();
+				producer.join();
+			}
+		}
+	}
+
 
 	private void testProduceConsume(boolean isSlowProducer, boolean isSlowConsumer) throws Exception {
 		// Config
