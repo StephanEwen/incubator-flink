@@ -259,16 +259,25 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	@Override
 	public String toString() {
+		final long totalNumBytes;
+		final int totalNumBuffers;
+		final boolean finished;
+		final boolean read;
+
 		synchronized (buffers) {
-			return String.format("PipelinedSubpartition [number of buffers: %d (%d bytes), " +
-							"finished? %s, read view? %s]",
-					getTotalNumberOfBuffers(), getTotalNumberOfBytes(), isFinished, readView != null);
+			totalNumBuffers = getTotalNumberOfBuffers();
+			totalNumBytes = getTotalNumberOfBytes();
+			finished = isFinished;
+			read = readView != null;
 		}
+
+		return String.format("PipelinedSubpartition [number of buffers: %d (%d bytes), finished? %s, read view? %s]",
+				totalNumBuffers, totalNumBytes, finished, read);
 	}
 
 	@Override
-	public int getCurrentSize() {
-		return buffers.size();
+	public int unsynchronizedGetCurrentSize() {
+		return Math.max(buffers.size(), 0);
 	}
 
 	// VisibleForTesting

@@ -27,13 +27,14 @@ import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import scala.Tuple2;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
-import java.util.Queue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -59,7 +60,7 @@ public class RemoteInputChannel extends InputChannel {
 	 * The received buffers. Received buffers are enqueued by the network I/O thread and the queue
 	 * is consumed by the receiving task thread.
 	 */
-	private final Queue<Buffer> receivedBuffers = new ArrayDeque<Buffer>();
+	private final ArrayDeque<Buffer> receivedBuffers = new ArrayDeque<Buffer>();
 
 	/**
 	 * Flag indicating whether this channel has been released. Either called by the receiving task
@@ -225,6 +226,10 @@ public class RemoteInputChannel extends InputChannel {
 		synchronized (receivedBuffers) {
 			return receivedBuffers.size();
 		}
+	}
+
+	public int unsynchronizedGetNumberOfQueuedBuffers() {
+		return Math.max(0, receivedBuffers.size());
 	}
 
 	public InputChannelID getInputChannelId() {

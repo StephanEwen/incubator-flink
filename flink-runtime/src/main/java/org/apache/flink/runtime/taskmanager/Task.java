@@ -47,6 +47,8 @@ import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionMetrics;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGateMetrics;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
@@ -366,6 +368,20 @@ public class Task implements Runnable {
 			inputGatesById.put(gate.getConsumedResultId(), gate);
 
 			++counter;
+		}
+
+		// register detailed network metrics, if configured
+		if (tmConfig.getBoolean(ConfigConstants.NETWORK_DETAILED_METRICS_KEY, false)) {
+			// output metrics
+			for (int i = 0; i < producedPartitions.length; i++) {
+				ResultPartitionMetrics.registerQueueLengthMetrics(
+						metricGroup.addGroup("netout_" + i), producedPartitions[i]);
+			}
+
+			for (int i = 0; i < inputGates.length; i++) {
+				InputGateMetrics.registerQueueLengthMetrics(
+						metricGroup.addGroup("netin_" + i), inputGates[i]);
+			}
 		}
 
 		invokableHasBeenCanceled = new AtomicBoolean(false);

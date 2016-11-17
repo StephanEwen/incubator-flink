@@ -30,6 +30,7 @@ import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.taskmanager.TaskManager;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -457,6 +458,10 @@ public class ResultPartition implements BufferPoolOwner {
 
 		LOG.debug("{}: Received release notification for subpartition {} (reference count now at: {}).",
 				this, subpartitionIndex, pendingReferences);
+	}
+
+	ResultSubpartition[] getAllPartitions() {
+		return subpartitions;
 	}
 
 	// ------------------------------------------------------------------------

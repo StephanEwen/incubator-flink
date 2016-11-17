@@ -18,8 +18,6 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Maps;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.metrics.groups.IOMetricGroup;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
@@ -47,6 +45,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Timer;
@@ -190,7 +189,7 @@ public class SingleInputGate implements InputGate {
 		checkArgument(numberOfInputChannels > 0);
 		this.numberOfInputChannels = numberOfInputChannels;
 
-		this.inputChannels = Maps.newHashMapWithExpectedSize(numberOfInputChannels);
+		this.inputChannels = new HashMap<>(numberOfInputChannels);
 		this.channelsWithEndOfPartitionEvents = new BitSet(numberOfInputChannels);
 
 		this.partitionStateChecker = checkNotNull(partitionStateChecker);
@@ -497,7 +496,6 @@ public class SingleInputGate implements InputGate {
 
 	// ------------------------------------------------------------------------
 
-	@VisibleForTesting
 	Map<IntermediateResultPartitionID, InputChannel> getInputChannels() {
 		return inputChannels;
 	}

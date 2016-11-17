@@ -243,7 +243,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 			}
 
 			assertEquals(Thread.State.WAITING, producer.getState());
-			assertEquals(subpartition.getCurrentSize(), size);
+			assertEquals(subpartition.unsynchronizedGetCurrentSize(), size);
 
 			PipelinedSubpartitionView read = subpartition.createReadView(new TestInfiniteBufferProvider());
 
@@ -255,7 +255,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 			latch.await();
 			assertNotNull(read.getNextBuffer());
 
-			assertEquals(0, subpartition.getCurrentSize());
+			assertEquals(0, subpartition.unsynchronizedGetCurrentSize());
 
 			if (error.get() != null) {
 				error.get().printStackTrace();
@@ -336,7 +336,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 			}
 
 			assertEquals(Thread.State.WAITING, producer.getState());
-			assertEquals(subpartition.getCurrentSize(), 1);
+			assertEquals(subpartition.unsynchronizedGetCurrentSize(), 1);
 
 			// Release it
 			subpartition.release();

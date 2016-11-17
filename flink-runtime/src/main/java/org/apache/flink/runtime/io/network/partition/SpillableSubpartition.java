@@ -182,8 +182,8 @@ class SpillableSubpartition extends ResultSubpartition {
 	}
 
 	@Override
-	public int getCurrentSize() {
-		return 0;
+	public int unsynchronizedGetCurrentSize() {
+		return -1;
 	}
 
 	@Override
