@@ -139,7 +139,16 @@ public class SingleInputGateTest {
 		// Unknown
 		ResultPartitionID unknownPartitionId = new ResultPartitionID(new IntermediateResultPartitionID(), new ExecutionAttemptID());
 
-		InputChannel unknown = new UnknownInputChannel(inputGate, 1, unknownPartitionId, partitionManager, taskEventDispatcher, mock(ConnectionManager.class), new Tuple2<Integer, Integer>(0, 0), new UnregisteredTaskMetricsGroup.DummyIOMetricGroup());
+		InputChannel unknown = new UnknownInputChannel(
+				inputGate,
+				1,
+				unknownPartitionId,
+				partitionManager,
+				taskEventDispatcher,
+				mock(ConnectionManager.class),
+				new Tuple2<Integer, Integer>(0, 0),
+				new UnregisteredTaskMetricsGroup.DummyIOMetricGroup(),
+				0);
 
 		// Set channels
 		inputGate.setInputChannel(localPartitionId.getPartitionId(), local);
@@ -159,7 +168,8 @@ public class SingleInputGateTest {
 		verify(taskEventDispatcher, times(1)).publish(any(ResultPartitionID.class), any(TaskEvent.class));
 
 		// After the update, the pending event should be send to local channel
-		inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(new ResultPartitionID(unknownPartitionId.getPartitionId(), unknownPartitionId.getProducerId()), ResultPartitionLocation.createLocal()));
+		inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
+				new ResultPartitionID(unknownPartitionId.getPartitionId(), unknownPartitionId.getProducerId()), ResultPartitionLocation.createLocal(), false));
 
 		verify(partitionManager, times(2)).createSubpartitionView(any(ResultPartitionID.class), anyInt(), any(BufferProvider.class), any(PipelinedAvailabilityListener.class));
 		verify(taskEventDispatcher, times(2)).publish(any(ResultPartitionID.class), any(TaskEvent.class));
@@ -191,14 +201,17 @@ public class SingleInputGateTest {
 				partitionManager,
 				new TaskEventDispatcher(),
 				new LocalConnectionManager(),
-				new Tuple2<Integer, Integer>(0, 0), new UnregisteredTaskMetricsGroup.DummyIOMetricGroup());
+				new Tuple2<Integer, Integer>(0, 0),
+				new UnregisteredTaskMetricsGroup.DummyIOMetricGroup(),
+				0);
 
 		inputGate.setInputChannel(unknown.partitionId.getPartitionId(), unknown);
 
 		// Update to a local channel and verify that no request is triggered
 		inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
 				unknown.partitionId,
-				ResultPartitionLocation.createLocal()));
+				ResultPartitionLocation.createLocal(),
+				false));
 
 		verify(partitionManager, never()).createSubpartitionView(
 				any(ResultPartitionID.class), anyInt(), any(BufferProvider.class), any(PipelinedAvailabilityListener.class));
@@ -231,7 +244,8 @@ public class SingleInputGateTest {
 				new TaskEventDispatcher(),
 				new LocalConnectionManager(),
 				new Tuple2<Integer, Integer>(0, 0),
-				new UnregisteredTaskMetricsGroup.DummyIOMetricGroup());
+				new UnregisteredTaskMetricsGroup.DummyIOMetricGroup(),
+				0);
 
 		inputGate.setInputChannel(unknown.partitionId.getPartitionId(), unknown);
 
@@ -294,15 +308,18 @@ public class SingleInputGateTest {
 			// Local
 			new InputChannelDeploymentDescriptor(
 				partitionIds[0],
-				ResultPartitionLocation.createLocal()),
+				ResultPartitionLocation.createLocal(),
+				false),
 			// Remote
 			new InputChannelDeploymentDescriptor(
 				partitionIds[1],
-				ResultPartitionLocation.createRemote(new ConnectionID(new InetSocketAddress("localhost", 5000), 0))),
+				ResultPartitionLocation.createRemote(new ConnectionID(new InetSocketAddress("localhost", 5000), 0)),
+				false),
 			// Unknown
 			new InputChannelDeploymentDescriptor(
 				partitionIds[2],
-				ResultPartitionLocation.createUnknown())};
+				ResultPartitionLocation.createUnknown(),
+				false)};
 
 		InputGateDeploymentDescriptor gateDesc = new InputGateDeploymentDescriptor(new IntermediateDataSetID(), 0, channelDescs);
 
@@ -322,7 +339,8 @@ public class SingleInputGateTest {
 			new ExecutionAttemptID(),
 			gateDesc,
 			netEnv,
-			new UnregisteredTaskMetricsGroup.DummyIOMetricGroup());
+			new UnregisteredTaskMetricsGroup.DummyIOMetricGroup(),
+			0);
 
 		Map<IntermediateResultPartitionID, InputChannel> channelMap = gate.getInputChannels();
 
