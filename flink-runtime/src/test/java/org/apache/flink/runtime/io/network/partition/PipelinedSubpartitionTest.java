@@ -32,6 +32,7 @@ import org.apache.flink.runtime.io.network.util.TestPooledBufferProvider;
 import org.apache.flink.runtime.io.network.util.TestProducerSource;
 import org.apache.flink.runtime.io.network.util.TestSubpartitionConsumer;
 import org.apache.flink.runtime.io.network.util.TestSubpartitionProducer;
+
 import org.junit.AfterClass;
 import org.junit.Test;
 
@@ -84,7 +85,8 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 
 			fail("Did not throw expected exception after duplicate listener registration.");
 		}
-		catch (IllegalStateException expected) {
+		catch (IllegalStateException e) {
+			// expected
 		}
 	}
 
@@ -100,11 +102,11 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 			assertTrue(subpartition.registerListener(listener));
 
 			// Notify on add and remove listener
-			subpartition.add(mock(Buffer.class));
+			subpartition.add(mock(Buffer.class), false);
 			assertEquals(1, listener.getNumberOfNotifications());
 
 			// No notification, should have removed listener after first notification
-			subpartition.add(mock(Buffer.class));
+			subpartition.add(mock(Buffer.class), false);
 			assertEquals(1, listener.getNumberOfNotifications());
 		}
 
@@ -143,7 +145,8 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 
 			fail("Did not throw expected exception after duplicate read view request.");
 		}
-		catch (IllegalStateException expected) {
+		catch (IllegalStateException e) {
+			// expected
 		}
 	}
 
@@ -164,7 +167,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		assertEquals(0, listener.getNumberOfNotifications());
 
 		// Add data to the queue...
-		subpartition.add(createBuffer());
+		subpartition.add(createBuffer(), false);
 
 		// ...should have resulted in a notification
 		assertEquals(1, listener.getNumberOfNotifications());
@@ -174,7 +177,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		assertNull(view.getNextBuffer());
 
 		// Add data to the queue...
-		subpartition.add(createBuffer());
+		subpartition.add(createBuffer(), false);
 		// ...don't allow to subscribe, if data is available
 		assertFalse(view.registerListener(listener));
 
@@ -221,7 +224,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 					try {
 						// Add one more than the bounded size.
 						for (int i = 0; i < size + 1; i++) {
-							assertTrue(subpartition.add(getMockBuffer()));
+							assertTrue(subpartition.add(getMockBuffer(), false));
 						}
 						latch.countDown();
 					} catch (Throwable e) {
@@ -272,71 +275,32 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 	 */
 	@Test
 	public void testBoundedSubPartitionWaitingInFinish() throws Exception {
-		Thread producer = null;
-		try {
-			final int size = ThreadLocalRandom.current().nextInt(10) + 1;
+		final int size = ThreadLocalRandom.current().nextInt(10) + 1;
 
-			ResultPartition partition = mock(ResultPartition.class);
-			final PipelinedSubpartition subpartition = new PipelinedSubpartition(0, partition, size);
-			final CountDownLatch latch = new CountDownLatch(1);
-			final AtomicReference<Throwable> error = new AtomicReference<>();
+		ResultPartition partition = mock(ResultPartition.class);
+		final PipelinedSubpartition subpartition = new PipelinedSubpartition(0, partition, size);
 
-			producer = new Thread() {
-				@Override
-				public void run() {
-					try {
-						// Add as much as we can.
-						for (int i = 0; i < size; i++) {
-							assertTrue(subpartition.add(getMockBuffer()));
-						}
-
-						subpartition.finish();
-						latch.countDown();
-					} catch (Throwable e) {
-						error.set(e);
-					}
-				}
-			};
-
-			producer.start();
-
-			long deadline = System.currentTimeMillis() + 30 * 1_000;
-			while (System.currentTimeMillis() <= deadline && producer.getState() != Thread.State.WAITING) {
-				// Thread should be waiting for buffers. This is very much white
-				// box testing the behaviour, but what else can we do here?
-				Thread.sleep(1);
-			}
-
-			assertEquals(Thread.State.WAITING, producer.getState());
-			assertEquals(subpartition.getCurrentSize(), size);
-
-			PipelinedSubpartitionView read = subpartition.createReadView(new TestInfiniteBufferProvider());
-
-			// Read all buffers
-			for (int i = 0; i < size; i++) {
-				assertNotNull(read.getNextBuffer());
-			}
-
-			latch.await();
-
-			Buffer eopBuffer = read.getNextBuffer();
-			assertNotNull(eopBuffer);
-			assertFalse(eopBuffer.isBuffer());
-			assertEquals(EndOfPartitionEvent.class, EventSerializer.fromBuffer(eopBuffer, Thread.currentThread().getContextClassLoader()).getClass());
-
-			assertEquals(0, subpartition.getCurrentSize());
-
-			if (error.get() != null) {
-				error.get().printStackTrace();
-				fail("Producer failed: " + error.get().getMessage());
-			}
-		} finally {
-			if (producer != null) {
-				// Make sure the producer thread terminates
-				producer.interrupt();
-				producer.join();
-			}
+		// Add as much as we can.
+		for (int i = 0; i < size; i++) {
+			assertTrue(subpartition.add(getMockBuffer(), false));
 		}
+
+		// this should not block, even though the queue is already at capacity
+		subpartition.finish();
+
+		PipelinedSubpartitionView read = subpartition.createReadView(new TestInfiniteBufferProvider());
+
+		// Read all buffers
+		for (int i = 0; i < size; i++) {
+			assertNotNull(read.getNextBuffer());
+		}
+
+		Buffer eopBuffer = read.getNextBuffer();
+		assertNotNull(eopBuffer);
+		assertFalse(eopBuffer.isBuffer());
+		assertEquals(EndOfPartitionEvent.class, EventSerializer.fromBuffer(eopBuffer, Thread.currentThread().getContextClassLoader()).getClass());
+
+		assertEquals(0, subpartition.unsynchronizedGetCurrentSize());
 	}
 
 	/**
@@ -354,64 +318,10 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 				@Override
 				public void run() {
 					try {
-						assertTrue(subpartition.add(getMockBuffer()));
-						assertFalse(subpartition.add(getMockBuffer()));
+						assertTrue(subpartition.add(getMockBuffer(), false));
+						assertFalse(subpartition.add(getMockBuffer(), false));
 					} catch (Throwable e) {
 						error.set(e);
-					}
-				}
-			};
-
-			producer.start();
-
-			long deadline = System.currentTimeMillis() + 30 * 1_000;
-			while (System.currentTimeMillis() <= deadline && producer.getState() != Thread.State.WAITING) {
-				// Thread should be waiting for buffers. This is very much white
-				// box testing the behaviour, but what else can we do here?
-				Thread.sleep(1);
-			}
-
-			assertEquals(Thread.State.WAITING, producer.getState());
-			assertEquals(subpartition.getCurrentSize(), 1);
-
-			// Release it
-			subpartition.release();
-
-			producer.join();
-
-			if (error.get() != null) {
-				error.get().printStackTrace();
-				fail("Producer failed: " + error.get().getMessage());
-			}
-		} finally {
-			if (producer != null) {
-				// Make sure the producer thread terminates
-				producer.interrupt();
-				producer.join();
-			}
-		}
-	}
-
-	/**
-	 * Test that a waiting add operation reacts to a cancellation.
-	 */
-	@Test
-	public void testBoundedSubPartitionReleasedWhileWaitingInFinish() throws Exception {
-		Thread producer = null;
-		try {
-			ResultPartition partition = mock(ResultPartition.class);
-			final PipelinedSubpartition subpartition = new PipelinedSubpartition(0, partition, 1);
-			final AtomicReference<Throwable> error = new AtomicReference<>();
-
-			producer = new Thread() {
-				@Override
-				public void run() {
-					try {
-						assertTrue(subpartition.add(getMockBuffer()));
-						subpartition.finish();
-						assertFalse(subpartition.isFinished());
-					} catch (Throwable t) {
-						error.set(t);
 					}
 				}
 			};

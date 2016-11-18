@@ -22,9 +22,9 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
 import org.apache.flink.runtime.io.network.util.TestInfiniteBufferProvider;
 import org.apache.flink.util.TestLogger;
+
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -49,7 +49,7 @@ public abstract class SubpartitionTestBase extends TestLogger {
 		try {
 			subpartition.finish();
 
-			assertFalse(subpartition.add(mock(Buffer.class)));
+			assertFalse(subpartition.add(mock(Buffer.class), false));
 		}
 		finally {
 			if (subpartition != null) {
@@ -65,7 +65,7 @@ public abstract class SubpartitionTestBase extends TestLogger {
 		try {
 			subpartition.release();
 
-			assertFalse(subpartition.add(mock(Buffer.class)));
+			assertFalse(subpartition.add(mock(Buffer.class), false));
 		}
 		finally {
 			if (subpartition != null) {
@@ -91,7 +91,7 @@ public abstract class SubpartitionTestBase extends TestLogger {
 	private void verifyViewReleasedAfterParentRelease(ResultSubpartition partition) throws Exception {
 		// Add a buffer
 		Buffer buffer = TestBufferFactory.createBuffer();
-		partition.add(buffer);
+		partition.add(buffer, false);
 		partition.finish();
 
 		TestInfiniteBufferProvider buffers = new TestInfiniteBufferProvider();

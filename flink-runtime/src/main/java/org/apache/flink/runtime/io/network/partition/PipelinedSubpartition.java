@@ -23,6 +23,7 @@ import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.util.event.NotificationListener;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,7 +81,48 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	@Override
-	public boolean add(Buffer buffer) throws InterruptedException {
+	public boolean add(Buffer buffer, boolean capacityConstrained) throws IOException, InterruptedException {
+		checkNotNull(buffer);
+
+		final NotificationListener listener;
+
+		synchronized (buffers) {
+			if (isReleased || isFinished) {
+				return false;
+			}
+
+			if (maxAllowedQueueLength > 0 && capacityConstrained) {
+				while (buffers.size() >= maxAllowedQueueLength) {
+					notifyProducer = true;
+
+					buffers.wait();
+
+					// Check again whether the partition was released in the meantime
+					if (isReleased) {
+						return false;
+					}
+				}
+			}
+
+			// Add the buffer and update the stats
+			buffers.add(buffer);
+			updateStatistics(buffer);
+
+			// Get the listener...
+			listener = registeredListener;
+			registeredListener = null;
+		}
+
+		// Notify the listener outside of the synchronized block
+		if (listener != null) {
+			listener.onNotification();
+		}
+
+		return true;
+	}
+
+	@Override
+	public boolean addIfCapacityAvailable(Buffer buffer) throws IOException {
 		checkNotNull(buffer);
 
 		final NotificationListener listener;
@@ -91,13 +133,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			}
 
 			if (maxAllowedQueueLength > 0 && buffers.size() >= maxAllowedQueueLength) {
-				notifyProducer = true;
-				buffers.wait();
-
-				// Check again whether the partition was released in the meantime
-				if (isReleased) {
-					return false;
-				}
+				return false;
 			}
 
 			// Add the buffer and update the stats
@@ -124,18 +160,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		synchronized (buffers) {
 			if (isReleased || isFinished) {
 				return;
-			}
-
-			// Strictly speaking we don't need to really check the queue length
-			// here, because the buffers don't come from the local buffer pool.
-			if (maxAllowedQueueLength > 0 && buffers.size() >= maxAllowedQueueLength) {
-				notifyProducer = true;
-				buffers.wait();
-
-				// Check again whether the partition was released in the meantime
-				if (isReleased) {
-					return;
-				}
 			}
 
 			final Buffer buffer = EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE);

@@ -235,11 +235,14 @@ public class ResultPartition implements BufferPoolOwner {
 
 	/**
 	 * Adds a buffer to the subpartition with the given index.
-	 *
+	 * 
+	 * <p><b>IMPORTANT:</b> The ownership of the buffer will be handed over by
+	 * this method - the caller should not try to hold onto the buffer any more, and not recycle it.
+	 * 
 	 * <p> For PIPELINED results, this will trigger the deployment of consuming tasks after the
 	 * first buffer has been added.
 	 */
-	public void add(Buffer buffer, int subpartitionIndex) throws IOException, InterruptedException {
+	public void add(Buffer buffer, int subpartitionIndex, boolean backPressured) throws IOException, InterruptedException {
 		boolean success = false;
 
 		try {
@@ -248,7 +251,7 @@ public class ResultPartition implements BufferPoolOwner {
 			final ResultSubpartition subpartition = subpartitions[subpartitionIndex];
 
 			synchronized (subpartition) {
-				success = subpartition.add(buffer);
+				success = subpartition.add(buffer, backPressured);
 
 				// Update statistics
 				totalNumberOfBuffers++;
@@ -263,6 +266,37 @@ public class ResultPartition implements BufferPoolOwner {
 				buffer.recycle();
 			}
 		}
+	}
+
+	/**
+	 * Tries to add a buffer to the subpartition with the given index. 
+	 *
+	 * <p><b>IMPORTANT:</b> If the ownership of the buffer will be handed over by
+	 * this method, then the caller should not try to hold onto the buffer any more, and not recycle it.
+	 * 
+	 * <p> For PIPELINED results, this will trigger the deployment of consuming tasks after the
+	 * first buffer has been added.
+	 * 
+	 * @return True if the handover of the buffer was successful, false otherwise.
+	 */
+	public boolean addBufferIfCapacityAvailable(Buffer buffer, int subpartitionIndex) throws IOException {
+		checkInProduceState();
+
+		final ResultSubpartition subpartition = subpartitions[subpartitionIndex];
+
+		boolean added;
+		synchronized (subpartition) {
+			if (added = subpartition.addIfCapacityAvailable(buffer)) {
+				// Update statistics
+				totalNumberOfBuffers++;
+				totalNumberOfBytes += buffer.getSize();
+			}
+		}
+
+		if (added) {
+			notifyPipelinedConsumers();
+		}
+		return added;
 	}
 
 	/**

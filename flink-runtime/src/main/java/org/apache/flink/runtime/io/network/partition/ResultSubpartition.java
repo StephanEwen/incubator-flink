@@ -71,7 +71,9 @@ public abstract class ResultSubpartition {
 		return parent.getFailureCause();
 	}
 
-	abstract public boolean add(Buffer buffer) throws IOException, InterruptedException;
+	abstract public boolean add(Buffer buffer, boolean capacityConstrained) throws IOException, InterruptedException;
+
+	abstract public boolean addIfCapacityAvailable(Buffer buffer) throws IOException;
 
 	abstract public void finish() throws IOException, InterruptedException;
 
