@@ -37,7 +37,7 @@ public abstract class ResultSubpartition {
 	// - Statistics ----------------------------------------------------------
 
 	/** The total number of buffers (both data and event buffers) */
-	private int totalNumberOfBuffers;
+	private long totalNumberOfBuffers;
 
 	/** The total number of bytes (both data and event buffers) */
 	private long totalNumberOfBytes;
@@ -52,7 +52,7 @@ public abstract class ResultSubpartition {
 		totalNumberOfBytes += buffer.getSize();
 	}
 
-	protected int getTotalNumberOfBuffers() {
+	protected long getTotalNumberOfBuffers() {
 		return totalNumberOfBuffers;
 	}
 

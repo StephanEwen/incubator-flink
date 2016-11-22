@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 import com.google.common.collect.Maps;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.taskmanager.TaskActions;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
@@ -227,7 +228,14 @@ public class SingleInputGate implements InputGate {
 		}
 	}
 
+	/**
+	 *
+	 */
 	public int getNumberOfQueuedBuffers() {
+		// because this method is called by the metrics, we avoid  polling
+		// the status under the lock. To compensate for concurrent modifications to
+		// the channel map, we retry a few times
+
 		// re-try 3 times, if fails, return 0 for "unknown"
 		for (int retry = 0; retry < 3; retry++) {
 			try {
@@ -430,7 +438,6 @@ public class SingleInputGate implements InputGate {
 
 	@Override
 	public BufferOrEvent getNextBufferOrEvent() throws IOException, InterruptedException {
-
 		if (hasReceivedAllEndOfPartitionEvents) {
 			return null;
 		}
@@ -446,14 +453,22 @@ public class SingleInputGate implements InputGate {
 			currentChannel = inputChannelsWithData.poll(2, TimeUnit.SECONDS);
 		}
 
-		final Buffer buffer = currentChannel.getNextBuffer();
+		final BufferAndAvailability result = currentChannel.getNextBuffer();
 
 		// Sanity check that notifications only happen when data is available
-		if (buffer == null) {
+		if (result == null) {
 			throw new IllegalStateException("Bug in input gate/channel logic: input gate got " +
 					"notified by channel about available data, but none was available.");
 		}
 
+		// this channel was now removed from the non-empty channels queue
+		// we re-add it in case it has more data, because in that case no "non-empty" notification
+		// will come for that channel
+		if (result.moreAvailable()) {
+			queueChannel(currentChannel);
+		}
+
+		final Buffer buffer = result.buffer();
 		if (buffer.isBuffer()) {
 			return new BufferOrEvent(buffer, currentChannel.getChannelIndex());
 		}
@@ -503,12 +518,8 @@ public class SingleInputGate implements InputGate {
 		}
 	}
 
-	public void onAvailableBuffer(InputChannel channel) {
-		inputChannelsWithData.add(channel);
-		EventListener<InputGate> listener = registeredListener;
-		if (listener != null) {
-			listener.onEvent(this);
-		}
+	public void notifyChannelNonEmpty(InputChannel channel) {
+		queueChannel(checkNotNull(channel));
 	}
 
 	void triggerPartitionStateCheck(ResultPartitionID partitionId) {
@@ -517,6 +528,15 @@ public class SingleInputGate implements InputGate {
 				executionId,
 				consumedResultId,
 				partitionId);
+	}
+
+	private void queueChannel(InputChannel channel) {
+		inputChannelsWithData.add(channel);
+
+		EventListener<InputGate> listener = registeredListener;
+		if (listener != null) {
+			listener.onEvent(this);
+		}
 	}
 
 	// ------------------------------------------------------------------------

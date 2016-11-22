@@ -24,7 +24,6 @@ import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.reader.BufferReader;
-import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 
@@ -78,9 +77,9 @@ public class UnknownInputChannel extends InputChannel {
 	}
 
 	@Override
-	public Buffer getNextBuffer() throws IOException {
+	public BufferAndAvailability getNextBuffer() throws IOException {
 		// Nothing to do here
-		return null;
+		throw new UnsupportedOperationException("Cannot retrieve a buffer from an UnknownInputChannel");
 	}
 
 	@Override
