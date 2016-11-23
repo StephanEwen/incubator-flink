@@ -264,6 +264,7 @@ public abstract class FileOutputFormat<IT> extends RichOutputFormat<IT> implemen
 		final FSDataOutputStream s = this.stream;
 		if (s != null) {
 			this.stream = null;
+			s.flush();
 			s.close();
 		}
 	}
