@@ -511,8 +511,10 @@ public class SingleInputGate implements InputGate {
 			ExecutionAttemptID executionId,
 			InputGateDeploymentDescriptor igdd,
 			NetworkEnvironment networkEnvironment,
-			IOMetricGroup metrics) {
+			IOMetricGroup metrics,
+			int channelCapacityLimit) {
 
+		checkArgument(channelCapacityLimit >= 0);
 		final IntermediateDataSetID consumedResultId = checkNotNull(igdd.getConsumedResultId());
 
 		final int consumedSubpartitionIndex = igdd.getConsumedSubpartitionIndex();
@@ -545,7 +547,8 @@ public class SingleInputGate implements InputGate {
 						partitionLocation.getConnectionId(),
 						networkEnvironment.getConnectionManager(),
 						networkEnvironment.getPartitionRequestInitialAndMaxBackoff(),
-						metrics
+						metrics,
+						channelCapacityLimit
 				);
 			}
 			else if (partitionLocation.isUnknown()) {
@@ -554,7 +557,8 @@ public class SingleInputGate implements InputGate {
 						networkEnvironment.getTaskEventDispatcher(),
 						networkEnvironment.getConnectionManager(),
 						networkEnvironment.getPartitionRequestInitialAndMaxBackoff(),
-						metrics
+						metrics,
+						channelCapacityLimit
 				);
 			}
 			else {

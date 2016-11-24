@@ -362,7 +362,7 @@ public class Task implements Runnable {
 		for (InputGateDeploymentDescriptor inputGateDeploymentDescriptor: inputGateDeploymentDescriptors) {
 			SingleInputGate gate = SingleInputGate.create(
 					taskNameWithSubtaskAndId, jobId, executionId, inputGateDeploymentDescriptor, networkEnvironment,
-					metricGroup.getIOMetricGroup());
+					metricGroup.getIOMetricGroup(), pipelinedBoundedQueueLength);
 
 			inputGates[counter] = gate;
 			inputGatesById.put(gate.getConsumedResultId(), gate);

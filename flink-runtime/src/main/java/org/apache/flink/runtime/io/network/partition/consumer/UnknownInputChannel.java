@@ -31,6 +31,7 @@ import scala.Tuple2;
 
 import java.io.IOException;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -50,6 +51,8 @@ public class UnknownInputChannel extends InputChannel {
 
 	private final IOMetricGroup metrics;
 
+	private final int channelCapacityLimit;
+
 	public UnknownInputChannel(
 			SingleInputGate gate,
 			int channelIndex,
@@ -58,15 +61,19 @@ public class UnknownInputChannel extends InputChannel {
 			TaskEventDispatcher taskEventDispatcher,
 			ConnectionManager connectionManager,
 			Tuple2<Integer, Integer> partitionRequestInitialAndMaxBackoff,
-			IOMetricGroup metrics) {
+			IOMetricGroup metrics,
+			int channelCapacityLimit) {
 
 		super(gate, channelIndex, partitionId, partitionRequestInitialAndMaxBackoff, null);
+
+		checkArgument(channelCapacityLimit >= 0);
 
 		this.partitionManager = checkNotNull(partitionManager);
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
 		this.connectionManager = checkNotNull(connectionManager);
 		this.partitionRequestInitialAndMaxBackoff = checkNotNull(partitionRequestInitialAndMaxBackoff);
 		this.metrics = checkNotNull(metrics);
+		this.channelCapacityLimit = channelCapacityLimit;
 	}
 
 	@Override
@@ -117,7 +124,7 @@ public class UnknownInputChannel extends InputChannel {
 	// ------------------------------------------------------------------------
 
 	public RemoteInputChannel toRemoteInputChannel(ConnectionID producerAddress) {
-		return new RemoteInputChannel(inputGate, channelIndex, partitionId, checkNotNull(producerAddress), connectionManager, partitionRequestInitialAndMaxBackoff, metrics);
+		return new RemoteInputChannel(inputGate, channelIndex, partitionId, checkNotNull(producerAddress), connectionManager, partitionRequestInitialAndMaxBackoff, metrics, channelCapacityLimit);
 	}
 
 	public LocalInputChannel toLocalInputChannel() {
