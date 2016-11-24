@@ -18,10 +18,8 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
-import org.apache.flink.runtime.util.event.NotificationListener;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -40,9 +38,6 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 	/** The number of buffers in-memory at the subpartition. */
 	private final int numberOfBuffers;
 
-	/** The default I/O mode to use. */
-	private final IOMode ioMode;
-
 	private ResultSubpartitionView spilledView;
 
 	private int currentQueuePosition;
@@ -54,97 +49,90 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 	public SpillableSubpartitionView(
 			SpillableSubpartition parent,
 			BufferProvider bufferProvider,
-			int numberOfBuffers,
-			IOMode ioMode) {
+			int numberOfBuffers) {
 
 		this.parent = checkNotNull(parent);
 		this.bufferProvider = checkNotNull(bufferProvider);
 		checkArgument(numberOfBuffers >= 0);
 		this.numberOfBuffers = numberOfBuffers;
-		this.ioMode = checkNotNull(ioMode);
 	}
 
 	@Override
 	public Buffer getNextBuffer() throws IOException, InterruptedException {
-
-		if (isReleased.get()) {
-			return null;
-		}
-
-		// 1) In-memory
-		synchronized (parent.buffers) {
-			if (parent.isReleased()) {
-				return null;
-			}
-
-			if (parent.spillWriter == null) {
-				if (currentQueuePosition < numberOfBuffers) {
-					Buffer buffer = parent.buffers.get(currentQueuePosition);
-
-					buffer.retain();
-
-					// TODO Fix hard coding of 8 bytes for the header
-					currentBytesRead += buffer.getSize() + 8;
-					currentQueuePosition++;
-
-					return buffer;
-				}
-
-				return null;
-			}
-		}
-
-		// 2) Spilled
-		if (spilledView != null) {
-			return spilledView.getNextBuffer();
-		}
-
-		// 3) Spilling
-		// Make sure that all buffers are written before consuming them. We can't block here,
-		// because this might be called from an network I/O thread.
-		if (parent.spillWriter.getNumberOfOutstandingRequests() > 0) {
-			return null;
-		}
-
-		if (ioMode.isSynchronous()) {
-			spilledView = new SpilledSubpartitionViewSyncIO(
-					parent,
-					bufferProvider.getMemorySegmentSize(),
-					parent.spillWriter.getChannelID(),
-					currentBytesRead);
-		}
-		else {
-			spilledView = new SpilledSubpartitionViewAsyncIO(
-					parent,
-					bufferProvider,
-					parent.ioManager,
-					parent.spillWriter.getChannelID(),
-					currentBytesRead);
-		}
-
-		return spilledView.getNextBuffer();
+		return null;
+//		if (isReleased.get()) {
+//			return null;
+//		}
+//
+//		// 1) In-memory
+//		synchronized (parent.buffers) {
+//			if (parent.isReleased()) {
+//				return null;
+//			}
+//
+//			if (parent.spillWriter == null) {
+//				if (currentQueuePosition < numberOfBuffers) {
+//					Buffer buffer = parent.buffers.get(currentQueuePosition);
+//
+//					buffer.retain();
+//
+//					// TODO Fix hard coding of 8 bytes for the header
+//					currentBytesRead += buffer.getSize() + 8;
+//					currentQueuePosition++;
+//
+//					return buffer;
+//				}
+//
+//				return null;
+//			}
+//		}
+//
+//		// 2) Spilled
+//		if (spilledView != null) {
+//			return spilledView.getNextBuffer();
+//		}
+//
+//		// 3) Spilling
+//		// Make sure that all buffers are written before consuming them. We can't block here,
+//		// because this might be called from an network I/O thread.
+//		if (parent.spillWriter.getNumberOfOutstandingRequests() > 0) {
+//			return null;
+//		}
+//
+//		spilledView = new SpilledSubpartitionViewSyncIO(
+//				parent,
+//				bufferProvider.getMemorySegmentSize(),
+//				parent.spillWriter.getChannelID(),
+//				currentBytesRead);
+//
+//		return spilledView.getNextBuffer();
 	}
 
 	@Override
-	public boolean registerListener(NotificationListener listener) throws IOException {
-		if (spilledView == null) {
-			synchronized (parent.buffers) {
-				// Didn't spill yet, buffers should be in-memory
-				if (parent.spillWriter == null) {
-					return false;
-				}
-			}
+	public void notifyBuffersAvailable(int buffers) throws IOException {
 
-			// Spilling
-			if (parent.spillWriter.getNumberOfOutstandingRequests() > 0) {
-				return parent.spillWriter.registerAllRequestsProcessedListener(listener);
-			}
-
-			return false;
-		}
-
-		return spilledView.registerListener(listener);
 	}
+
+//	@Override
+//	public boolean registerListener(NotificationListener listener) throws IOException {
+//		if (spilledView == null) {
+//			synchronized (parent.buffers) {
+//				// Didn't spill yet, buffers should be in-memory
+//				if (parent.spillWriter == null) {
+//					return false;
+//				}
+//			}
+//
+//			// Spilling
+//			if (parent.spillWriter.getNumberOfOutstandingRequests() > 0) {
+//				return parent.spillWriter.registerAllRequestsProcessedListener(listener);
+//			}
+//
+//			return false;
+//		}
+//
+//		return spilledView.registerListener(listener);
+//	}
 
 	@Override
 	public void notifySubpartitionConsumed() throws IOException {

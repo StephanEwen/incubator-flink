@@ -39,63 +39,67 @@ import static org.mockito.Mockito.when;
 
 public class IteratorWrappingTestSingleInputGate<T extends IOReadableWritable> extends TestSingleInputGate {
 
-	private final TestInputChannel inputChannel = new TestInputChannel(inputGate, 0);
-
-	private final int bufferSize;
-
-	private MutableObjectIterator<T> inputIterator;
-
-	private RecordSerializer<T> serializer;
-
-	private final T reuse;
-
-	public IteratorWrappingTestSingleInputGate(int bufferSize, Class<T> recordType, MutableObjectIterator<T> iterator) throws IOException, InterruptedException {
-		super(1, false);
-
-		this.bufferSize = bufferSize;
-		this.reuse = InstantiationUtil.instantiate(recordType);
-
-		wrapIterator(iterator);
+	public IteratorWrappingTestSingleInputGate(int numberOfInputChannels) {
+//		super(numberOfInputChannels);
 	}
 
-	private IteratorWrappingTestSingleInputGate<T> wrapIterator(MutableObjectIterator<T> iterator) throws IOException, InterruptedException {
-		inputIterator = iterator;
-		serializer = new SpanningRecordSerializer<T>();
-
-		// The input iterator can produce an infinite stream. That's why we have to serialize each
-		// record on demand and cannot do it upfront.
-		final Answer<Buffer> answer = new Answer<Buffer>() {
-			@Override
-			public Buffer answer(InvocationOnMock invocationOnMock) throws Throwable {
-				if (inputIterator.next(reuse) != null) {
-					final Buffer buffer = new Buffer(MemorySegmentFactory.allocateUnpooledSegment(bufferSize), mock(BufferRecycler.class));
-					serializer.setNextBuffer(buffer);
-					serializer.addRecord(reuse);
-
-					inputGate.onAvailableBuffer(inputChannel.getInputChannel());
-
-					// Call getCurrentBuffer to ensure size is set
-					return serializer.getCurrentBuffer();
-				}
-				else {
-
-					when(inputChannel.getInputChannel().isReleased()).thenReturn(true);
-
-					return EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE);
-				}
-			}
-		};
-
-		when(inputChannel.getInputChannel().getNextBuffer()).thenAnswer(answer);
-
-		inputGate.setInputChannel(new IntermediateResultPartitionID(), inputChannel.getInputChannel());
-
-		return this;
-	}
-
-	public IteratorWrappingTestSingleInputGate<T> read() {
-		inputGate.onAvailableBuffer(inputChannel.getInputChannel());
-
-		return this;
-	}
+//	private final TestInputChannel inputChannel = new TestInputChannel(inputGate, 0);
+//
+//	private final int bufferSize;
+//
+//	private MutableObjectIterator<T> inputIterator;
+//
+//	private RecordSerializer<T> serializer;
+//
+//	private final T reuse;
+//
+//	public IteratorWrappingTestSingleInputGate(int bufferSize, Class<T> recordType, MutableObjectIterator<T> iterator) throws IOException, InterruptedException {
+//		super(1, false);
+//
+//		this.bufferSize = bufferSize;
+//		this.reuse = InstantiationUtil.instantiate(recordType);
+//
+//		wrapIterator(iterator);
+//	}
+//
+//	private IteratorWrappingTestSingleInputGate<T> wrapIterator(MutableObjectIterator<T> iterator) throws IOException, InterruptedException {
+//		inputIterator = iterator;
+//		serializer = new SpanningRecordSerializer<T>();
+//
+//		// The input iterator can produce an infinite stream. That's why we have to serialize each
+//		// record on demand and cannot do it upfront.
+//		final Answer<Buffer> answer = new Answer<Buffer>() {
+//			@Override
+//			public Buffer answer(InvocationOnMock invocationOnMock) throws Throwable {
+//				if (inputIterator.next(reuse) != null) {
+//					final Buffer buffer = new Buffer(MemorySegmentFactory.allocateUnpooledSegment(bufferSize), mock(BufferRecycler.class));
+//					serializer.setNextBuffer(buffer);
+//					serializer.addRecord(reuse);
+//
+//					inputGate.onAvailableBuffer(inputChannel.getInputChannel());
+//
+//					// Call getCurrentBuffer to ensure size is set
+//					return serializer.getCurrentBuffer();
+//				}
+//				else {
+//
+//					when(inputChannel.getInputChannel().isReleased()).thenReturn(true);
+//
+//					return EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE);
+//				}
+//			}
+//		};
+//
+//		when(inputChannel.getInputChannel().getNextBuffer()).thenAnswer(answer);
+//
+//		inputGate.setInputChannel(new IntermediateResultPartitionID(), inputChannel.getInputChannel());
+//
+//		return this;
+//	}
+//
+//	public IteratorWrappingTestSingleInputGate<T> read() {
+//		inputGate.onAvailableBuffer(inputChannel.getInputChannel());
+//
+//		return this;
+//	}
 }

@@ -22,14 +22,11 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
-import org.apache.flink.runtime.util.event.EventListener;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -63,15 +60,14 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * It is possible to recursively union union input gates.
  */
-public class UnionInputGate implements InputGate {
+public class UnionInputGate implements InputGate, InputGateListener {
 
 	/** The input gates to union. */
 	private final InputGate[] inputGates;
 
 	private final Set<InputGate> inputGatesWithRemainingData;
 
-	/** Data availability listener across all unioned input gates. */
-	private final InputGateListener inputGateListener;
+	private final BlockingQueue<InputGate> inputGatesWithData = new LinkedBlockingQueue<>();
 
 	/** The total number of input channels across all unioned input gates. */
 	private final int totalNumberOfInputChannels;
@@ -100,11 +96,12 @@ public class UnionInputGate implements InputGate {
 			inputGatesWithRemainingData.add(inputGate);
 
 			currentNumberOfInputChannels += inputGate.getNumberOfInputChannels();
+
+			// Register the union gate as a listener for all input gates
+			inputGate.registerListener(this);
 		}
 
 		this.totalNumberOfInputChannels = currentNumberOfInputChannels;
-
-		this.inputGateListener = new InputGateListener(inputGates, this);
 	}
 
 	/**
@@ -139,7 +136,6 @@ public class UnionInputGate implements InputGate {
 
 	@Override
 	public BufferOrEvent getNextBufferOrEvent() throws IOException, InterruptedException {
-
 		if (inputGatesWithRemainingData.isEmpty()) {
 			return null;
 		}
@@ -147,9 +143,13 @@ public class UnionInputGate implements InputGate {
 		// Make sure to request the partitions, if they have not been requested before.
 		requestPartitions();
 
-		final InputGate inputGate = inputGateListener.getNextInputGateToReadFrom();
+		final InputGate inputGate = inputGatesWithData.take();
 
 		final BufferOrEvent bufferOrEvent = inputGate.getNextBufferOrEvent();
+
+		if (bufferOrEvent.moreAvailable()) {
+			inputGatesWithData.add(inputGate);
+		}
 
 		if (bufferOrEvent.isEvent()
 				&& bufferOrEvent.getEvent().getClass() == EndOfPartitionEvent.class
@@ -177,9 +177,8 @@ public class UnionInputGate implements InputGate {
 	}
 
 	@Override
-	public void registerListener(EventListener<InputGate> listener) {
-		// This method is called from the consuming task thread.
-		inputGateListener.registerListener(listener);
+	public void registerListener(InputGateListener listener) {
+		throw new UnsupportedOperationException("Cannot listen on union input gates.");
 	}
 
 	@Override
@@ -195,45 +194,8 @@ public class UnionInputGate implements InputGate {
 		return pageSize;
 	}
 
-	/**
-	 * Data availability listener at all unioned input gates.
-	 *
-	 * <p> The listener registers itself at each input gate and is notified for *each incoming
-	 * buffer* at one of the unioned input gates.
-	 */
-	private static class InputGateListener implements EventListener<InputGate> {
-
-		private final UnionInputGate unionInputGate;
-
-		private final BlockingQueue<InputGate> inputGatesWithData = new LinkedBlockingQueue<InputGate>();
-
-		private final List<EventListener<InputGate>> registeredListeners = new CopyOnWriteArrayList<EventListener<InputGate>>();
-
-		public InputGateListener(InputGate[] inputGates, UnionInputGate unionInputGate) {
-			for (InputGate inputGate : inputGates) {
-				inputGate.registerListener(this);
-			}
-
-			this.unionInputGate = unionInputGate;
-		}
-
-		@Override
-		public void onEvent(InputGate inputGate) {
-			// This method is called from the input channel thread, which can be either the same
-			// thread as the consuming task thread or a different one.
-			inputGatesWithData.add(inputGate);
-
-			for (int i = 0; i < registeredListeners.size(); i++) {
-				registeredListeners.get(i).onEvent(unionInputGate);
-			}
-		}
-
-		InputGate getNextInputGateToReadFrom() throws InterruptedException {
-			return inputGatesWithData.take();
-		}
-
-		public void registerListener(EventListener<InputGate> listener) {
-			registeredListeners.add(checkNotNull(listener));
-		}
+	@Override
+	public void notifyInputGateNonEmpty(InputGate inputGate) {
+		inputGatesWithData.add(inputGate);
 	}
 }

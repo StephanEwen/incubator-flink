@@ -46,6 +46,7 @@ public class WordCount {
 		
 		// get input data
 		DataSet<String> text = getTextDataSet(env);
+		DataSet<String> text2 = getTextDataSet(env);
 		
 		DataSet<Tuple2<String, Integer>> counts = 
 				// split up the lines in pairs (2-tuples) containing: (word,1)
@@ -54,14 +55,24 @@ public class WordCount {
 				.groupBy(0)
 				.aggregate(Aggregations.SUM, 1);
 
-		// emit result
-		if(fileOutput) {
-			counts.writeAsCsv(outputPath, "\n", " ");
-			// execute program
-			env.execute("WordCount Example");
-		} else {
-			counts.print();
-		}
+		DataSet<Tuple2<String, Integer>> counts2 =
+			// split up the lines in pairs (2-tuples) containing: (word,1)
+			text2.flatMap(new Tokenizer())
+				// group by the tuple field "0" and sum up tuple field "1"
+				.groupBy(0)
+				.aggregate(Aggregations.SUM, 1);
+
+		counts.union(counts2).print();
+
+//
+//		// emit result
+//		if(fileOutput) {
+//			counts.writeAsCsv(outputPath, "\n", " ");
+//			// execute program
+//			env.execute("WordCount Example");
+//		} else {
+//			counts.print();
+//		}
 	}
 	
 	// *************************************************************************

@@ -22,7 +22,7 @@ import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
-import org.apache.flink.runtime.util.event.EventListener;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGateListener;
 
 import java.util.ArrayDeque;
 import java.util.List;
@@ -89,6 +89,6 @@ public class MockInputGate implements InputGate {
 	public void sendTaskEvent(TaskEvent event) {}
 
 	@Override
-	public void registerListener(EventListener<InputGate> listener) {}
+	public void registerListener(InputGateListener listener) {}
 	
 }

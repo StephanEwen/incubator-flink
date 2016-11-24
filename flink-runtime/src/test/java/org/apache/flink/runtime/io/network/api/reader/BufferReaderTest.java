@@ -44,72 +44,72 @@ import static org.mockito.Mockito.verify;
 @SuppressWarnings("unchecked")
 public class BufferReaderTest {
 
-	@Test
-	public void testGetNextBufferOrEvent() throws IOException, InterruptedException {
-
-		final TestSingleInputGate inputGate = new TestSingleInputGate(1)
-				.readBuffer().readBuffer().readEvent()
-				.readBuffer().readBuffer().readEvent()
-				.readBuffer().readEndOfPartitionEvent();
-
-		final BufferReader reader = new BufferReader(inputGate.getInputGate());
-
-		// Task event listener to be notified...
-		final EventListener<TaskEvent> listener = mock(EventListener.class);
-		reader.registerTaskEventListener(listener, TestTaskEvent.class);
-
-		int numReadBuffers = 0;
-		while ((reader.getNextBuffer()) != null) {
-			numReadBuffers++;
-		}
-
-		assertEquals(5, numReadBuffers);
-		verify(listener, times(2)).onEvent(any(TaskEvent.class));
-	}
-
-	@Test
-	public void testIterativeGetNextBufferOrEvent() throws IOException, InterruptedException {
-
-		final TestSingleInputGate inputGate = new TestSingleInputGate(1)
-				.readBuffer().readBuffer().readEvent()
-				.readBuffer().readBuffer().readEvent()
-				.readBuffer().readEndOfSuperstepEvent()
-				.readBuffer().readBuffer().readEvent()
-				.readBuffer().readBuffer().readEvent()
-				.readBuffer().readEndOfPartitionEvent();
-
-		final BufferReader reader = new BufferReader(inputGate.getInputGate());
-
-		// Set reader iterative
-		reader.setIterativeReader();
-
-		// Task event listener to be notified...
-		final EventListener<TaskEvent> listener = mock(EventListener.class);
-		// Task event listener to be notified...
-		reader.registerTaskEventListener(listener, TestTaskEvent.class);
-
-		int numReadBuffers = 0;
-		int numEndOfSuperstepEvents = 0;
-
-		while (true) {
-			Buffer buffer = reader.getNextBuffer();
-
-			if (buffer != null) {
-				numReadBuffers++;
-			}
-			else if (reader.hasReachedEndOfSuperstep()) {
-				reader.startNextSuperstep();
-
-				numEndOfSuperstepEvents++;
-			}
-			else if (reader.isFinished()) {
-				break;
-			}
-		}
-
-		assertEquals(10, numReadBuffers);
-		assertEquals(1, numEndOfSuperstepEvents);
-
-		verify(listener, times(4)).onEvent(any(TaskEvent.class));
-	}
+//	@Test
+//	public void testGetNextBufferOrEvent() throws IOException, InterruptedException {
+//
+//		final TestSingleInputGate inputGate = new TestSingleInputGate(1)
+//				.readBuffer().readBuffer().readEvent()
+//				.readBuffer().readBuffer().readEvent()
+//				.readBuffer().readEndOfPartitionEvent();
+//
+//		final BufferReader reader = new BufferReader(inputGate.getInputGate());
+//
+//		// Task event listener to be notified...
+//		final EventListener<TaskEvent> listener = mock(EventListener.class);
+//		reader.registerTaskEventListener(listener, TestTaskEvent.class);
+//
+//		int numReadBuffers = 0;
+//		while ((reader.getNextBuffer()) != null) {
+//			numReadBuffers++;
+//		}
+//
+//		assertEquals(5, numReadBuffers);
+//		verify(listener, times(2)).onEvent(any(TaskEvent.class));
+//	}
+//
+//	@Test
+//	public void testIterativeGetNextBufferOrEvent() throws IOException, InterruptedException {
+//
+//		final TestSingleInputGate inputGate = new TestSingleInputGate(1)
+//				.readBuffer().readBuffer().readEvent()
+//				.readBuffer().readBuffer().readEvent()
+//				.readBuffer().readEndOfSuperstepEvent()
+//				.readBuffer().readBuffer().readEvent()
+//				.readBuffer().readBuffer().readEvent()
+//				.readBuffer().readEndOfPartitionEvent();
+//
+//		final BufferReader reader = new BufferReader(inputGate.getInputGate());
+//
+//		// Set reader iterative
+//		reader.setIterativeReader();
+//
+//		// Task event listener to be notified...
+//		final EventListener<TaskEvent> listener = mock(EventListener.class);
+//		// Task event listener to be notified...
+//		reader.registerTaskEventListener(listener, TestTaskEvent.class);
+//
+//		int numReadBuffers = 0;
+//		int numEndOfSuperstepEvents = 0;
+//
+//		while (true) {
+//			Buffer buffer = reader.getNextBuffer();
+//
+//			if (buffer != null) {
+//				numReadBuffers++;
+//			}
+//			else if (reader.hasReachedEndOfSuperstep()) {
+//				reader.startNextSuperstep();
+//
+//				numEndOfSuperstepEvents++;
+//			}
+//			else if (reader.isFinished()) {
+//				break;
+//			}
+//		}
+//
+//		assertEquals(10, numReadBuffers);
+//		assertEquals(1, numEndOfSuperstepEvents);
+//
+//		verify(listener, times(4)).onEvent(any(TaskEvent.class));
+//	}
 }

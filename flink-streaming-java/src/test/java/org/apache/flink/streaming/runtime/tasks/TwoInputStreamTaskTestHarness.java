@@ -157,7 +157,7 @@ public class TwoInputStreamTaskTestHarness<IN1, IN2, OUT> extends StreamTaskTest
 					throw new IllegalStateException("Wrong input gate assignment.");
 			}
 
-			this.mockEnv.addInputGate(inputGates[i].getInputGate());
+//			this.mockEnv.addInputGate(inputGates[i].getInputGate());
 		}
 
 		streamConfig.setInPhysicalEdges(inPhysicalEdges);

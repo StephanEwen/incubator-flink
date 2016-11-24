@@ -94,7 +94,7 @@ public class OneInputStreamTaskTestHarness<IN, OUT> extends StreamTaskTestHarnes
 					numInputChannelsPerGate,
 					bufferSize,
 					inputSerializer);
-			this.mockEnv.addInputGate(inputGates[i].getInputGate());
+//			this.mockEnv.addInputGate(inputGates[i].getInputGate());
 		}
 
 		streamConfig.setNumberOfInputs(1);

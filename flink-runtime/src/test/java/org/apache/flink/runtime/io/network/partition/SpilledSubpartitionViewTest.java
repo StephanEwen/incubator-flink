@@ -50,7 +50,6 @@ import static org.mockito.Mockito.mock;
 /**
  * Test for both the asynchronous and synchronous spilled subpartition view implementation.
  */
-@RunWith(Parameterized.class)
 public class SpilledSubpartitionViewTest {
 
 	private static final IOManager ioManager = new IOManagerAsync();
@@ -60,23 +59,11 @@ public class SpilledSubpartitionViewTest {
 	private static final TestInfiniteBufferProvider writerBufferPool =
 			new TestInfiniteBufferProvider();
 
-	private IOMode ioMode;
-
-	public SpilledSubpartitionViewTest(IOMode ioMode) {
-		this.ioMode = ioMode;
-	}
 
 	@AfterClass
 	public static void shutdown() {
 		ioManager.shutdown();
 		executor.shutdown();
-	}
-
-	@Parameterized.Parameters
-	public static Collection<Object[]> ioMode() {
-		return Arrays.asList(new Object[][]{
-				{IOMode.SYNC},
-				{IOMode.ASYNC}});
 	}
 
 	@Test
@@ -103,22 +90,11 @@ public class SpilledSubpartitionViewTest {
 
 			// Create the views depending on the test configuration
 			for (int i = 0; i < readers.length; i++) {
-				if (ioMode.isSynchronous()) {
-					readers[i] = new SpilledSubpartitionViewSyncIO(
-							parent,
-							inputBuffers.getMemorySegmentSize(),
-							writers[i].getChannelID(),
-							0);
-				}
-				else {
-					// For the asynchronous view, it is important that a registered listener will
-					// eventually be notified even if the view never got a buffer to read data into.
-					//
-					// At runtime, multiple threads never share the same buffer pool as in test. We
-					// do it here to provoke the erroneous behaviour.
-					readers[i] = new SpilledSubpartitionViewAsyncIO(
-							parent, inputBuffers, ioManager, writers[i].getChannelID(), 0);
-				}
+				readers[i] = new SpilledSubpartitionView(
+						parent,
+						inputBuffers.getMemorySegmentSize(),
+						writers[i].getChannelID(),
+						0);
 			}
 
 			final List<Future<Boolean>> results = Lists.newArrayList();

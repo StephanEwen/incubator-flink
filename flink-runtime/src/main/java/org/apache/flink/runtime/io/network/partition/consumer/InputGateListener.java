@@ -16,21 +16,16 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.io.network.partition;
+package org.apache.flink.runtime.io.network.partition.consumer;
 
-import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+/**
+ * Data availability listener at all unioned input gates.
+ *
+ * <p> The listener registers itself at each input gate and is notified for *each incoming
+ * buffer* at one of the unioned input gates.
+ */
+public interface InputGateListener {
 
-import java.io.IOException;
-
-public interface ResultPartitionProvider {
-
-	/**
-	 * Returns the requested intermediate result partition input view.
-	 */
-	ResultSubpartitionView createSubpartitionView(
-			ResultPartitionID partitionId,
-			int index,
-			BufferProvider bufferProvider,
-			PipelinedAvailabilityListener availabilityListener) throws IOException;
+	void notifyInputGateNonEmpty(InputGate inputGate);
 
 }

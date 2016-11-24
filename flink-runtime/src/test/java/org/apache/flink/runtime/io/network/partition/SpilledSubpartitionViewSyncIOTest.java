@@ -32,72 +32,72 @@ import static org.mockito.Mockito.mock;
 
 public class SpilledSubpartitionViewSyncIOTest {
 
-	private static final IOManager ioManager = new IOManagerAsync();
-
-	private static final TestInfiniteBufferProvider writerBufferPool =
-			new TestInfiniteBufferProvider();
-
-	@AfterClass
-	public static void shutdown() {
-		ioManager.shutdown();
-	}
-
-	@Test
-	public void testWriteConsume() throws Exception {
-		// Config
-		final int numberOfBuffersToWrite = 512;
-
-		// Setup
-		final BufferFileWriter writer = SpilledSubpartitionViewTest
-				.createWriterAndWriteBuffers(ioManager, writerBufferPool, numberOfBuffersToWrite);
-
-		writer.close();
-
-		final TestPooledBufferProvider viewBufferPool = new TestPooledBufferProvider(1);
-
-		final SpilledSubpartitionViewSyncIO view = new SpilledSubpartitionViewSyncIO(
-				mock(ResultSubpartition.class),
-				viewBufferPool.getMemorySegmentSize(),
-				writer.getChannelID(),
-				0);
-
-		final TestSubpartitionConsumer consumer = new TestSubpartitionConsumer(view, false,
-				new TestConsumerCallback.RecyclingCallback());
-
-		// Consume subpartition
-		consumer.call();
-	}
-
-	@Test
-	public void testConsumeWithFewBuffers() throws Exception {
-		// Config
-		final int numberOfBuffersToWrite = 512;
-
-		// Setup
-		final BufferFileWriter writer = SpilledSubpartitionViewTest
-				.createWriterAndWriteBuffers(ioManager, writerBufferPool, numberOfBuffersToWrite);
-
-		writer.close();
-
-		final SpilledSubpartitionViewSyncIO view = new SpilledSubpartitionViewSyncIO(
-				mock(ResultSubpartition.class),
-				32 * 1024,
-				writer.getChannelID(),
-				0);
-
-		// No buffer available, don't deadlock. We need to make progress in situations when the view
-		// is consumed at an input gate with local and remote channels. The remote channels might
-		// eat up all the buffers, at which point the spilled view will not have any buffers
-		// available and the input gate can't make any progress if we don't return immediately.
-		//
-		// The current solution is straight-forward with a separate buffer per spilled subpartition,
-		// but introduces memory-overhead.
-		//
-		// TODO Replace with asynchronous buffer pool request as this introduces extra buffers per
-		// consumed subpartition.
-		final TestSubpartitionConsumer consumer = new TestSubpartitionConsumer(view, false,
-				new TestConsumerCallback.RecyclingCallback());
-
-		consumer.call();
-	}
+//	private static final IOManager ioManager = new IOManagerAsync();
+//
+//	private static final TestInfiniteBufferProvider writerBufferPool =
+//			new TestInfiniteBufferProvider();
+//
+//	@AfterClass
+//	public static void shutdown() {
+//		ioManager.shutdown();
+//	}
+//
+//	@Test
+//	public void testWriteConsume() throws Exception {
+//		// Config
+//		final int numberOfBuffersToWrite = 512;
+//
+//		// Setup
+//		final BufferFileWriter writer = SpilledSubpartitionViewTest
+//				.createWriterAndWriteBuffers(ioManager, writerBufferPool, numberOfBuffersToWrite);
+//
+//		writer.close();
+//
+//		final TestPooledBufferProvider viewBufferPool = new TestPooledBufferProvider(1);
+//
+//		final SpilledSubpartitionViewSyncIO view = new SpilledSubpartitionViewSyncIO(
+//				mock(ResultSubpartition.class),
+//				viewBufferPool.getMemorySegmentSize(),
+//				writer.getChannelID(),
+//				0);
+//
+//		final TestSubpartitionConsumer consumer = new TestSubpartitionConsumer(view, false,
+//				new TestConsumerCallback.RecyclingCallback());
+//
+//		// Consume subpartition
+//		consumer.call();
+//	}
+//
+//	@Test
+//	public void testConsumeWithFewBuffers() throws Exception {
+//		// Config
+//		final int numberOfBuffersToWrite = 512;
+//
+//		// Setup
+//		final BufferFileWriter writer = SpilledSubpartitionViewTest
+//				.createWriterAndWriteBuffers(ioManager, writerBufferPool, numberOfBuffersToWrite);
+//
+//		writer.close();
+//
+//		final SpilledSubpartitionViewSyncIO view = new SpilledSubpartitionViewSyncIO(
+//				mock(ResultSubpartition.class),
+//				32 * 1024,
+//				writer.getChannelID(),
+//				0);
+//
+//		// No buffer available, don't deadlock. We need to make progress in situations when the view
+//		// is consumed at an input gate with local and remote channels. The remote channels might
+//		// eat up all the buffers, at which point the spilled view will not have any buffers
+//		// available and the input gate can't make any progress if we don't return immediately.
+//		//
+//		// The current solution is straight-forward with a separate buffer per spilled subpartition,
+//		// but introduces memory-overhead.
+//		//
+//		// TODO Replace with asynchronous buffer pool request as this introduces extra buffers per
+//		// consumed subpartition.
+//		final TestSubpartitionConsumer consumer = new TestSubpartitionConsumer(view, false,
+//				new TestConsumerCallback.RecyclingCallback());
+//
+//		consumer.call();
+//	}
 }

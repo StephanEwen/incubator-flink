@@ -65,7 +65,7 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 			int numInputChannels,
 			int bufferSize,
 			TypeSerializer<T> serializer) throws IOException, InterruptedException {
-		super(numInputChannels, false);
+//		super(numInputChannels, false);
 
 		this.bufferSize = bufferSize;
 		this.serializer = serializer;
@@ -76,7 +76,7 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 		inputQueues = new ConcurrentLinkedQueue[numInputChannels];
 
 		setupInputChannels();
-		doReturn(bufferSize).when(inputGate).getPageSize();
+//		doReturn(bufferSize).when(inputGate).getPageSize();
 	}
 
 	@SuppressWarnings("unchecked")
@@ -89,7 +89,7 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 					new SerializationDelegate<StreamElement>(new MultiplexingStreamRecordSerializer<T>(serializer));
 
 			inputQueues[channelIndex] = new ConcurrentLinkedQueue<InputValue<Object>>();
-			inputChannels[channelIndex] = new TestInputChannel(inputGate, i);
+//			inputChannels[channelIndex] = new TestInputChannel(inputGate, i);
 
 
 			final Answer<Buffer> answer = new Answer<Buffer>() {
@@ -97,8 +97,8 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 				public Buffer answer(InvocationOnMock invocationOnMock) throws Throwable {
 					InputValue<Object> input = inputQueues[channelIndex].poll();
 					if (input != null && input.isStreamEnd()) {
-						when(inputChannels[channelIndex].getInputChannel().isReleased()).thenReturn(
-								true);
+//						when(inputChannels[channelIndex].getInputChannel().isReleased()).thenReturn(
+//								true);
 						return EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE);
 					}
 					else if (input != null && input.isStreamRecord()) {
@@ -127,10 +127,10 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 				}
 			};
 
-			when(inputChannels[channelIndex].getInputChannel().getNextBuffer()).thenAnswer(answer);
-
-			inputGate.setInputChannel(new IntermediateResultPartitionID(),
-					inputChannels[channelIndex].getInputChannel());
+//			when(inputChannels[channelIndex].getInputChannel().getNextBuffer()).thenAnswer(answer);
+//
+//			inputGate.setInputChannel(new IntermediateResultPartitionID(),
+//					inputChannels[channelIndex].getInputChannel());
 		}
 	}
 
@@ -139,7 +139,7 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 			inputQueues[channel].add(InputValue.element(element));
 			inputQueues[channel].notifyAll();
 		}
-		inputGate.onAvailableBuffer(inputChannels[channel].getInputChannel());
+//		inputGate.onAvailableBuffer(inputChannels[channel].getInputChannel());
 	}
 
 	public void sendEvent(AbstractEvent event, int channel) {
@@ -147,7 +147,7 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 			inputQueues[channel].add(InputValue.event(event));
 			inputQueues[channel].notifyAll();
 		}
-		inputGate.onAvailableBuffer(inputChannels[channel].getInputChannel());
+//		inputGate.onAvailableBuffer(inputChannels[channel].getInputChannel());
 	}
 
 	public void endInput() {
@@ -156,7 +156,7 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 				inputQueues[i].add(InputValue.streamEnd());
 				inputQueues[i].notifyAll();
 			}
-			inputGate.onAvailableBuffer(inputChannels[i].getInputChannel());
+//			inputGate.onAvailableBuffer(inputChannels[i].getInputChannel());
 		}
 	}
 

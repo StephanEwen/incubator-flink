@@ -31,26 +31,26 @@ import static org.mockito.Mockito.when;
 
 public class PartitionRequestQueueTest {
 
-	@Test
-	public void testProducerFailedException() throws Exception {
-		PartitionRequestQueue queue = new PartitionRequestQueue();
-
-		EmbeddedChannel ch = new EmbeddedChannel(queue);
-
-		ResultSubpartitionView view = mock(ResultSubpartitionView.class);
-		when(view.isReleased()).thenReturn(true);
-		when(view.getFailureCause()).thenReturn(new RuntimeException("Expected test exception"));
-
-		// Enqueue the erroneous view
-		queue.enqueue(view, new InputChannelID());
-		ch.runPendingTasks();
-
-		// Read the enqueued msg
-		Object msg = ch.readOutbound();
-
-		assertEquals(msg.getClass(), NettyMessage.ErrorResponse.class);
-
-		NettyMessage.ErrorResponse err = (NettyMessage.ErrorResponse) msg;
-		assertTrue(err.cause instanceof CancelTaskException);
-	}
+//	@Test
+//	public void testProducerFailedException() throws Exception {
+//		PartitionRequestQueue queue = new PartitionRequestQueue();
+//
+//		EmbeddedChannel ch = new EmbeddedChannel(queue);
+//
+//		ResultSubpartitionView view = mock(ResultSubpartitionView.class);
+//		when(view.isReleased()).thenReturn(true);
+//		when(view.getFailureCause()).thenReturn(new RuntimeException("Expected test exception"));
+//
+//		// Enqueue the erroneous view
+//		queue.enqueue(view, new InputChannelID());
+//		ch.runPendingTasks();
+//
+//		// Read the enqueued msg
+//		Object msg = ch.readOutbound();
+//
+//		assertEquals(msg.getClass(), NettyMessage.ErrorResponse.class);
+//
+//		NettyMessage.ErrorResponse err = (NettyMessage.ErrorResponse) msg;
+//		assertTrue(err.cause instanceof CancelTaskException);
+//	}
 }

@@ -34,7 +34,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import static org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode.SYNC;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -44,107 +43,112 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 public class SpillableSubpartitionTest extends SubpartitionTestBase {
-
-	/** Executor service for concurrent produce/consume tests */
-	private final static ExecutorService executorService = Executors.newCachedThreadPool();
-
-	/** Asynchronous I/O manager */
-	private static final IOManager ioManager = new IOManagerAsync();
-
-	@AfterClass
-	public static void shutdown() {
-		executorService.shutdownNow();
-		ioManager.shutdown();
-	}
-
+	
 	@Override
 	ResultSubpartition createSubpartition() {
-		return new SpillableSubpartition(0, mock(ResultPartition.class), ioManager, SYNC);
+		return null;
 	}
 
-	/**
-	 * Tests a fix for FLINK-2384.
-	 *
-	 * @see <a href="https://issues.apache.org/jira/browse/FLINK-2384">FLINK-2384</a>
-	 */
-	@Test
-	public void testConcurrentFinishAndReleaseMemory() throws Exception {
-		// Latches to blocking
-		final CountDownLatch doneLatch = new CountDownLatch(1);
-		final CountDownLatch blockLatch = new CountDownLatch(1);
-
-		// Blocking spill writer (blocks on the close call)
-		AsynchronousBufferFileWriter spillWriter = mock(AsynchronousBufferFileWriter.class);
-		doAnswer(new Answer<Void>() {
-			@Override
-			public Void answer(InvocationOnMock invocation) throws Throwable {
-				blockLatch.countDown();
-				doneLatch.await();
-				return null;
-			}
-		}).when(spillWriter).close();
-
-		// Mock I/O manager returning the blocking spill writer
-		IOManager ioManager = mock(IOManager.class);
-		when(ioManager.createBufferFileWriter(any(FileIOChannel.ID.class)))
-				.thenReturn(spillWriter);
-
-		// The partition
-		final SpillableSubpartition partition = new SpillableSubpartition(
-				0, mock(ResultPartition.class), ioManager, SYNC);
-
-		// Spill the partition initially (creates the spill writer)
-		partition.releaseMemory();
-
-		ExecutorService executor = Executors.newSingleThreadExecutor();
-
-		// Finish the partition (this blocks because of the mock blocking writer)
-		Future<Void> blockingFinish = executor.submit(new Callable<Void>() {
-			@Override
-			public Void call() throws Exception {
-				partition.finish();
-				return null;
-			}
-		});
-
-		// Ensure that the blocking call has been made
-		blockLatch.await();
-
-		// This call needs to go through. FLINK-2384 discovered a bug, in
-		// which the finish call was holding a lock, which was leading to a
-		// deadlock when another operation on the partition was happening.
-		partition.releaseMemory();
-
-		// Check that the finish call succeeded w/o problems as well to avoid
-		// false test successes.
-		doneLatch.countDown();
-		blockingFinish.get();
-	}
-
-	/**
-	 * Tests a fix for FLINK-2412.
-	 *
-	 * @see <a href="https://issues.apache.org/jira/browse/FLINK-2412">FLINK-2412</a>
-	 */
-	@Test
-	public void testReleasePartitionAndGetNext() throws Exception {
-		// Create partition and add some buffers
-		SpillableSubpartition partition = new SpillableSubpartition(
-				0, mock(ResultPartition.class), ioManager, SYNC);
-
-		partition.finish();
-
-		// Create the read view
-		ResultSubpartitionView readView = spy(partition
-				.createReadView(new TestInfiniteBufferProvider()));
-
-		// The released state check (of the parent) needs to be independent
-		// of the released state of the view.
-		doNothing().when(readView).releaseAllResources();
-
-		// Release the partition, but the view does not notice yet.
-		partition.release();
-
-		assertNull(readView.getNextBuffer());
-	}
+//	/** Executor service for concurrent produce/consume tests */
+//	private final static ExecutorService executorService = Executors.newCachedThreadPool();
+//
+//	/** Asynchronous I/O manager */
+//	private static final IOManager ioManager = new IOManagerAsync();
+//
+//	@AfterClass
+//	public static void shutdown() {
+//		executorService.shutdownNow();
+//		ioManager.shutdown();
+//	}
+//
+//	@Override
+//	ResultSubpartition createSubpartition() {
+//		return new SpillableSubpartition(0, mock(ResultPartition.class), ioManager);
+//	}
+//
+//	/**
+//	 * Tests a fix for FLINK-2384.
+//	 *
+//	 * @see <a href="https://issues.apache.org/jira/browse/FLINK-2384">FLINK-2384</a>
+//	 */
+//	@Test
+//	public void testConcurrentFinishAndReleaseMemory() throws Exception {
+//		// Latches to blocking
+//		final CountDownLatch doneLatch = new CountDownLatch(1);
+//		final CountDownLatch blockLatch = new CountDownLatch(1);
+//
+//		// Blocking spill writer (blocks on the close call)
+//		AsynchronousBufferFileWriter spillWriter = mock(AsynchronousBufferFileWriter.class);
+//		doAnswer(new Answer<Void>() {
+//			@Override
+//			public Void answer(InvocationOnMock invocation) throws Throwable {
+//				blockLatch.countDown();
+//				doneLatch.await();
+//				return null;
+//			}
+//		}).when(spillWriter).close();
+//
+//		// Mock I/O manager returning the blocking spill writer
+//		IOManager ioManager = mock(IOManager.class);
+//		when(ioManager.createBufferFileWriter(any(FileIOChannel.ID.class)))
+//				.thenReturn(spillWriter);
+//
+//		// The partition
+//		final SpillableSubpartition partition = new SpillableSubpartition(
+//				0, mock(ResultPartition.class), ioManager);
+//
+//		// Spill the partition initially (creates the spill writer)
+//		partition.releaseMemory();
+//
+//		ExecutorService executor = Executors.newSingleThreadExecutor();
+//
+//		// Finish the partition (this blocks because of the mock blocking writer)
+//		Future<Void> blockingFinish = executor.submit(new Callable<Void>() {
+//			@Override
+//			public Void call() throws Exception {
+//				partition.finish();
+//				return null;
+//			}
+//		});
+//
+//		// Ensure that the blocking call has been made
+//		blockLatch.await();
+//
+//		// This call needs to go through. FLINK-2384 discovered a bug, in
+//		// which the finish call was holding a lock, which was leading to a
+//		// deadlock when another operation on the partition was happening.
+//		partition.releaseMemory();
+//
+//		// Check that the finish call succeeded w/o problems as well to avoid
+//		// false test successes.
+//		doneLatch.countDown();
+//		blockingFinish.get();
+//	}
+//
+//	/**
+//	 * Tests a fix for FLINK-2412.
+//	 *
+//	 * @see <a href="https://issues.apache.org/jira/browse/FLINK-2412">FLINK-2412</a>
+//	 */
+//	@Test
+//	public void testReleasePartitionAndGetNext() throws Exception {
+//		// Create partition and add some buffers
+//		SpillableSubpartition partition = new SpillableSubpartition(
+//				0, mock(ResultPartition.class), ioManager);
+//
+//		partition.finish();
+//
+//		// Create the read view
+//		ResultSubpartitionView readView = spy(partition
+//				.createReadView(new TestInfiniteBufferProvider()));
+//
+//		// The released state check (of the parent) needs to be independent
+//		// of the released state of the view.
+//		doNothing().when(readView).releaseAllResources();
+//
+//		// Release the partition, but the view does not notice yet.
+//		partition.release();
+//
+//		assertNull(readView.getNextBuffer());
+//	}
 }

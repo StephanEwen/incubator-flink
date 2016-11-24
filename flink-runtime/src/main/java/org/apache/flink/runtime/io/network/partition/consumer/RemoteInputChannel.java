@@ -27,8 +27,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
 import scala.Tuple2;
 
 import java.io.IOException;
@@ -43,8 +42,6 @@ import static org.apache.flink.util.Preconditions.checkState;
  * An input channel, which requests a remote partition queue.
  */
 public class RemoteInputChannel extends InputChannel {
-
-	private static final Logger LOG = LoggerFactory.getLogger(RemoteInputChannel.class);
 
 	/** ID to distinguish this channel from other channels sharing the same TCP connection. */
 	private final InputChannelID id = new InputChannelID();
@@ -137,23 +134,22 @@ public class RemoteInputChannel extends InputChannel {
 	}
 
 	@Override
-	Buffer getNextBuffer() throws IOException {
+	BufferAndAvailability getNextBuffer() throws IOException {
 		checkState(!isReleased.get(), "Queried for a buffer after channel has been closed.");
 		checkState(partitionRequestClient != null, "Queried for a buffer before requesting a queue.");
 
 		checkError();
 
+		final Buffer next;
+		final int remaining;
+
 		synchronized (receivedBuffers) {
-			Buffer buffer = receivedBuffers.poll();
-
-			// Sanity check that channel is only queried after a notification
-			if (buffer == null) {
-				throw new IOException("Queried input channel for data although non is available.");
-			}
-
-			numBytesIn.inc(buffer.getSize());
-			return buffer;
+			next = receivedBuffers.poll();
+			remaining = receivedBuffers.size();
 		}
+
+		numBytesIn.inc(next.getSize());
+		return new BufferAndAvailability(next, remaining > 0);
 	}
 
 	// ------------------------------------------------------------------------
@@ -246,10 +242,14 @@ public class RemoteInputChannel extends InputChannel {
 			synchronized (receivedBuffers) {
 				if (!isReleased.get()) {
 					if (expectedSequenceNumber == sequenceNumber) {
+						int available = receivedBuffers.size();
+
 						receivedBuffers.add(buffer);
 						expectedSequenceNumber++;
 
-						notifyAvailableBuffer();
+						if (available == 0) {
+							notifyChannelNonEmpty();
+						}
 
 						success = true;
 					}

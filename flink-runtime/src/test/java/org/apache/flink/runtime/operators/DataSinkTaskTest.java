@@ -159,7 +159,7 @@ public class DataSinkTaskTest extends TaskTestBase {
 			// For the union reader to work, we need to start notifications *after* the union reader
 			// has been initialized.
 			for (IteratorWrappingTestSingleInputGate<?> reader : readers) {
-				reader.read();
+//				reader.read();
 			}
 
 			testTask.invoke();

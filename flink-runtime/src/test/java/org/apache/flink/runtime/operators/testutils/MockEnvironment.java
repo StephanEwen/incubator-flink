@@ -109,11 +109,11 @@ public class MockEnvironment implements Environment {
 
 	public IteratorWrappingTestSingleInputGate<Record> addInput(MutableObjectIterator<Record> inputIterator) {
 		try {
-			final IteratorWrappingTestSingleInputGate<Record> reader = new IteratorWrappingTestSingleInputGate<Record>(bufferSize, Record.class, inputIterator);
+//			final IteratorWrappingTestSingleInputGate<Record> reader = new IteratorWrappingTestSingleInputGate<Record>(bufferSize, Record.class, inputIterator);
+//
+//			inputs.add(reader.getInputGate());
 
-			inputs.add(reader.getInputGate());
-
-			return reader;
+			return null;
 		}
 		catch (Throwable t) {
 			throw new RuntimeException("Error setting up mock readers: " + t.getMessage(), t);

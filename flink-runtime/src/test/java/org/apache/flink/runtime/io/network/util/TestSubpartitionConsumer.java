@@ -104,12 +104,12 @@ public class TestSubpartitionConsumer implements Callable<Boolean> {
 				else {
 					int current = listener.getNumberOfNotifications();
 
-					if (subpartitionView.registerListener(listener)) {
-						listener.waitForNotification(current);
-					}
-					else if (subpartitionView.isReleased()) {
-						return true;
-					}
+//					if (subpartitionView.registerListener(listener)) {
+//						listener.waitForNotification(current);
+//					}
+//					else if (subpartitionView.isReleased()) {
+//						return true;
+//					}
 				}
 			}
 		}
