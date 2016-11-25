@@ -178,8 +178,9 @@ class SpillableSubpartition extends ResultSubpartition {
 				readView = new SpillableSubpartitionView(
 					this,
 					buffers,
+					ioManager,
 					bufferProvider,
-					buffers.size());
+					availabilityListener);
 			}
 
 			return readView;
