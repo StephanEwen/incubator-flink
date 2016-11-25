@@ -130,7 +130,7 @@ class SequenceNumberingViewReader implements PipelinedAvailabilityListener {
 	@Override
 	public void notifyBuffersAvailable(long numBuffers) {
 		// if this request made the channel non-empty, notify the input gate
-		if (numBuffersAvailable.getAndAdd(numBuffers) == 0) {
+		if (numBuffers > 0 && numBuffersAvailable.getAndAdd(numBuffers) == 0) {
 			requestQueue.notifyReaderNonEmpty(this);
 		}
 	}
