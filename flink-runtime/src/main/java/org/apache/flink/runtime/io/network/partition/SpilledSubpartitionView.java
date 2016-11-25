@@ -36,14 +36,21 @@ import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * View over a spilled subpartition.
+ * Reader for a spilled sub partition.
  *
- * <p> Reads are done synchronously.
+ * <p>The partition availability listener is notified about available buffers
+ * only when the spilling is done. Spilling is done async and if it is still
+ * in progress, we wait with the notification until the spilling is done.
+ *
+ * <p>Reads of the spilled file are done in synchronously.
  */
 class SpilledSubpartitionView implements ResultSubpartitionView, NotificationListener {
 
 	/** The subpartition this view belongs to. */
 	private final ResultSubpartition parent;
+
+	/** Writer for spills. */
+	private final BufferFileWriter spillWriter;
 
 	/** The synchronous file reader to do the actual I/O. */
 	private final BufferFileReader fileReader;
@@ -62,14 +69,15 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 	private volatile boolean isSpillInProgress = true;
 
 	SpilledSubpartitionView(
-			ResultSubpartition parent,
-			int memorySegmentSize,
-			BufferFileWriter spillWriter,
-			long numberOfSpilledBuffers,
-			PipelinedAvailabilityListener availabilityListener) throws IOException {
+		ResultSubpartition parent,
+		int memorySegmentSize,
+		BufferFileWriter spillWriter,
+		long numberOfSpilledBuffers,
+		PipelinedAvailabilityListener availabilityListener) throws IOException {
 
 		this.parent = checkNotNull(parent);
 		this.bufferPool = new SpillReadBufferPool(2, memorySegmentSize);
+		this.spillWriter = checkNotNull(spillWriter);
 		this.fileReader = new SynchronousBufferFileReader(spillWriter.getChannelID(), false);
 		checkArgument(numberOfSpilledBuffers >= 0);
 		this.numberOfSpilledBuffers = numberOfSpilledBuffers;
@@ -101,11 +109,9 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 			return null;
 		}
 
-		// It's OK to request the buffer in a blocking fashion as the buffer pool is NOT shared
-		// among all consumed subpartitions.
-		// TODO This is very, very fragile.
-		final Buffer buffer = bufferPool.requestBufferBlocking();
-
+		// TODO This is fragile as we implicitly expect that multiple calls to
+		// this method don't happen before handling buffers returned earlier.
+		Buffer buffer = bufferPool.requestBufferBlocking();
 		fileReader.readInto(buffer);
 
 		return buffer;
@@ -116,7 +122,7 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 		// We do the availability listener notification either directly on
 		// construction of this view (when everything has been spilled) or
 		// as soon as spilling is done and we are notified about it in the
-		// callback.
+		// #onNotification callback.
 	}
 
 	@Override
@@ -127,6 +133,12 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 	@Override
 	public void releaseAllResources() throws IOException {
 		if (isReleased.compareAndSet(false, true)) {
+			// TODO This can block until all buffers are written out to
+			// disk if a spill is in-progress before deleting the file.
+			// It is possibly called from the Netty event loop threads,
+			// which can bring down the network.
+			spillWriter.closeAndDelete();
+
 			fileReader.close();
 			bufferPool.destroy();
 		}
@@ -150,11 +162,8 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 	/**
 	 * A buffer pool to provide buffer to read the file into.
 	 *
-	 * <p> This pool ensures that a consuming input gate makes progress in all cases, even when all
+	 * <p>This pool ensures that a consuming input gate makes progress in all cases, even when all
 	 * buffers of the input gate buffer pool have been requested by remote input channels.
-	 *
-	 * TODO Replace with asynchronous buffer pool request as this introduces extra buffers per
-	 * consumed subpartition.
 	 */
 	private static class SpillReadBufferPool implements BufferRecycler {
 
@@ -163,7 +172,7 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 		private boolean isDestroyed;
 
 		SpillReadBufferPool(int numberOfBuffers, int memorySegmentSize) {
-			this.buffers = new ArrayDeque<Buffer>(numberOfBuffers);
+			this.buffers = new ArrayDeque<>(numberOfBuffers);
 
 			synchronized (buffers) {
 				for (int i = 0; i < numberOfBuffers; i++) {
@@ -177,8 +186,7 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 			synchronized (buffers) {
 				if (isDestroyed) {
 					memorySegment.free();
-				}
-				else {
+				} else {
 					buffers.add(new Buffer(memorySegment, this));
 					buffers.notifyAll();
 				}

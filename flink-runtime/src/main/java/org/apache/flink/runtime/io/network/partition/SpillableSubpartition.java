@@ -128,7 +128,9 @@ class SpillableSubpartition extends ResultSubpartition {
 
 			view = readView;
 
-			// No consumer yet, we are responsible to clean everything up.
+			// No consumer yet, we are responsible to clean everything up. If
+			// one is available, the view is responsible is to clean up (see
+			// below).
 			if (view == null) {
 				for (Buffer buffer : buffers) {
 					buffer.recycle();
@@ -136,8 +138,9 @@ class SpillableSubpartition extends ResultSubpartition {
 				buffers.clear();
 
 				// TODO This can block until all buffers are written out to
-				// disk before deleting the file. It is possibly called from
-				// the Netty event loop, which can bring down the network.
+				// disk if a spill is in-progress before deleting the file.
+				// It is possibly called from the Netty event loop threads,
+				// which can bring down the network.
 				spillWriter.closeAndDelete();
 			}
 
@@ -173,7 +176,10 @@ class SpillableSubpartition extends ResultSubpartition {
 					availabilityListener);
 			} else {
 				readView = new SpillableSubpartitionView(
-					this, bufferProvider, buffers.size());
+					this,
+					buffers,
+					bufferProvider,
+					buffers.size());
 			}
 
 			return readView;
@@ -183,12 +189,15 @@ class SpillableSubpartition extends ResultSubpartition {
 	@Override
 	public int releaseMemory() throws IOException {
 		synchronized (buffers) {
-			if (spillWriter == null) {
-				// Create the spill writer
+			ResultSubpartitionView view = readView;
+
+			if (view != null && view.getClass() == SpillableSubpartitionView.class) {
+				SpillableSubpartitionView spillableView = (SpillableSubpartitionView) view;
+				return spillableView.releaseMemory();
+			} else if (spillWriter == null) {
 				spillWriter = ioManager.createBufferFileWriter(ioManager.createChannel());
 
-				final int numberOfBuffers = buffers.size();
-
+				int numberOfBuffers = buffers.size();
 				long spilledBytes = 0;
 
 				// Spill all buffers
@@ -198,7 +207,7 @@ class SpillableSubpartition extends ResultSubpartition {
 					spillWriter.writeBlock(buffer);
 				}
 
-				LOG.debug("Spilled {} bytes for sub partition {} of {}.", spilledBytes, index, parent.getPartitionId());
+				LOG.debug("Spilling {} bytes for sub partition {} of {}.", spilledBytes, index, parent.getPartitionId());
 
 				return numberOfBuffers;
 			}
