@@ -18,11 +18,13 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.runtime.io.disk.iomanager.BufferFileWriter;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,23 +36,37 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
- * A blocking in-memory subpartition, which is able to spill to disk.
+ * A spillable sub partition starts out in-memory and spills to disk if asked
+ * to do so.
  *
- * <p> Buffers are kept in-memory as long as possible. If not possible anymore, all buffers are
- * spilled to disk.
+ * <p>Buffers for the partition come from a {@link BufferPool}. The buffer pool
+ * is also responsible to trigger the release of the buffers if it needs them
+ * back. At this point, the spillable sub partition will write all in-memory
+ * buffers to disk. All added buffers after that point directly go to disk.
+ *
+ * <p>This partition type is used for {@link ResultPartitionType#BLOCKING}
+ * results that are fully produced before they can be consumed. At the point
+ * when they are consumed, the buffers are (i) all in-memory, (ii) currently
+ * being spilled to disk, or (iii) completely spilled to disk. Depending on
+ * this state, different reader variants are returned (see
+ * {@link SpillableSubpartitionView} and {@link SpilledSubpartitionView}).
+ *
+ * <p>Since the network buffer pool size is usually quite small (default is
+ * {@link ConfigConstants#DEFAULT_TASK_MANAGER_NETWORK_NUM_BUFFERS}), most
+ * spillable partitions will be spilled for real-world data sets.
  */
 class SpillableSubpartition extends ResultSubpartition {
 
 	private static final Logger LOG = LoggerFactory.getLogger(SpillableSubpartition.class);
 
-	/** All buffers of this subpartition. */
-	final ArrayDeque<Buffer> buffers = new ArrayDeque<Buffer>();
+	/** Buffers are kept in this queue as long as we weren't ask to release any. */
+	private final ArrayDeque<Buffer> buffers = new ArrayDeque<>();
 
-	/** The I/O manager to create the spill writer from. */
-	final IOManager ioManager;
+	/** The I/O manager used for spilling buffers to disk. */
+	private final IOManager ioManager;
 
 	/** The writer used for spilling. As long as this is null, we are in-memory. */
-	BufferFileWriter spillWriter;
+	private BufferFileWriter spillWriter;
 
 	/** Flag indicating whether the subpartition has been finished. */
 	private boolean isFinished;
@@ -74,15 +90,14 @@ class SpillableSubpartition extends ResultSubpartition {
 		synchronized (buffers) {
 			checkState(!(isFinished | isReleased));
 
-			// In-memory
-			if (spillWriter == null) {
+			if (isInMemory()) {
 				buffers.add(buffer);
 
 				return true;
 			}
 		}
 
-		// Else: Spilling
+		// Didn't return early => go to disk
 		spillWriter.writeBlock(buffer);
 
 		return true;
@@ -95,11 +110,6 @@ class SpillableSubpartition extends ResultSubpartition {
 				isFinished = true;
 			}
 		}
-
-		// If we are spilling/have spilled, wait for the writer to finish.
-		if (spillWriter != null) {
-			spillWriter.close();
-		}
 	}
 
 	@Override
@@ -111,22 +121,26 @@ class SpillableSubpartition extends ResultSubpartition {
 				return;
 			}
 
-			if (readView != null) {
-				readView.releaseAllResources();
-			} else {
-				// No consumer yet, everything  in-memory
+			view = readView;
+
+			// No consumer yet, we are responsible to clean everything up.
+			if (view == null) {
 				for (Buffer buffer : buffers) {
 					buffer.recycle();
 				}
 				buffers.clear();
 
-				// If we are spilling/have spilled, wait for the writer to finish and delete the file.
-				if (spillWriter != null) {
-					spillWriter.closeAndDelete();
-				}
+				// TODO This can block until all buffers are written out to
+				// disk before deleting the file. It is possibly called from
+				// the Netty event loop, which can bring down the network.
+				spillWriter.closeAndDelete();
 			}
 
 			isReleased = true;
+		}
+
+		if (view != null) {
+			view.releaseAllResources();
 		}
 	}
 
@@ -200,5 +214,9 @@ class SpillableSubpartition extends ResultSubpartition {
 						"finished? %s, read view? %s, spilled? %s]",
 				getTotalNumberOfBuffers(), getTotalNumberOfBytes(), isFinished, readView != null,
 				spillWriter != null);
+	}
+
+	private boolean isInMemory() {
+		return spillWriter == null;
 	}
 }
