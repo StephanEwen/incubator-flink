@@ -24,9 +24,9 @@ limitations under the License.
       <th>Start Time</th>
       <th>End Time</th>
       <th>Duration</th>
-      <th>Bytes received</th>
+      <th>Bytes received (min: {{ stats['min-read-bytes'] }}, max: {{ stats['max-read-bytes'] }}, diff: {{ stats['diff-read-bytes'] }})</th>
       <th>Records received</th>
-      <th>Bytes sent</th>
+      <th>Bytes sent (min: {{ stats['min-write-bytes'] }}, max: {{ stats['max-write-bytes'] }}, diff: {{ stats['diff-write-bytes'] }})</th>
       <th>Records sent</th>
       <th>Attempt</th>
       <th>Host</th>

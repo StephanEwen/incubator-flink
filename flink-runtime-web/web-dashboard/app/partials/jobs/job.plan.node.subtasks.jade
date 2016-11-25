@@ -25,9 +25,9 @@ table.table.table-hover.table-clickable.table-activable.table-inner(ng-if="subta
       th Start Time
       th End Time
       th Duration
-      th Bytes received
+      th Bytes received (min: {{ stats['min-read-bytes'] }}, max: {{ stats['max-read-bytes'] }}, diff: {{ stats['diff-read-bytes'] }})
       th Records received
-      th Bytes sent
+      th Bytes sent (min: {{ stats['min-write-bytes'] }}, max: {{ stats['max-write-bytes'] }}, diff: {{ stats['diff-write-bytes'] }})
       th Records sent
       th Attempt
       th Host

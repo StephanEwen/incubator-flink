@@ -56,6 +56,12 @@ public class JobVertexDetailsHandler extends AbstractJobVertexRequestHandler {
 		gen.writeNumberField("parallelism", jobVertex.getParallelism());
 		gen.writeNumberField("now", now);
 
+		long minReadBytes = Long.MAX_VALUE;
+		long maxReadBytes = Long.MIN_VALUE;
+
+		long minWriteBytes = Long.MAX_VALUE;
+		long maxWriteBytes = Long.MIN_VALUE;
+
 		gen.writeArrayFieldStart("subtasks");
 		int num = 0;
 		for (ExecutionVertex vertex : jobVertex.getTaskVertices()) {
@@ -100,8 +106,18 @@ public class JobVertexDetailsHandler extends AbstractJobVertexRequestHandler {
 			gen.writeNumberField("duration", duration);
 
 			gen.writeObjectFieldStart("metrics");
-			gen.writeNumberField("read-bytes", readBytes != null ? readBytes.getLocalValuePrimitive() : -1L);
-			gen.writeNumberField("write-bytes", writeBytes != null ? writeBytes.getLocalValuePrimitive() : -1L);
+
+			long currentReadBytes = readBytes != null ? readBytes.getLocalValuePrimitive() : -1L;
+			long currentWriteBytes = writeBytes != null ? writeBytes.getLocalValuePrimitive() : -1L;
+
+			minReadBytes = Math.min(minReadBytes, currentReadBytes);
+			maxReadBytes = Math.max(maxReadBytes, currentReadBytes);
+
+			minWriteBytes = Math.min(minWriteBytes, currentWriteBytes);
+			maxWriteBytes = Math.max(maxWriteBytes, currentWriteBytes);
+
+			gen.writeNumberField("read-bytes", currentReadBytes);
+			gen.writeNumberField("write-bytes", currentWriteBytes);
 			gen.writeNumberField("read-records", readRecords != null ? readRecords.getLocalValuePrimitive() : -1L);
 			gen.writeNumberField("write-records",writeRecords != null ? writeRecords.getLocalValuePrimitive() : -1L);
 			gen.writeEndObject();
@@ -111,7 +127,20 @@ public class JobVertexDetailsHandler extends AbstractJobVertexRequestHandler {
 			num++;
 		}
 		gen.writeEndArray();
-		
+
+		long diffReadBytes = maxReadBytes-minReadBytes;
+		long diffWriteBytes = maxWriteBytes - minWriteBytes;
+
+		gen.writeObjectFieldStart("stats");
+		gen.writeNumberField("min-read-bytes", minReadBytes == Long.MAX_VALUE ? -1 : minReadBytes);
+		gen.writeNumberField("max-read-bytes", maxReadBytes == Long.MIN_VALUE ? -1 : maxReadBytes);
+		gen.writeNumberField("diff-read-bytes", diffReadBytes);
+
+		gen.writeNumberField("min-write-bytes", minWriteBytes == Long.MAX_VALUE ? -1 : minWriteBytes);
+		gen.writeNumberField("max-write-bytes", maxWriteBytes == Long.MIN_VALUE ? -1 : maxWriteBytes);
+		gen.writeNumberField("diff-write-bytes", diffWriteBytes);
+		gen.writeEndObject();
+
 		gen.writeEndObject();
 
 		gen.close();
