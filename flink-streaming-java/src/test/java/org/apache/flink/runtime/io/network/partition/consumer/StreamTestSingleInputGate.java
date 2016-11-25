@@ -65,7 +65,8 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 			int numInputChannels,
 			int bufferSize,
 			TypeSerializer<T> serializer) throws IOException, InterruptedException {
-//		super(numInputChannels, false);
+
+		super(numInputChannels, false);
 
 		this.bufferSize = bufferSize;
 		this.serializer = serializer;

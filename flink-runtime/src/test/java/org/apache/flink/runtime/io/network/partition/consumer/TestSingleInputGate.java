@@ -85,7 +85,7 @@ public class TestSingleInputGate {
 
 					return null;
 				}
-			}).when(inputGate).registerListener(any(EventListener.class));
+			}).when(inputGate).registerListener(any(InputGateListener.class));
 		}
 		catch (Exception e) {
 			throw new RuntimeException(e);

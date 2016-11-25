@@ -45,6 +45,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -93,8 +94,9 @@ public class SpilledSubpartitionViewTest {
 				readers[i] = new SpilledSubpartitionView(
 						parent,
 						inputBuffers.getMemorySegmentSize(),
-						writers[i].getChannelID(),
-						0);
+						writers[i],
+						0,
+						any(PipelinedAvailabilityListener.class));
 			}
 
 			final List<Future<Boolean>> results = Lists.newArrayList();
@@ -113,7 +115,7 @@ public class SpilledSubpartitionViewTest {
 				catch (TimeoutException e) {
 					throw new TimeoutException("There has been a timeout in the test. This " +
 							"indicates that there is a bug/deadlock in the tested subpartition " +
-							"view. The timed out test was in " + ioMode + " mode.");
+							"view.");
 				}
 			}
 		}

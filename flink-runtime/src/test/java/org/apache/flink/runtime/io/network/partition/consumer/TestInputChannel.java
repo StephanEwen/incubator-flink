@@ -41,94 +41,92 @@ import static org.mockito.Mockito.when;
  */
 public class TestInputChannel {
 
-//	private final InputChannel mock = Mockito.mock(InputChannel.class);
-//
-//	private final SingleInputGate inputGate;
-//
-//	// Abusing Mockito here... ;)
-//	protected OngoingStubbing<Buffer> stubbing;
-//
-//	public TestInputChannel(SingleInputGate inputGate, int channelIndex) {
-//		checkArgument(channelIndex >= 0);
-//		this.inputGate = checkNotNull(inputGate);
-//
-//		when(mock.getChannelIndex()).thenReturn(channelIndex);
-//	}
-//
-//	public TestInputChannel read(Buffer buffer) throws IOException, InterruptedException {
-//		if (stubbing == null) {
-//			stubbing = when(mock.getNextBuffer()).thenReturn(buffer);
-//		}
-//		else {
-//			stubbing = stubbing.thenReturn(buffer);
-//		}
-//
-//		inputGate.onAvailableBuffer(mock);
-//
-//		return this;
-//	}
-//
-//	public TestInputChannel readBuffer() throws IOException, InterruptedException {
-//		final Buffer buffer = mock(Buffer.class);
-//		when(buffer.isBuffer()).thenReturn(true);
-//
-//		return read(buffer);
-//	}
-//
-//	public TestInputChannel readEvent() throws IOException, InterruptedException {
-//		return read(EventSerializer.toBuffer(new TestTaskEvent()));
-//	}
-//
-//	public TestInputChannel readEndOfSuperstepEvent() throws IOException, InterruptedException {
-//		return read(EventSerializer.toBuffer(EndOfSuperstepEvent.INSTANCE));
-//	}
-//
-//	public TestInputChannel readEndOfPartitionEvent() throws IOException, InterruptedException {
-//		final Answer<Buffer> answer = new Answer<Buffer>() {
-//			@Override
-//			public Buffer answer(InvocationOnMock invocationOnMock) throws Throwable {
-//				// Return true after finishing
-//				when(mock.isReleased()).thenReturn(true);
-//
-//				return EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE);
-//			}
-//		};
-//
-//		if (stubbing == null) {
-//			stubbing = when(mock.getNextBuffer()).thenAnswer(answer);
-//		}
-//		else {
-//			stubbing = stubbing.thenAnswer(answer);
-//		}
-//
-//		inputGate.onAvailableBuffer(mock);
-//
-//		return this;
-//	}
-//
-//	public InputChannel getInputChannel() {
-//		return mock;
-//	}
-//
-//	// ------------------------------------------------------------------------
-//
-//	/**
-//	 * Creates test input channels and attaches them to the specified input gate.
-//	 *
-//	 * @return The created test input channels.
-//	 */
-//	public static TestInputChannel[] createInputChannels(SingleInputGate inputGate, int numberOfInputChannels) {
-//		checkNotNull(inputGate);
-//		checkArgument(numberOfInputChannels > 0);
-//
-//		TestInputChannel[] mocks = new TestInputChannel[numberOfInputChannels];
-//
-//		for (int i = 0; i < numberOfInputChannels; i++) {
-//			mocks[i] = new TestInputChannel(inputGate, i);
-//
-//			inputGate.setInputChannel(new IntermediateResultPartitionID(), mocks[i].getInputChannel());
-//		}
-//
-//		return mocks;
-//	}
+	private final InputChannel mock = Mockito.mock(InputChannel.class);
+
+	private final SingleInputGate inputGate;
+
+	// Abusing Mockito here... ;)
+	protected OngoingStubbing<InputChannel.BufferAndAvailability> stubbing;
+
+	public TestInputChannel(SingleInputGate inputGate, int channelIndex) {
+		checkArgument(channelIndex >= 0);
+		this.inputGate = checkNotNull(inputGate);
+
+		when(mock.getChannelIndex()).thenReturn(channelIndex);
+	}
+
+	public TestInputChannel read(Buffer buffer) throws IOException, InterruptedException {
+		if (stubbing == null) {
+			stubbing = when(mock.getNextBuffer()).thenReturn(new InputChannel.BufferAndAvailability(buffer, true));
+		} else {
+			stubbing = stubbing.thenReturn(new InputChannel.BufferAndAvailability(buffer, true));
+		}
+
+		inputGate.notifyChannelNonEmpty(mock);
+
+		return this;
+	}
+
+	public TestInputChannel readBuffer() throws IOException, InterruptedException {
+		final Buffer buffer = mock(Buffer.class);
+		when(buffer.isBuffer()).thenReturn(true);
+
+		return read(buffer);
+	}
+
+	public TestInputChannel readEvent() throws IOException, InterruptedException {
+		return read(EventSerializer.toBuffer(new TestTaskEvent()));
+	}
+
+	public TestInputChannel readEndOfSuperstepEvent() throws IOException, InterruptedException {
+		return read(EventSerializer.toBuffer(EndOfSuperstepEvent.INSTANCE));
+	}
+
+	public TestInputChannel readEndOfPartitionEvent() throws IOException, InterruptedException {
+		final Answer<Buffer> answer = new Answer<Buffer>() {
+			@Override
+			public Buffer answer(InvocationOnMock invocationOnMock) throws Throwable {
+				// Return true after finishing
+				when(mock.isReleased()).thenReturn(true);
+
+				return EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE);
+			}
+		};
+
+		if (stubbing == null) {
+			stubbing = when(mock.getNextBuffer()).thenAnswer(answer);
+		} else {
+			stubbing = stubbing.thenAnswer(answer);
+		}
+
+		inputGate.notifyChannelNonEmpty(mock);
+
+		return this;
+	}
+
+	public InputChannel getInputChannel() {
+		return null;
+	}
+
+	// ------------------------------------------------------------------------
+
+	/**
+	 * Creates test input channels and attaches them to the specified input gate.
+	 *
+	 * @return The created test input channels.
+	 */
+	public static TestInputChannel[] createInputChannels(SingleInputGate inputGate, int numberOfInputChannels) {
+		checkNotNull(inputGate);
+		checkArgument(numberOfInputChannels > 0);
+
+		TestInputChannel[] mocks = new TestInputChannel[numberOfInputChannels];
+
+		for (int i = 0; i < numberOfInputChannels; i++) {
+			mocks[i] = new TestInputChannel(inputGate, i);
+
+			inputGate.setInputChannel(new IntermediateResultPartitionID(), mocks[i].getInputChannel());
+		}
+
+		return mocks;
+	}
 }

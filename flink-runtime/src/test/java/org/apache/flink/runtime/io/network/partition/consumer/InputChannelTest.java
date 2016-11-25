@@ -20,7 +20,6 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.event.TaskEvent;
-import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.junit.Test;
 import scala.Tuple2;
@@ -127,7 +126,7 @@ public class InputChannelTest {
 		}
 
 		@Override
-		Buffer getNextBuffer() throws IOException, InterruptedException {
+		BufferAndAvailability getNextBuffer() throws IOException, InterruptedException {
 			return null;
 		}
 
