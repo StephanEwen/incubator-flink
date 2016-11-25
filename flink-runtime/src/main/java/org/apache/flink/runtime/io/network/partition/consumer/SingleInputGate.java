@@ -494,6 +494,7 @@ public class SingleInputGate implements InputGate {
 	}
 
 	void notifyChannelNonEmpty(InputChannel channel) {
+		LOG.info("Channel {} notified non-empty.", channel);
 		queueChannel(checkNotNull(channel));
 	}
 
