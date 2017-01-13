@@ -23,10 +23,15 @@ import org.apache.flink.api.common.state.ReducingState;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.state.KeyedStateBackend;
+import org.apache.flink.runtime.state.internal.InternalReducingState;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Map;
+
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * Heap-backed partitioned {@link org.apache.flink.api.common.state.ReducingState} that is
@@ -37,8 +42,8 @@ import java.util.Map;
  * @param <V> The type of the value.
  */
 public class HeapReducingState<K, N, V>
-		extends AbstractHeapState<K, N, V, ReducingState<V>, ReducingStateDescriptor<V>>
-		implements ReducingState<V> {
+		extends AbstractHeapMergingState<K, N, V, V, V, ReducingState<V>, ReducingStateDescriptor<V>>
+		implements InternalReducingState<N, V> {
 
 	private final ReduceFunction<V> reduceFunction;
 
@@ -56,9 +61,14 @@ public class HeapReducingState<K, N, V>
 			StateTable<K, N, V> stateTable,
 			TypeSerializer<K> keySerializer,
 			TypeSerializer<N> namespaceSerializer) {
+
 		super(backend, stateDesc, stateTable, keySerializer, namespaceSerializer);
 		this.reduceFunction = stateDesc.getReduceFunction();
 	}
+
+	// ------------------------------------------------------------------------
+	//  state access
+	// ------------------------------------------------------------------------
 
 	@Override
 	public V get() {
@@ -111,13 +121,22 @@ public class HeapReducingState<K, N, V>
 		if (currentValue == null) {
 			// we're good, just added the new value
 		} else {
-			V reducedValue = null;
+			V reducedValue;
 			try {
 				reducedValue = reduceFunction.reduce(currentValue, value);
 			} catch (Exception e) {
-				throw new RuntimeException("Could not add value to reducing state.", e);
+				throw new IOException("Exception while applying ReduceFunction in reducing state", e);
 			}
 			keyedMap.put(backend.<K>getCurrentKey(), reducedValue);
 		}
+	}
+
+	// ------------------------------------------------------------------------
+	//  state merging
+	// ------------------------------------------------------------------------
+
+	@Override
+	protected V mergeState(V a, V b) throws Exception {
+		return reduceFunction.reduce(a, b);
 	}
 }

@@ -16,26 +16,17 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.query;
+package org.apache.flink.runtime.state.internal;
 
-import org.apache.flink.runtime.state.internal.InternalKvState;
-import org.apache.flink.util.AbstractID;
+import org.apache.flink.api.common.state.AppendingState;
 
 /**
- * Identifier for {@link InternalKvState} instances.
- *
- * <p>Assigned when registering state at the {@link KvStateRegistry}.
+ * The peer to the {@link AppendingState} in the internal state type hierarchy.
+ * 
+ * <p>See {@link InternalKvState} for a description of the internal state hierarchy.
+ * 
+ * @param <N>   The type of the namespace
+ * @param <IN>  The type of elements added to the state
+ * @param <OUT> The type of the 
  */
-public class KvStateID extends AbstractID {
-
-	private static final long serialVersionUID = 1L;
-
-	public KvStateID() {
-		super();
-	}
-
-	public KvStateID(long lowerPart, long upperPart) {
-		super(lowerPart, upperPart);
-	}
-
-}
+public interface InternalAppendingState<N, IN, OUT> extends InternalKvState<N>, AppendingState<IN, OUT> {}
