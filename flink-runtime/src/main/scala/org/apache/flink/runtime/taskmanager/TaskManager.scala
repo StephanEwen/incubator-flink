@@ -37,6 +37,7 @@ import org.apache.flink.configuration._
 import org.apache.flink.core.fs.FileSystem
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot
 import org.apache.flink.runtime.akka.AkkaUtils
+import org.apache.flink.runtime.akka.executor.FlinkForkJoinThread
 import org.apache.flink.runtime.blob.{BlobCache, BlobClient, BlobService}
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager
 import org.apache.flink.runtime.clusterframework.messages.StopCluster
@@ -76,6 +77,8 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.util.{Failure, Success}
+
+import org.apache.flink.util.Preconditions.checkState
 
 /**
  * The TaskManager is responsible for executing the individual tasks of a Flink job. It is
@@ -132,6 +135,9 @@ class TaskManager(
   with LeaderSessionMessageFilter // Mixin order is important: We want to filter after logging
   with LogMessages // Mixin order is important: first we want to support message logging
   with LeaderRetrievalListener {
+
+  checkState(Thread.currentThread().isInstanceOf[FlinkForkJoinThread],
+    "Invalid actor system configuration, wrong thread pool!")
 
   override val log = Logger(getClass)
 

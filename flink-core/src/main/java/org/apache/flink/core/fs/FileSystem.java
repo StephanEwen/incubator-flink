@@ -123,6 +123,11 @@ public abstract class FileSystem {
 		}
 	}
 
+	@Internal
+	public static void clearSafetyNetInheritance() {
+		REGISTRIES.remove();
+	}
+
 	private static FileSystem wrapWithSafetyNetWhenInTask(FileSystem fs) {
 		SafetyNetCloseableRegistry reg = REGISTRIES.get();
 		return reg != null ? new SafetyNetWrapperFileSystem(fs, reg) : fs;

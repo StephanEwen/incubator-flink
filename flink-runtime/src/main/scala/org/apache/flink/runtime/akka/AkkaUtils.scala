@@ -20,13 +20,14 @@ package org.apache.flink.runtime.akka
 
 import java.io.IOException
 import java.net._
-import java.util.concurrent.{Callable, TimeUnit}
+import java.util.concurrent.{ForkJoinPool, Callable, TimeUnit}
 
 import akka.actor._
 import akka.pattern.{ask => akkaAsk}
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.flink.api.common.time.Time
 import org.apache.flink.configuration.{AkkaOptions, ConfigConstants, Configuration}
+import org.apache.flink.runtime.akka.executor.FlinkForkJoinThread
 import org.apache.flink.runtime.net.SSLUtils
 import org.apache.flink.util.NetUtils
 import org.jboss.netty.logging.{InternalLoggerFactory, Slf4JLoggerFactory}
@@ -101,7 +102,18 @@ object AkkaUtils {
   def createActorSystem(akkaConfig: Config): ActorSystem = {
     // Initialize slf4j as logger of Akka's Netty instead of java.util.logging (FLINK-1650)
     InternalLoggerFactory.setDefaultFactory(new Slf4JLoggerFactory)
-    ActorSystem.create("flink", akkaConfig)
+    
+    val classLoader = getClass().getClassLoader()
+
+    val threadPool = new ForkJoinPool(
+        Math.min(Short.MaxValue, Runtime.getRuntime().availableProcessors()),
+        new FlinkForkJoinThread.Factory(), 
+        null,
+        false)
+    
+    val executor: ExecutionContext = ExecutionContext.fromExecutorService(threadPool)
+
+    ActorSystem.create("flink", akkaConfig, classLoader, executor)
   }
 
   /**
