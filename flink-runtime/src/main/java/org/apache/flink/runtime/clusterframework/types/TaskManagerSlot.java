@@ -18,7 +18,9 @@
 
 package org.apache.flink.runtime.clusterframework.types;
 
-import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorRegistration;
+import org.apache.flink.runtime.instance.InstanceID;
+import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorConnection;
+import org.apache.flink.runtime.resourcemanager.slotmanager.PendingSlotRequest;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -26,7 +28,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * A ResourceSlot represents a slot located in TaskManager from ResourceManager's view. It has a unique
  * identification and resource profile which we can compare to the resource request.
  */
-public class ResourceSlot implements ResourceIDRetrievable {
+public class TaskManagerSlot {
 
 	/** The unique identification of this slot */
 	private final SlotID slotId;
@@ -35,17 +37,25 @@ public class ResourceSlot implements ResourceIDRetrievable {
 	private final ResourceProfile resourceProfile;
 
 	/** Gateway to the TaskExecutor which owns the slot */
-	private final TaskExecutorRegistration taskExecutorRegistration;
+	private final TaskExecutorConnection taskManagerConnection;
 
-	public ResourceSlot(SlotID slotId, ResourceProfile resourceProfile, TaskExecutorRegistration taskExecutorRegistration) {
+	/** Allocation id for which this slot has been allocated */
+	private AllocationID allocationId;
+
+	/** Assigned slot request if there is currently an ongoing request */
+	private PendingSlotRequest assignedSlotRequest;
+
+	public TaskManagerSlot(
+			SlotID slotId,
+			ResourceProfile resourceProfile,
+			TaskExecutorConnection taskManagerConnection,
+			AllocationID allocationId) {
 		this.slotId = checkNotNull(slotId);
 		this.resourceProfile = checkNotNull(resourceProfile);
-		this.taskExecutorRegistration = checkNotNull(taskExecutorRegistration);
-	}
+		this.taskManagerConnection = checkNotNull(taskManagerConnection);
 
-	@Override
-	public ResourceID getResourceID() {
-		return slotId.getResourceID();
+		this.allocationId = allocationId;
+		this.assignedSlotRequest = null;
 	}
 
 	public SlotID getSlotId() {
@@ -56,8 +66,28 @@ public class ResourceSlot implements ResourceIDRetrievable {
 		return resourceProfile;
 	}
 
-	public TaskExecutorRegistration getTaskExecutorRegistration() {
-		return taskExecutorRegistration;
+	public TaskExecutorConnection getTaskManagerConnection() {
+		return taskManagerConnection;
+	}
+
+	public AllocationID getAllocationId() {
+		return allocationId;
+	}
+
+	public void setAllocationId(AllocationID allocationId) {
+		this.allocationId = allocationId;
+	}
+
+	public PendingSlotRequest getAssignedSlotRequest() {
+		return assignedSlotRequest;
+	}
+
+	public void setAssignedSlotRequest(PendingSlotRequest assignedSlotRequest) {
+		this.assignedSlotRequest = assignedSlotRequest;
+	}
+
+	public InstanceID getInstanceId() {
+		return taskManagerConnection.getInstanceID();
 	}
 
 	/**
@@ -68,5 +98,17 @@ public class ResourceSlot implements ResourceIDRetrievable {
 	 */
 	public boolean isMatchingRequirement(ResourceProfile required) {
 		return resourceProfile.isMatching(required);
+	}
+
+	public boolean isFree() {
+		return !isAllocated() && !hasPendingSlotRequest();
+	}
+
+	public boolean isAllocated() {
+		return null != allocationId;
+	}
+
+	public boolean hasPendingSlotRequest() {
+		return null != assignedSlotRequest;
 	}
 }

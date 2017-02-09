@@ -21,8 +21,8 @@ package org.apache.flink.runtime.resourcemanager;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.metrics.MetricRegistry;
-import org.apache.flink.runtime.resourcemanager.slotmanager.DefaultSlotManager;
-import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManagerFactory;
+import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManager;
+import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManagerConfiguration;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.util.Preconditions;
@@ -53,14 +53,21 @@ public class ResourceManagerRunner implements FatalErrorHandler {
 		Preconditions.checkNotNull(metricRegistry);
 
 		final ResourceManagerConfiguration resourceManagerConfiguration = ResourceManagerConfiguration.fromConfiguration(configuration);
-		final SlotManagerFactory slotManagerFactory = new DefaultSlotManager.Factory();
+		final SlotManagerConfiguration slotManagerConfiguration = SlotManagerConfiguration.fromConfiguration(configuration);
+
+		final SlotManager slotManager = new SlotManager(
+			rpcService.getScheduledExecutor(),
+			slotManagerConfiguration.getTaskManagerRequestTimeout(),
+			slotManagerConfiguration.getSlotRequestTimeout(),
+			slotManagerConfiguration.getTaskManagerTimeout())
+			;
 		final JobLeaderIdService jobLeaderIdService = new JobLeaderIdService(highAvailabilityServices);
 
 		this.resourceManager = new StandaloneResourceManager(
 			rpcService,
 			resourceManagerConfiguration,
 			highAvailabilityServices,
-			slotManagerFactory,
+			slotManager,
 			metricRegistry,
 			jobLeaderIdService,
 			this);
