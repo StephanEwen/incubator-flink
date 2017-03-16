@@ -24,6 +24,7 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.concurrent.Executors;
+import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
 import org.apache.flink.runtime.concurrent.impl.FlinkFuture;
 import org.apache.flink.runtime.resourcemanager.SlotRequest;
@@ -33,8 +34,8 @@ import org.apache.flink.runtime.taskexecutor.SlotStatus;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.util.TestLogger;
+
 import org.junit.AfterClass;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -52,23 +53,17 @@ import static org.mockito.Mockito.verify;
 
 public class SlotProtocolTest extends TestLogger {
 
-	private static ScheduledExecutorService scheduledExecutorService;
+	private static final ScheduledExecutorService scheduledExecutorService = 
+			new ScheduledThreadPoolExecutor(1);
 
-	@BeforeClass
-	public static void beforeClass() {
-		scheduledExecutorService = new ScheduledThreadPoolExecutor(1);
-	}
+	private static final ScheduledExecutor scheduledExecutor = 
+			new ScheduledExecutorServiceAdapter(scheduledExecutorService);
 
 	@AfterClass
 	public static void afterClass() {
-		scheduledExecutorService.shutdown();
-
-		if (!scheduledExecutorService.isTerminated()) {
-			List<Runnable> runnables = scheduledExecutorService.shutdownNow();
-
-			for (Runnable runnable : runnables) {
-				runnable.run();
-			}
+		List<Runnable> runnables = scheduledExecutorService.shutdownNow();
+		for (Runnable runnable : runnables) {
+			runnable.run();
 		}
 	}
 
@@ -85,7 +80,7 @@ public class SlotProtocolTest extends TestLogger {
 		final UUID rmLeaderID = UUID.randomUUID();
 
 		try (SlotManager slotManager = new SlotManager(
-			new ScheduledExecutorServiceAdapter(scheduledExecutorService),
+			scheduledExecutor,
 			TestingUtils.infiniteTime(),
 			TestingUtils.infiniteTime(),
 			TestingUtils.infiniteTime())) {
@@ -147,7 +142,7 @@ public class SlotProtocolTest extends TestLogger {
 			.thenReturn(mock(FlinkFuture.class));
 
 		try (SlotManager slotManager = new SlotManager(
-			new ScheduledExecutorServiceAdapter(scheduledExecutorService),
+			scheduledExecutor,
 			TestingUtils.infiniteTime(),
 			TestingUtils.infiniteTime(),
 			TestingUtils.infiniteTime())) {

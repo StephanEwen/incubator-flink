@@ -25,8 +25,8 @@ import org.apache.flink.runtime.resourcemanager.slotmanager.PendingSlotRequest;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * A ResourceSlot represents a slot located in TaskManager from ResourceManager's view. It has a unique
- * identification and resource profile which we can compare to the resource request.
+ * A TaskManagerSlot represents a slot located in TaskManager from ResourceManager's view. It has a unique
+ * identification and a resource profile.
  */
 public class TaskManagerSlot {
 
