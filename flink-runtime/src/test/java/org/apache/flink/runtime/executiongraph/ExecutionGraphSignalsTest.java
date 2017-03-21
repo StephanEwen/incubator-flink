@@ -268,7 +268,7 @@ public class ExecutionGraphSignalsTest {
 
 		f.set(eg, JobStatus.SUSPENDED);
 
-		eg.fail(testException);
+		eg.failGlobal(testException);
 
 		assertEquals(JobStatus.SUSPENDED, eg.getState());
 
@@ -314,12 +314,12 @@ public class ExecutionGraphSignalsTest {
 
 		f.set(eg, JobStatus.RESTARTING);
 
-		eg.fail(new Exception("Test"));
+		eg.failGlobal(new Exception("Test"));
 
 		// we should restart since we have one restart attempt left
 		assertEquals(JobStatus.RESTARTING, eg.getState());
 
-		eg.fail(new Exception("Test"));
+		eg.failGlobal(new Exception("Test"));
 
 		// after depleting all our restart attempts we should go into Failed
 		assertEquals(JobStatus.FAILED, eg.getState());
@@ -339,7 +339,7 @@ public class ExecutionGraphSignalsTest {
 		f.set(eg, JobStatus.RESTARTING);
 
 		// suppress a possible restart
-		eg.fail(new SuppressRestartsException(new Exception("Test")));
+		eg.failGlobal(new SuppressRestartsException(new Exception("Test")));
 
 		assertEquals(JobStatus.FAILED, eg.getState());
 	}

@@ -163,6 +163,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			this.locationConstraint = null;
 		}
 
+		getExecutionGraph().registerExecution(currentExecution);
+
 		this.timeout = timeout;
 	}
 
@@ -522,7 +524,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 				final Execution newExecution = new Execution(
 					getExecutionGraph().getFutureExecutor(),
 					this,
-						oldExecution.getAttemptNumber()+1,
+					oldExecution.getAttemptNumber() + 1,
 					System.currentTimeMillis(),
 					timeout);
 
@@ -532,6 +534,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 				if (grp != null) {
 					this.locationConstraint = grp.getLocationConstraint(subTaskIndex);
 				}
+
+				// register this execution at the execution graph, to receive call backs
+				getExecutionGraph().registerExecution(newExecution);
 
 				// if the execution was 'FINISHED' before, tell the ExecutionGraph that
 				// we take one step back on the road to reaching global FINISHED

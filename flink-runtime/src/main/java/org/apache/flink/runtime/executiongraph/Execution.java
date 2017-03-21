@@ -252,6 +252,12 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	//  Actions
 	// --------------------------------------------------------------------------------------------
 
+	public boolean scheduleForExecution() {
+		SlotProvider resourceProvider = getVertex().getExecutionGraph().getSlotProvider();
+		boolean allowQueued = getVertex().getExecutionGraph().isQueuedSchedulingAllowed();
+		return scheduleForExecution(resourceProvider, allowQueued);
+	}
+
 	/**
 	 * NOTE: This method only throws exceptions if it is in an illegal state to be scheduled, or if the tasks needs
 	 *       to be scheduled immediately and no resource is available. If the task is accepted by the schedule, any
@@ -381,9 +387,6 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				taskState,
 				attemptNumber);
 
-			// register this execution at the execution graph, to receive call backs
-			vertex.getExecutionGraph().registerExecution(this);
-			
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
 			final Future<Acknowledge> submitResultFuture = taskManagerGateway.submitTask(deployment, timeout);
@@ -823,7 +826,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				if (current != FAILED) {
 					String message = String.format("Asynchronous race: Found state %s after successful cancel call.", state);
 					LOG.error(message);
-					vertex.getExecutionGraph().fail(new Exception(message));
+					vertex.getExecutionGraph().failGlobal(new Exception(message));
 				}
 				return;
 			}
