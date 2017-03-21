@@ -271,12 +271,12 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		assertEquals(JobStatus.RESTARTING, executionGraph.getState());
 
 		// The restarting should not fail with an ordinary exception
-		executionGraph.fail(new Exception("Test exception"));
+		executionGraph.failGlobal(new Exception("Test exception"));
 
 		assertEquals(JobStatus.RESTARTING, executionGraph.getState());
 
 		// but it should fail when sending a SuppressRestartsException
-		executionGraph.fail(new SuppressRestartsException(new Exception("Test exception")));
+		executionGraph.failGlobal(new SuppressRestartsException(new Exception("Test exception")));
 
 		assertEquals(JobStatus.FAILED, executionGraph.getState());
 
@@ -298,7 +298,7 @@ public class ExecutionGraphRestartTest extends TestLogger {
 			vertex.getCurrentExecutionAttempt().switchToRunning();
 		}
 
-		graph.fail(new Exception("test"));
+		graph.failGlobal(new Exception("test"));
 
 		assertEquals(JobStatus.FAILING, graph.getState());
 
@@ -330,7 +330,7 @@ public class ExecutionGraphRestartTest extends TestLogger {
 
 		assertEquals(JobStatus.CANCELLING, graph.getState());
 
-		graph.fail(new Exception("test"));
+		graph.failGlobal(new Exception("test"));
 
 		assertEquals(JobStatus.FAILING, graph.getState());
 
@@ -443,7 +443,7 @@ public class ExecutionGraphRestartTest extends TestLogger {
 
 	/**
 	 * Tests that a graph is not restarted after cancellation via a call to
-	 * {@link ExecutionGraph#fail(Throwable)}. This can happen when a slot is
+	 * {@link ExecutionGraph#failGlobal(Throwable)}. This can happen when a slot is
 	 * released concurrently with cancellation.
 	 */
 	@Test
@@ -490,7 +490,7 @@ public class ExecutionGraphRestartTest extends TestLogger {
 
 	/**
 	 * Tests that it is possible to fail a graph via a call to
-	 * {@link ExecutionGraph#fail(Throwable)} after cancellation.
+	 * {@link ExecutionGraph#failGlobal(Throwable)} after cancellation.
 	 */
 	@Test
 	public void testFailExecutionGraphAfterCancel() throws Exception {
@@ -523,7 +523,7 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		eg.cancel();
 		assertEquals(JobStatus.CANCELLING, eg.getState());
 
-		eg.fail(new Exception("Test Exception"));
+		eg.failGlobal(new Exception("Test Exception"));
 		assertEquals(JobStatus.FAILING, eg.getState());
 
 		Execution execution = eg.getAllExecutionVertices().iterator().next().getCurrentExecutionAttempt();

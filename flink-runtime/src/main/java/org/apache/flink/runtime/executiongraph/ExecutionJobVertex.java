@@ -28,7 +28,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.core.io.InputSplitSource;
-import org.apache.flink.core.io.LocatableInputSplit;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.concurrent.Future;
@@ -52,11 +51,17 @@ import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * An {@code ExecutionJobVertex} is part of the {@link ExecutionGraph}, and the peer 
+ * to the {@link JobVertex}.
+ * 
+ * <p>The {@code ExecutionJobVertex} corresponds to a parallelized operation. It
+ * contains an {@link ExecutionVertex} for each parallel instance of that operation.
+ */
 public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable<ArchivedExecutionJobVertex> {
 
 	/** Use the same log for all ExecutionGraph classes */
@@ -470,6 +475,10 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	}
 
 	public void resetForNewExecution() {
+		resetForNewExecution(System.currentTimeMillis());
+	}
+
+	public void resetForNewExecution(long timestamp) {
 
 		synchronized (stateMonitor) {
 			// check and reset the sharing groups with scheduler hints
@@ -478,7 +487,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 			}
 
 			for (int i = 0; i < parallelism; i++) {
-				taskVertices[i].resetForNewExecution();
+				taskVertices[i].resetForNewExecution(timestamp);
 			}
 
 			// set up the input splits again
@@ -519,112 +528,36 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	}
 
 	// --------------------------------------------------------------------------------------------
-	//  Static / pre-assigned input splits
+	//  Archiving
 	// --------------------------------------------------------------------------------------------
 
-	private List<LocatableInputSplit>[] computeLocalInputSplitsPerTask(InputSplit[] splits) throws JobException {
-		
-		final int numSubTasks = getParallelism();
-		
-		// sanity check
-		if (numSubTasks > splits.length) {
-			throw new JobException("Strictly local assignment requires at least as many splits as subtasks.");
-		}
-		
-		// group the splits by host while preserving order per host
-		Map<String, List<LocatableInputSplit>> splitsByHost = new HashMap<String, List<LocatableInputSplit>>();
-		
-		for (InputSplit split : splits) {
-			// check that split has exactly one local host
-			if(!(split instanceof LocatableInputSplit)) {
-				throw new JobException("Invalid InputSplit type " + split.getClass().getCanonicalName() + ". " +
-						"Strictly local assignment requires LocatableInputSplit");
-			}
-			LocatableInputSplit lis = (LocatableInputSplit) split;
-
-			if (lis.getHostnames() == null) {
-				throw new JobException("LocatableInputSplit has no host information. " +
-						"Strictly local assignment requires exactly one hostname for each LocatableInputSplit.");
-			}
-			else if (lis.getHostnames().length != 1) {
-				throw new JobException("Strictly local assignment requires exactly one hostname for each LocatableInputSplit.");
-			}
-			String hostName = lis.getHostnames()[0];
-			
-			if (hostName == null) {
-				throw new JobException("For strictly local input split assignment, no null host names are allowed.");
-			}
-
-			List<LocatableInputSplit> hostSplits = splitsByHost.get(hostName);
-			if (hostSplits == null) {
-				hostSplits = new ArrayList<LocatableInputSplit>();
-				splitsByHost.put(hostName, hostSplits);
-			}
-			hostSplits.add(lis);
-		}
-		
-		
-		int numHosts = splitsByHost.size();
-		
-		if (numSubTasks < numHosts) {
-			throw new JobException("Strictly local split assignment requires at least as " +
-					"many parallel subtasks as distinct split hosts. Please increase the parallelism " +
-					"of DataSource "+this.getJobVertex().getName()+" to at least "+numHosts+".");
-		}
-
-		// get list of hosts in deterministic order
-		List<String> hosts = new ArrayList<String>(splitsByHost.keySet());
-		Collections.sort(hosts);
-		
-		@SuppressWarnings("unchecked")
-		List<LocatableInputSplit>[] subTaskSplitAssignment = (List<LocatableInputSplit>[]) new List<?>[numSubTasks];
-		
-		final int subtasksPerHost = numSubTasks / numHosts;
-		final int hostsWithOneMore = numSubTasks % numHosts;
-		
-		int subtaskNum = 0;
-		
-		// we go over all hosts and distribute the hosts' input splits
-		// over the subtasks
-		for (int hostNum = 0; hostNum < numHosts; hostNum++) {
-			String host = hosts.get(hostNum);
-			List<LocatableInputSplit> splitsOnHost = splitsByHost.get(host);
-			
-			int numSplitsOnHost = splitsOnHost.size();
-			
-			// the number of subtasks to split this over.
-			// NOTE: if the host has few splits, some subtasks will not get anything.
-			int subtasks = Math.min(numSplitsOnHost, 
-							hostNum < hostsWithOneMore ? subtasksPerHost + 1 : subtasksPerHost);
-			
-			int splitsPerSubtask = numSplitsOnHost / subtasks;
-			int subtasksWithOneMore = numSplitsOnHost % subtasks;
-			
-			int splitnum = 0;
-			
-			// go over the subtasks and grab a subrange of the input splits
-			for (int i = 0; i < subtasks; i++) {
-				int numSplitsForSubtask = (i < subtasksWithOneMore ? splitsPerSubtask + 1 : splitsPerSubtask);
-				
-				List<LocatableInputSplit> splitList;
-				
-				if (numSplitsForSubtask == numSplitsOnHost) {
-					splitList = splitsOnHost;
-				}
-				else {
-					splitList = new ArrayList<LocatableInputSplit>(numSplitsForSubtask);
-					for (int k = 0; k < numSplitsForSubtask; k++) {
-						splitList.add(splitsOnHost.get(splitnum++));
-					}
-				}
-				
-				subTaskSplitAssignment[subtaskNum++] = splitList;
-			}
-		}
-		
-		return subTaskSplitAssignment;
+	@Override
+	public ArchivedExecutionJobVertex archive() {
+		return new ArchivedExecutionJobVertex(this);
 	}
 
+	// ------------------------------------------------------------------------
+	//  Static Utilities
+	// ------------------------------------------------------------------------
+
+	/**
+	 * A utility function that computes an "aggregated" state for the vertex.
+	 * 
+	 * <p>This state is not used anywhere in the  coordination, but can be used for display
+	 * in dashboards to as a summary for how the particular parallel operation represented by
+	 * this ExecutionJobVertex is currently behaving.
+	 * 
+	 * <p>For example, if at least one parallel task is failed, the aggregate state is failed.
+	 * If not, and at least one parallel task is cancelling (or cancelled), the aggregate state
+	 * is cancelling (or cancelled). If all tasks are finished, the aggregate state is finished,
+	 * and so on.
+	 * 
+	 * @param verticesPerState The number of vertices in each state (indexed by the ordinal of
+	 *                         the ExecutionState values).
+	 * @param parallelism The parallelism of the ExecutionJobVertex
+	 * 
+	 * @return The aggregate state of this ExecutionJobVertex. 
+	 */
 	public static ExecutionState getAggregateJobVertexState(int[] verticesPerState, int parallelism) {
 		if (verticesPerState == null || verticesPerState.length != ExecutionState.values().length) {
 			throw new IllegalArgumentException("Must provide an array as large as there are execution states.");
@@ -675,10 +608,5 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		}
 
 		return expanded;
-	}
-
-	@Override
-	public ArchivedExecutionJobVertex archive() {
-		return new ArchivedExecutionJobVertex(this);
 	}
 }

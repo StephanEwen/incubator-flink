@@ -163,6 +163,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			this.locationConstraint = null;
 		}
 
+		getExecutionGraph().registerExecution(currentExecution);
+
 		this.timeout = timeout;
 	}
 
@@ -509,6 +511,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	// --------------------------------------------------------------------------------------------
 
 	public Execution resetForNewExecution() {
+		return resetForNewExecution(System.currentTimeMillis());
+	}
+
+	public Execution resetForNewExecution(long timestamp) {
 
 		LOG.debug("Resetting execution vertex {} for new execution.", getTaskNameWithSubtaskIndex());
 
@@ -522,8 +528,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 				final Execution newExecution = new Execution(
 					getExecutionGraph().getFutureExecutor(),
 					this,
-						oldExecution.getAttemptNumber()+1,
-					System.currentTimeMillis(),
+					oldExecution.getAttemptNumber() + 1,
+					timestamp,
 					timeout);
 
 				this.currentExecution = newExecution;
@@ -532,6 +538,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 				if (grp != null) {
 					this.locationConstraint = grp.getLocationConstraint(subTaskIndex);
 				}
+
+				// register this execution at the execution graph, to receive call backs
+				getExecutionGraph().registerExecution(newExecution);
 
 				// if the execution was 'FINISHED' before, tell the ExecutionGraph that
 				// we take one step back on the road to reaching global FINISHED
@@ -658,10 +667,14 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	// --------------------------------------------------------------------------------------------
 
 	/**
-	 * Simply forward this notification. This is for logs and event archivers.
+	 * Simply forward this notification
 	 */
-	void notifyStateTransition(ExecutionAttemptID executionId, ExecutionState newState, Throwable error) {
-		getExecutionGraph().notifyExecutionChange(getJobvertexId(), subTaskIndex, executionId, newState, error);
+	void notifyStateTransition(Execution execution, ExecutionState newState, Throwable error) {
+		// only forward this notification if the execution is still the current execution
+		// otherwise we have an outdated execution
+		if (currentExecution == execution) {
+			getExecutionGraph().notifyExecutionChange(execution, newState, error);
+		}
 	}
 
 	/**
