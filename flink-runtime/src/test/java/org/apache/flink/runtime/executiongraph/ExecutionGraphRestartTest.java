@@ -298,7 +298,7 @@ public class ExecutionGraphRestartTest extends TestLogger {
 			vertex.getCurrentExecutionAttempt().switchToRunning();
 		}
 
-		graph.fail(new Exception("test"));
+		graph.failGlobal(new Exception("test"));
 
 		assertEquals(JobStatus.FAILING, graph.getState());
 
@@ -330,7 +330,7 @@ public class ExecutionGraphRestartTest extends TestLogger {
 
 		assertEquals(JobStatus.CANCELLING, graph.getState());
 
-		graph.fail(new Exception("test"));
+		graph.failGlobal(new Exception("test"));
 
 		assertEquals(JobStatus.FAILING, graph.getState());
 
