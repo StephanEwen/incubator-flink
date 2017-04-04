@@ -24,6 +24,8 @@ import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
+import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.executiongraph.GlobalModVersionMismatch;
 import org.apache.flink.runtime.executiongraph.IntermediateResult;
 import org.apache.flink.util.FlinkRuntimeException;
 
@@ -31,6 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.Executor;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -48,43 +51,67 @@ public class RestartIndividualStrategy extends FailoverStrategy {
 	/** The execution graph to recover */
 	private final ExecutionGraph executionGraph;
 
+	/** The executor that executes restart callbacks */
+	private final Executor callbackExecutor;
+
 	/**
 	 * Creates a new failover strategy that recovers from failures by restarting all tasks
 	 * of the execution graph.
 	 * 
+	 * <p>The strategy will use the ExecutionGraph's future executor for callbacks.
+	 * 
 	 * @param executionGraph The execution graph to handle.
 	 */
 	public RestartIndividualStrategy(ExecutionGraph executionGraph) {
+		this(executionGraph, executionGraph.getFutureExecutor());
+	}
+
+	/**
+	 * Creates a new failover strategy that recovers from failures by restarting all tasks
+	 * of the execution graph.
+	 *
+	 * @param executionGraph The execution graph to handle.
+	 * @param callbackExecutor The executor that executes restart callbacks
+	 */
+	public RestartIndividualStrategy(ExecutionGraph executionGraph, Executor callbackExecutor) {
 		this.executionGraph = checkNotNull(executionGraph);
+		this.callbackExecutor = checkNotNull(callbackExecutor);
 	}
 
 	// ------------------------------------------------------------------------
 
 	@Override
-	public void onTaskFailure(final Execution taskExecution, Throwable cause) {
+	public void onTaskFailure(Execution taskExecution, Throwable cause) {
 
 		LOG.info("Recovering task failure for {} (#{}) via individual restart.", 
 				taskExecution.getVertex().getTaskNameWithSubtaskIndex(), taskExecution.getAttemptNumber());
 
 		// trigger the restart once the task has reached its terminal state
 		// Note: currently all tasks passed here are already in their terminal state,
-		//       so we could actually avoid the future. We use it in this testing implementation
-		//       to illustrate how to handle this thread / concurrency safe
+		//       so we could actually avoid the future. We use it anyways because it is cheap and
+		//       it helps to support better testing
 		final Future<ExecutionState> terminationFuture = taskExecution.getTerminationFuture();
+
+		final ExecutionVertex vertexToRecover = taskExecution.getVertex(); 
+		final long globalModVersion = taskExecution.getGlobalModVersion();
 
 		terminationFuture.thenAcceptAsync(new AcceptFunction<ExecutionState>() {
 			@Override
 			public void accept(ExecutionState value) {
 				try {
-					Execution newExecution = taskExecution.getVertex().resetForNewExecution();
+					long createTimestamp = System.currentTimeMillis();
+					Execution newExecution = vertexToRecover.resetForNewExecution(createTimestamp, globalModVersion);
 					newExecution.scheduleForExecution();
+				}
+				catch (GlobalModVersionMismatch e) {
+					// this happens if a concurrent global recovery happens. simply do nothing.
 				}
 				catch (Exception e) {
 					executionGraph.failGlobal(
 							new Exception("Error during fine grained recovery - triggering full recovery", e));
 				}
 			}
-		}, executionGraph.getFutureExecutor());
+		}, callbackExecutor);
 	}
 
 	@Override

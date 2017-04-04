@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -47,12 +48,36 @@ public class RestartPipelinedRegionStrategy extends FailoverStrategy {
 
 	private static final Logger LOG = LoggerFactory.getLogger(RestartIndividualStrategy.class);
 
+	/** The execution graph on which this FailoverStrategy works */
 	private final ExecutionGraph executionGraph;
 
+	/** The executor used for future actions */
+	private final Executor executor;
+
+	/** Fast lookup from vertex to failover region */
 	private final HashMap<ExecutionVertex, FailoverRegion> vertexToRegion;
 
+
+	/**
+	 * Creates a new failover strategy to restart pipelined regions that works on the given
+	 * execution graph and uses the execution graph's future executor to call restart actions.
+	 * 
+	 * @param executionGraph The execution graph on which this FailoverStrategy will work
+	 */
 	public RestartPipelinedRegionStrategy(ExecutionGraph executionGraph) {
+		this(executionGraph, executionGraph.getFutureExecutor());
+	}
+
+	/**
+	 * Creates a new failover strategy to restart pipelined regions that works on the given
+	 * execution graph and uses the given executor to call restart actions.
+	 * 
+	 * @param executionGraph The execution graph on which this FailoverStrategy will work
+	 * @param executor  The executor used for future actions
+	 */
+	public RestartPipelinedRegionStrategy(ExecutionGraph executionGraph, Executor executor) {
 		this.executionGraph = checkNotNull(executionGraph);
+		this.executor = checkNotNull(executor);
 		this.vertexToRegion = new HashMap<>();
 	}
 
@@ -75,7 +100,7 @@ public class RestartPipelinedRegionStrategy extends FailoverStrategy {
 					taskExecution.getAttemptNumber(),
 					taskExecution.getAttemptId());
 
-			failoverRegion.onExecutionFail(ev, cause);
+			failoverRegion.onExecutionFail(taskExecution, cause);
 		}
 	}
 
@@ -182,7 +207,7 @@ public class RestartPipelinedRegionStrategy extends FailoverStrategy {
 				executionGraph.getJobName(), executionGraph.getJobID());
 
 		for (List<ExecutionVertex> region : distinctRegions.keySet()) {
-			final FailoverRegion failoverRegion = new FailoverRegion(executionGraph, region);
+			final FailoverRegion failoverRegion = new FailoverRegion(executionGraph, executor, region);
 			for (ExecutionVertex ev : region) {
 				this.vertexToRegion.put(ev, failoverRegion);
 			}
@@ -205,7 +230,7 @@ public class RestartPipelinedRegionStrategy extends FailoverStrategy {
 			}
 		}
 
-		final FailoverRegion singleRegion = new FailoverRegion(executionGraph, allVertices);
+		final FailoverRegion singleRegion = new FailoverRegion(executionGraph, executor, allVertices);
 		for (ExecutionVertex ev : allVertices) {
 			vertexToRegion.put(ev, singleRegion);
 		}

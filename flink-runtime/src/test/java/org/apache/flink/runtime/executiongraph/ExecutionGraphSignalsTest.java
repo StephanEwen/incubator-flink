@@ -52,6 +52,8 @@ import scala.concurrent.duration.FiniteDuration;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.same;
@@ -97,24 +99,24 @@ public class ExecutionGraphSignalsTest {
 
 		PowerMockito
 			.whenNew(ExecutionJobVertex.class)
-			.withArguments(any(ExecutionGraph.class), same(v1), any(Integer.class).intValue(),
-				any(FiniteDuration.class), any(Long.class).longValue()).thenReturn(mockEJV[0]);
+			.withArguments(any(ExecutionGraph.class), same(v1), anyInt(),
+				any(FiniteDuration.class), anyLong(), anyLong()).thenReturn(mockEJV[0]);
 		PowerMockito
 			.whenNew(ExecutionJobVertex.class)
-			.withArguments(any(ExecutionGraph.class), same(v2), any(Integer.class).intValue(),
-				any(FiniteDuration.class), any(Long.class).longValue()).thenReturn(mockEJV[1]);
+			.withArguments(any(ExecutionGraph.class), same(v2), anyInt(),
+				any(FiniteDuration.class), anyLong(), anyLong()).thenReturn(mockEJV[1]);
 		PowerMockito
 			.whenNew(ExecutionJobVertex.class)
-			.withArguments(any(ExecutionGraph.class), same(v3), any(Integer.class).intValue(),
-				any(FiniteDuration.class), any(Long.class).longValue()).thenReturn(mockEJV[2]);
+			.withArguments(any(ExecutionGraph.class), same(v3), anyInt(),
+				any(FiniteDuration.class), anyLong(), anyLong()).thenReturn(mockEJV[2]);
 		PowerMockito
 			.whenNew(ExecutionJobVertex.class)
-			.withArguments(any(ExecutionGraph.class), same(v4), any(Integer.class).intValue(),
-				any(FiniteDuration.class), any(Long.class).longValue()).thenReturn(mockEJV[3]);
+			.withArguments(any(ExecutionGraph.class), same(v4), anyInt(),
+				any(FiniteDuration.class), anyLong(), anyLong()).thenReturn(mockEJV[3]);
 		PowerMockito
 			.whenNew(ExecutionJobVertex.class)
-			.withArguments(any(ExecutionGraph.class), same(v5), any(Integer.class).intValue(),
-				any(FiniteDuration.class), any(Long.class).longValue()).thenReturn(mockEJV[4]);
+			.withArguments(any(ExecutionGraph.class), same(v5), anyInt(),
+				any(FiniteDuration.class), anyLong(), anyLong()).thenReturn(mockEJV[4]);
 
 		v1.setParallelism(dop[0]);
 		v2.setParallelism(dop[1]);

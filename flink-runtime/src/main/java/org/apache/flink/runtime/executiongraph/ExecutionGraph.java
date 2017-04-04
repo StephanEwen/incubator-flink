@@ -122,6 +122,10 @@ import static org.apache.flink.util.Preconditions.checkState;
  *         about deployment of tasks and updates in the task status always use the ExecutionAttemptID to
  *         address the message receiver.</li>
  * </ul>
+ * 
+ * <h2>Global and local failover</h2>
+ * 
+ * 
  */
 public class ExecutionGraph implements AccessExecutionGraph, Archiveable<ArchivedExecutionGraph> {
 
@@ -742,7 +746,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 			// create the execution job vertex and attach it to the graph
 			ExecutionJobVertex ejv =
-					new ExecutionJobVertex(this, jobVertex, 1, rpcCallTimeout, createTimestamp);
+					new ExecutionJobVertex(this, jobVertex, 1, rpcCallTimeout, globalRecoveryVersion, createTimestamp);
 			ejv.connectToPredecessors(this.intermediateResults);
 
 			ExecutionJobVertex previousTask = this.tasks.putIfAbsent(jobVertex.getID(), ejv);
@@ -931,6 +935,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			if (current == JobStatus.RUNNING || current == JobStatus.CREATED) {
 				if (transitionState(current, JobStatus.CANCELLING)) {
 
+					// make sure no concurrent local actions interfere with the cancellation
+					incrementGlobalModVersion();
+
 					final ArrayList<Future<?>> futures = new ArrayList<>(verticesInCreationOrder.size());
 
 					// cancel all tasks (that still need cancelling)
@@ -1012,6 +1019,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			} else if (transitionState(currentState, JobStatus.SUSPENDED, suspensionCause)) {
 				this.failureCause = suspensionCause;
 
+				// make sure no concurrent local actions interfere with the cancellation
+				incrementGlobalModVersion();
+
 				for (ExecutionJobVertex ejv: verticesInCreationOrder) {
 					ejv.cancel();
 				}
@@ -1056,6 +1066,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			}
 			else if (transitionState(current, JobStatus.FAILING, t)) {
 				this.failureCause = t;
+
+				// make sure no concurrent local actions interfere with the cancellation
+				incrementGlobalModVersion();
 
 				// we build a future that is complete once all vertices have reached a terminal state
 				final ArrayList<Future<?>> futures = new ArrayList<>(verticesInCreationOrder.size());
@@ -1111,7 +1124,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 						colGroups.add(cgroup);
 					}
 
-					jv.resetForNewExecution(resetTimestamp);
+					jv.resetForNewExecution(resetTimestamp, globalRecoveryVersion);
 				}
 
 				for (int i = 0; i < stateTimestamps.length; i++) {
@@ -1194,8 +1207,12 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	}
 
 	@VisibleForTesting
-	FailoverStrategy getFailoverStrategy() {
+	public FailoverStrategy getFailoverStrategy() {
 		return this.failoverStrategy;
+	}
+
+	long getGlobalModVersion() {
+		return globalRecoveryVersion;
 	}
 
 	// ------------------------------------------------------------------------
@@ -1225,6 +1242,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		else {
 			return false;
 		}
+	}
+
+	private long incrementGlobalModVersion() {
+		return GLOBAL_VERSION_UPDATER.incrementAndGet(this);
 	}
 
 	// ------------------------------------------------------------------------
@@ -1580,7 +1601,15 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		// see what this means for us. currently, the first FAILED state means -> FAILED
 		if (newExecutionState == ExecutionState.FAILED) {
 			final Throwable ex = error != null ? error : new FlinkException("Unknown Error (missing cause)");
-			failoverStrategy.onTaskFailure(execution, ex);
+
+			try {
+				failoverStrategy.onTaskFailure(execution, ex);
+			}
+			catch (Throwable t) {
+				// bug in the failover strategy - fall back to global failover
+				LOG.warn("Error in failover strategy - falling back to global restart", t);
+				failGlobal(ex);
+			}
 		}
 	}
 

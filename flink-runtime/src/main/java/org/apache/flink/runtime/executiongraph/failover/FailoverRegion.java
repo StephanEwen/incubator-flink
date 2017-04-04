@@ -18,14 +18,16 @@
 
 package org.apache.flink.runtime.executiongraph.failover;
 
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.AcceptFunction;
 import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.executiongraph.GlobalModVersionMismatch;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
+import org.apache.flink.util.AbstractID;
 import org.apache.flink.util.FlinkException;
 
 import org.slf4j.Logger;
@@ -35,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -53,43 +56,50 @@ public class FailoverRegion {
 
 	// ------------------------------------------------------------------------
 
-	// a unique id for debugging
-	private final ResourceID id = ResourceID.generate();
-
-	/** Current status of the job execution */
-	private volatile JobStatus state = JobStatus.RUNNING;
+	/** a unique id for debugging */
+	private final AbstractID id = new AbstractID();
 
 	private final ExecutionGraph executionGraph;
 
 	private final List<ExecutionVertex> connectedExecutionVertexes;
 
-	public FailoverRegion(ExecutionGraph executionGraph, List<ExecutionVertex> connectedExecutions) {
+	/** The executor that executes the recovery action after all vertices are in a */
+	private final Executor executor;
+
+	/** Current status of the job execution */
+	private volatile JobStatus state = JobStatus.RUNNING;
+
+
+	public FailoverRegion(ExecutionGraph executionGraph, Executor executor, List<ExecutionVertex> connectedExecutions) {
 		this.executionGraph = checkNotNull(executionGraph);
+		this.executor = checkNotNull(executor);
 		this.connectedExecutionVertexes = checkNotNull(connectedExecutions);
-		LOG.info("FailoverRegion {} contains {}.", id.toString(), connectedExecutions.toString());
+
+		LOG.debug("Created failover region {} with vertices: {}", id, connectedExecutions);
 	}
 
-	public void onExecutionFail(ExecutionVertex ev, Throwable cause) {
-		//TODO: check if need precedings failover
+	public void onExecutionFail(Execution taskExecution, Throwable cause) {
+		// TODO: check if need to failover the preceding region
 		if (!executionGraph.getRestartStrategy().canRestart()) {
-			executionGraph.failGlobal(new FlinkException("RestartStrategy "));
+			// delegate the failure to a global fail that will check the restart strategy and not restart
+			executionGraph.failGlobal(cause);
 		}
 		else {
-			cancel();
+			cancel(taskExecution.getGlobalModVersion());
 		}
 	}
 
-	private void allVerticesInTerminalState() {
+	private void allVerticesInTerminalState(long globalModVersionOfFailover) {
 		while (true) {
 			JobStatus curStatus = this.state;
 			if (curStatus.equals(JobStatus.CANCELLING)) {
 				if (transitionState(curStatus, JobStatus.CANCELED)) {
-					reset();
+					reset(globalModVersionOfFailover);
 					break;
 				}
 			}
 			else {
-				LOG.info("FailoverRegion {} is {} when allVerticesInTerminalState.", id.toString(), state);
+				LOG.info("FailoverRegion {} is {} when allVerticesInTerminalState.", id, state);
 				break;
 			}
 		}
@@ -107,26 +117,26 @@ public class FailoverRegion {
 	}
 
 	// Notice the region to failover, 
-	private void failover() {
+	private void failover(long globalModVersionOfFailover) {
 		if (!executionGraph.getRestartStrategy().canRestart()) {
 			executionGraph.failGlobal(new FlinkException("RestartStrategy validate fail"));
 		}
 		else {
 			JobStatus curStatus = this.state;
 			if (curStatus.equals(JobStatus.RUNNING)) {
-				cancel();
+				cancel(globalModVersionOfFailover);
 			}
 			else if (curStatus.equals(JobStatus.CANCELED)) {
-				reset();
+				reset(globalModVersionOfFailover);
 			}
 			else {
-				LOG.info("FailoverRegion {} is {} when notified to failover.", id.toString(), state);
+				LOG.info("FailoverRegion {} is {} when notified to failover.", id, state);
 			}
 		}
 	}
 
 	// cancel all executions in this sub graph
-	private void cancel() {
+	private void cancel(final long globalModVersionOfFailover) {
 		while (true) {
 			JobStatus curStatus = this.state;
 			if (curStatus.equals(JobStatus.RUNNING)) {
@@ -141,50 +151,60 @@ public class FailoverRegion {
 					}
 
 					final FutureUtils.ConjunctFuture allTerminal = FutureUtils.combineAll(futures);
-					allTerminal.thenAccept(new AcceptFunction<Void>() {
+					allTerminal.thenAcceptAsync(new AcceptFunction<Void>() {
 						@Override
 						public void accept(Void value) {
-							allVerticesInTerminalState();
+							allVerticesInTerminalState(globalModVersionOfFailover);
 						}
-					});
+					}, executor);
+
 					break;
 				}
 			}
 			else {
-				LOG.info("FailoverRegion {} is {} when cancel.", id.toString(), state);
+				LOG.info("FailoverRegion {} is {} when cancel.", id, state);
 				break;
 			}
 		}
 	}
 
 	// reset all executions in this sub graph
-	private void reset() {
+	private void reset(long globalModVersionOfFailover) {
 		try {
-			//reset all connected ExecutionVertexes
-			Collection<CoLocationGroup> colGroups = new HashSet<>();
+			// reset all connected ExecutionVertexes
+			final Collection<CoLocationGroup> colGroups = new HashSet<>();
+			final long restartTimestamp = System.currentTimeMillis();
+
 			for (ExecutionVertex ev : connectedExecutionVertexes) {
 				CoLocationGroup cgroup = ev.getJobVertex().getCoLocationGroup();
-				if(cgroup != null && !colGroups.contains(cgroup)){
+				if (cgroup != null && !colGroups.contains(cgroup)){
 					cgroup.resetConstraints();
 					colGroups.add(cgroup);
 				}
-				ev.resetForNewExecution();
+
+				ev.resetForNewExecution(restartTimestamp, globalModVersionOfFailover);
 			}
 			if (transitionState(JobStatus.CANCELED, JobStatus.CREATED)) {
-				restart();
+				restart(globalModVersionOfFailover);
 			}
 			else {
-				LOG.info("FailoverRegion {} switched from CANCELLING to CREATED fail, will fail this region again.", id.toString());
-				failover();
+				LOG.info("FailoverRegion {} switched from CANCELLING to CREATED fail, will fail this region again.", id);
+				failover(globalModVersionOfFailover);
 			}
-		} catch (Throwable e) {
-			LOG.info("FailoverRegion {} reset fail, will failover again.", id.toString());
-			failover();
+		}
+		catch (GlobalModVersionMismatch e) {
+			// happens when a global recovery happens concurrently to the regional recovery
+			// go back to a clean state
+			state = JobStatus.CREATED;
+		}
+		catch (Throwable e) {
+			LOG.info("FailoverRegion {} reset fail, will failover again.", id);
+			failover(globalModVersionOfFailover);
 		}
 	}
 
 	// restart all executions in this sub graph
-	private void restart() {
+	private void restart(long globalModVersionOfFailover) {
 		try {
 			if (transitionState(JobStatus.CREATED, JobStatus.RUNNING)) {
 				// if we have checkpointed state, reload it into the executions
@@ -199,28 +219,28 @@ public class FailoverRegion {
 				//restart all connected ExecutionVertexes
 				for (ExecutionVertex ev : connectedExecutionVertexes) {
 					try {
-						//TODO: change with schedule mode
-						ev.scheduleForExecution(executionGraph.getSlotProvider(), true);
-								//executionGraph.isQueuedSchedulingAllowed());
+						ev.scheduleForExecution(
+								executionGraph.getSlotProvider(),
+								executionGraph.isQueuedSchedulingAllowed());
 					}
 					catch (Throwable e) {
-						failover();
+						failover(globalModVersionOfFailover);
 					}
 				}
 			}
 			else {
-				LOG.info("FailoverRegion {} switched from CREATED to RUNNING fail, will fail this region again.", id.toString());
-				failover();
+				LOG.info("FailoverRegion {} switched from CREATED to RUNNING fail, will fail this region again.", id);
+				failover(globalModVersionOfFailover);
 			}
 		} catch (Exception e) {
-			LOG.info("FailoverRegion {} restart failed, failover again.", id.toString(), e);
-			failover();
+			LOG.info("FailoverRegion {} restart failed, failover again.", id, e);
+			failover(globalModVersionOfFailover);
 		}
 	}
 
 	private boolean transitionState(JobStatus current, JobStatus newState) {
 		if (STATE_UPDATER.compareAndSet(this, current, newState)) {
-			LOG.info("FailoverRegion {} switched from state {} to {}.", id.toString(), current, newState);
+			LOG.info("FailoverRegion {} switched from state {} to {}.", id, current, newState);
 			return true;
 		}
 		else {

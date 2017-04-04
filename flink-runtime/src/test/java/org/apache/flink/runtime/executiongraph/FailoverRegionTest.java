@@ -24,6 +24,9 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.concurrent.Executors;
+import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy;
+import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy.Factory;
 import org.apache.flink.runtime.executiongraph.failover.RestartPipelinedRegionStrategy;
 import org.apache.flink.runtime.executiongraph.restart.InfiniteDelayRestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
@@ -120,7 +123,7 @@ public class FailoverRegionTest extends TestLogger {
 				new SerializedValue<>(new ExecutionConfig()),
 				AkkaUtils.getDefaultTimeout(),
 				new InfiniteDelayRestartStrategy(10),
-				new RestartPipelinedRegionStrategy.Factory(),
+				new FailoverPipelinedRegionWithDirectExecutor(),
 				Collections.<BlobKey>emptyList(),
 				Collections.<URL>emptyList(),
 				scheduler,
@@ -305,7 +308,7 @@ public class FailoverRegionTest extends TestLogger {
 				new SerializedValue<>(new ExecutionConfig()),
 				AkkaUtils.getDefaultTimeout(),
 				new InfiniteDelayRestartStrategy(10),
-				new RestartPipelinedRegionStrategy.Factory(),
+				new FailoverPipelinedRegionWithDirectExecutor(),
 				Collections.<BlobKey>emptyList(),
 				Collections.<URL>emptyList(),
 				scheduler,
@@ -410,7 +413,7 @@ public class FailoverRegionTest extends TestLogger {
 				new SerializedValue<>(new ExecutionConfig()),
 				AkkaUtils.getDefaultTimeout(),
 				restartStrategy,
-				new RestartPipelinedRegionStrategy.Factory(),
+				new FailoverPipelinedRegionWithDirectExecutor(),
 				Collections.<BlobKey>emptyList(),
 				Collections.<URL>emptyList(),
 				scheduler,
@@ -425,6 +428,20 @@ public class FailoverRegionTest extends TestLogger {
 
 		eg.scheduleForExecution();
 		return eg;
+	}
+
+	// ------------------------------------------------------------------------
+
+	/**
+	 * A factory to create a RestartPipelinedRegionStrategy that uses a
+	 * direct (synchronous) executor for easier testing.
+	 */
+	private static class FailoverPipelinedRegionWithDirectExecutor implements Factory {
+
+		@Override
+		public FailoverStrategy create(ExecutionGraph executionGraph) {
+			return new RestartPipelinedRegionStrategy(executionGraph, Executors.directExecutor());
+		}
 	}
 
 }

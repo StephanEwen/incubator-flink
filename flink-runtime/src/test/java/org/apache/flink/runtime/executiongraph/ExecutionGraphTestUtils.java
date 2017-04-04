@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.executiongraph;
 
+import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -26,6 +27,7 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeoutException;
 
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.time.Time;
@@ -65,18 +67,69 @@ import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.util.SerializedValue;
 
 import org.slf4j.Logger;
-
 import org.slf4j.LoggerFactory;
+
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.ExecutionContext$;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
+
+/**
+ * A collection of utility methods for testing the ExecutionGraph and its related classes. 
+ */
 public class ExecutionGraphTestUtils {
 
 	private static final Logger TEST_LOGGER = LoggerFactory.getLogger(ExecutionGraphTestUtils.class);
 
-	// --------------------------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
+	//  reaching states
+	// ------------------------------------------------------------------------
+
+	public static void waitUntilJobStatus(ExecutionGraph eg, JobStatus status, long maxWaitMillis) 
+			throws TimeoutException {
+
+		checkNotNull(eg);
+		checkNotNull(status);
+		checkArgument(maxWaitMillis >= 0);
+
+		// this is a poor implementation - we may want to improve it eventually
+		final long deadline = maxWaitMillis == 0 ? Long.MAX_VALUE : System.nanoTime() + (maxWaitMillis * 1_000_000);
+
+		while (eg.getState() != status && System.nanoTime() < deadline) {
+			try { 
+				Thread.sleep(2);
+			} catch (InterruptedException ignored) {}
+		}
+
+		if (System.nanoTime() >= deadline) {
+			throw new TimeoutException();
+		}
+	}
+
+	public static void waitUntilExecutionState(Execution execution, ExecutionState state, long maxWaitMillis)
+			throws TimeoutException {
+
+		checkNotNull(execution);
+		checkNotNull(state);
+		checkArgument(maxWaitMillis >= 0);
+
+		// this is a poor implementation - we may want to improve it eventually
+		final long deadline = maxWaitMillis == 0 ? Long.MAX_VALUE : System.nanoTime() + (maxWaitMillis * 1_000_000);
+
+		while (execution.getState() != state && System.nanoTime() < deadline) {
+			try {
+				Thread.sleep(2);
+			} catch (InterruptedException ignored) {}
+		}
+
+		if (System.nanoTime() >= deadline) {
+			throw new TimeoutException();
+		}
+	}
+
+	// ------------------------------------------------------------------------
 	//  state modifications
-	// --------------------------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
 	
 	public static void setVertexState(ExecutionVertex vertex, ExecutionState state) {
 		try {

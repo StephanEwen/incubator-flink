@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.executiongraph;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.Archiveable;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
@@ -101,21 +102,26 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	private SerializedValue<TaskInformation> serializedTaskInformation;
 
 	private InputSplitAssigner splitAssigner;
-	
-	public ExecutionJobVertex(
+
+	/**
+	 * Convenience constructor for testing.
+	 */
+	@VisibleForTesting
+	ExecutionJobVertex(
 		ExecutionGraph graph,
 		JobVertex jobVertex,
 		int defaultParallelism,
 		Time timeout) throws JobException {
 
-		this(graph, jobVertex, defaultParallelism, timeout, System.currentTimeMillis());
+		this(graph, jobVertex, defaultParallelism, timeout, 1L, System.currentTimeMillis());
 	}
-	
+
 	public ExecutionJobVertex(
 		ExecutionGraph graph,
 		JobVertex jobVertex,
 		int defaultParallelism,
 		Time timeout,
+		long initialGlobalModVersion,
 		long createTimestamp) throws JobException {
 
 		if (graph == null || jobVertex == null) {
@@ -174,18 +180,24 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		// create all task vertices
 		for (int i = 0; i < numTaskVertices; i++) {
 			ExecutionVertex vertex = new ExecutionVertex(
-					this, i, this.producedDataSets, timeout, createTimestamp, maxPriorAttemptsHistoryLength);
+					this,
+					i,
+					producedDataSets,
+					timeout,
+					initialGlobalModVersion,
+					createTimestamp,
+					maxPriorAttemptsHistoryLength);
 
 			this.taskVertices[i] = vertex;
 		}
-		
+
 		// sanity check for the double referencing between intermediate result partitions and execution vertices
 		for (IntermediateResult ir : this.producedDataSets) {
 			if (ir.getNumberOfAssignedPartitions() != parallelism) {
 				throw new RuntimeException("The intermediate result's partitions were not correctly assigned.");
 			}
 		}
-		
+
 		// set up the input splits, if the vertex has any
 		try {
 			@SuppressWarnings("unchecked")
@@ -474,11 +486,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		}
 	}
 
-	public void resetForNewExecution() {
-		resetForNewExecution(System.currentTimeMillis());
-	}
-
-	public void resetForNewExecution(long timestamp) {
+	public void resetForNewExecution(final long timestamp, final long expectedGlobalModVersion)
+			throws GlobalModVersionMismatch {
 
 		synchronized (stateMonitor) {
 			// check and reset the sharing groups with scheduler hints
@@ -487,7 +496,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 			}
 
 			for (int i = 0; i < parallelism; i++) {
-				taskVertices[i].resetForNewExecution(timestamp);
+				taskVertices[i].resetForNewExecution(timestamp, expectedGlobalModVersion);
 			}
 
 			// set up the input splits again
