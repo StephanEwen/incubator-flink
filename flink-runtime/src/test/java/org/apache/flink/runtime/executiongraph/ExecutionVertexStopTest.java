@@ -46,6 +46,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.powermock.api.mockito.PowerMockito.whenNew;
 
 @RunWith(PowerMockRunner.class)
@@ -70,6 +71,7 @@ public class ExecutionVertexStopTest extends TestLogger {
 		final ExecutionJobVertex ejv = getExecutionVertex(jid);
 
 		Execution executionMock = mock(Execution.class);
+		when(executionMock.getAttemptId()).thenReturn(mock(ExecutionAttemptID.class));
 		whenNew(Execution.class).withAnyArguments().thenReturn(executionMock);
 
 		final ExecutionVertex vertex = new ExecutionVertex(ejv, 0, new IntermediateResult[0],

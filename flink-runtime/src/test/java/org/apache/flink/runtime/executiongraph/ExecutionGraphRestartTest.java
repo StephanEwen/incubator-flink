@@ -344,7 +344,7 @@ public class ExecutionGraphRestartTest extends TestLogger {
 
 	@Test
 	public void testNoRestartOnSuppressException() throws Exception {
-		Tuple2<ExecutionGraph, Instance> executionGraphInstanceTuple = createSpyExecutionGraph(new FixedDelayRestartStrategy(1, 1000));
+		Tuple2<ExecutionGraph, Instance> executionGraphInstanceTuple = createExecutionGraph(new FixedDelayRestartStrategy(1, 1000));
 		ExecutionGraph eg = executionGraphInstanceTuple.f0;
 
 		// Fail with unrecoverable Exception
@@ -366,9 +366,6 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		}
 
 		assertEquals(JobStatus.FAILED, eg.getState());
-
-		// No restart
-		verify(eg, never()).restart();
 
 		RestartStrategy restartStrategy = eg.getRestartStrategy();
 
@@ -652,14 +649,6 @@ public class ExecutionGraphRestartTest extends TestLogger {
 	}
 
 	private static Tuple2<ExecutionGraph, Instance> createExecutionGraph(RestartStrategy restartStrategy) throws Exception {
-		return createExecutionGraph(restartStrategy, false);
-	}
-
-	private static Tuple2<ExecutionGraph, Instance> createSpyExecutionGraph(RestartStrategy restartStrategy) throws Exception {
-		return createExecutionGraph(restartStrategy, true);
-	}
-
-	private static Tuple2<ExecutionGraph, Instance> createExecutionGraph(RestartStrategy restartStrategy, boolean isSpy) throws Exception {
 		Instance instance = ExecutionGraphTestUtils.getInstance(
 			new ActorTaskManagerGateway(
 				new SimpleActorGateway(TestingUtils.directExecutionContext())),
@@ -673,9 +662,6 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		JobGraph jobGraph = new JobGraph("Pointwise job", sender);
 
 		ExecutionGraph eg = newExecutionGraph(restartStrategy, scheduler);
-		if (isSpy) {
-			eg = spy(eg);
-		}
 		eg.attachJobGraph(jobGraph.getVerticesSortedTopologicallyFromSources());
 
 		assertEquals(JobStatus.CREATED, eg.getState());
