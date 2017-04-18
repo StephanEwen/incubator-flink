@@ -1202,6 +1202,11 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		}
 	}
 
+	@VisibleForTesting
+	FailoverStrategy getFailoverStrategy() {
+		return this.failoverStrategy;
+	}
+
 	private boolean transitionState(JobStatus current, JobStatus newState) {
 		return transitionState(current, newState, null);
 	}

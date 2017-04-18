@@ -27,6 +27,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
 import org.apache.flink.runtime.executiongraph.restart.InfiniteDelayRestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
@@ -91,6 +92,7 @@ public class ExecutionGraphSignalsTest {
 
 			when(mockEJV[i].getProducedDataSets()).thenReturn(new IntermediateResult[0]);
 			when(mockEJV[i].getTaskVertices()).thenReturn(this.mockEV[i]);
+			when(mockEJV[i].cancelWithFuture()).thenReturn(mock(Future.class));
 		}
 
 		PowerMockito
@@ -160,48 +162,54 @@ public class ExecutionGraphSignalsTest {
 		assertEquals(JobStatus.CREATED, eg.getState());
 		eg.cancel();
 
-		verifyCancel(1);
+		verifyCancelWithFuture(1);
 
 		f.set(eg, JobStatus.RUNNING);
 		eg.cancel();
 
-		verifyCancel(2);
+		verifyCancelWithFuture(2);
 		assertEquals(JobStatus.CANCELLING, eg.getState());
 
 		eg.cancel();
 
-		verifyCancel(2);
+		verifyCancelWithFuture(2);
 		assertEquals(JobStatus.CANCELLING, eg.getState());
 
 		f.set(eg, JobStatus.CANCELED);
 		eg.cancel();
 
-		verifyCancel(2);
+		verifyCancelWithFuture(2);
 		assertEquals(JobStatus.CANCELED, eg.getState());
 
 		f.set(eg, JobStatus.FAILED);
 		eg.cancel();
 
-		verifyCancel(2);
+		verifyCancelWithFuture(2);
 		assertEquals(JobStatus.FAILED, eg.getState());
 
 		f.set(eg, JobStatus.FAILING);
 		eg.cancel();
 
-		verifyCancel(2);
+		verifyCancelWithFuture(2);
 		assertEquals(JobStatus.CANCELLING, eg.getState());
 
 		f.set(eg, JobStatus.FINISHED);
 		eg.cancel();
 
-		verifyCancel(2);
+		verifyCancelWithFuture(2);
 		assertEquals(JobStatus.FINISHED, eg.getState());
 
 		f.set(eg, JobStatus.RESTARTING);
 		eg.cancel();
 
-		verifyCancel(2);
+		verifyCancelWithFuture(2);
 		assertEquals(JobStatus.CANCELED, eg.getState());
+	}
+
+	private void verifyCancelWithFuture(int times) {
+		for (int i = 0; i < mockEJV.length; ++i) {
+			verify(mockEJV[i], times(times)).cancelWithFuture();
+		}
 	}
 
 	private void verifyCancel(int times) {
