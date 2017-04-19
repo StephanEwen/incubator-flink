@@ -70,6 +70,7 @@ import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.testutils.DirectScheduledExecutorService;
 import org.apache.flink.util.SerializedValue;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.LoggerFactory;
 
@@ -341,6 +342,7 @@ public class ExecutionGraphDeploymentTest {
 		}
 	}
 
+	@Ignore
 	@Test
 	public void testRegistrationOfExecutionsFailingFinalize() {
 		try {

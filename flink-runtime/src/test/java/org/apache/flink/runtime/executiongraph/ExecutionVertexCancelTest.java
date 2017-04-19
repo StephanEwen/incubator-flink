@@ -408,8 +408,7 @@ public class ExecutionVertexCancelTest {
 			final JobVertexID jid = new JobVertexID();
 			final ExecutionJobVertex ejv = getExecutionVertex(jid);
 
-			final ExecutionVertex vertex = new ExecutionVertex(ejv, 0, new IntermediateResult[0],
-					AkkaUtils.getDefaultTimeout());
+			final ExecutionVertex vertex = ejv.getTaskVertices()[0];
 
 			final ActorGateway gateway = new CancelSequenceActorGateway(
 					TestingUtils.defaultExecutionContext(),
