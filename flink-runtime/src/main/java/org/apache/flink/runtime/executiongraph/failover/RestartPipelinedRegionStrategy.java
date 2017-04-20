@@ -24,7 +24,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionEdge;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
-import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
+import org.apache.flink.runtime.executiongraph.IntermediateResult;
 import org.apache.flink.util.FlinkException;
 
 import org.slf4j.Logger;
@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -84,70 +85,84 @@ public class RestartPipelinedRegionStrategy extends FailoverStrategy {
 		return "Pipelined Region Failover";
 	}
 
-	// Generate all the FailoverRegion from the new added job vertexes
+	/**
+	 * Generate all the FailoverRegion from the new added job vertexes
+ 	 */
 	private void generateAllFailoverRegion(List<ExecutionJobVertex> newJobVerticesTopological) {
-		for (ExecutionJobVertex ejv : newJobVerticesTopological) {
-			for (ExecutionVertex ev : ejv.getTaskVertices()) {
-				if (getFailoverRegion(ev) != null) {
-					continue;
-				}
-				List<ExecutionVertex> pipelinedExecutions = new ArrayList<>();
-				List<ExecutionVertex> orgExecutions = new ArrayList<>();
-				orgExecutions.add(ev);
-				pipelinedExecutions.add(ev);
-				getAllPipelinedConnectedVertexes(orgExecutions, pipelinedExecutions);
+		final HashMap<ExecutionVertex, List<ExecutionVertex>> vertexToPipelined = new HashMap<>();
+		final IdentityHashMap<List<ExecutionVertex>, Object> distinctRegions = new IdentityHashMap<>();
 
-				FailoverRegion region = new FailoverRegion(executionGraph, pipelinedExecutions);
-				for (ExecutionVertex vertex : pipelinedExecutions) {
-					vertexToRegion.put(vertex, region);
+		// this loop will worst case iterate over every edge in the graph (complexity is O(#edges))
+
+		for (ExecutionJobVertex ejv : newJobVerticesTopological) {
+
+			// see if this one has pipelined inputs at all
+			final List<IntermediateResult> inputs = ejv.getInputs();
+			final int numInputs = inputs.size();
+			boolean hasPipelinedInputs = false;
+
+			for (IntermediateResult input : inputs) {
+				if (input.getResultType().isPipelined()) {
+					hasPipelinedInputs = true;
+					break;
 				}
 			}
-		}
-	}
 
-	/**
-	 * Get all connected executions of the original executions
-	 *
-	 * @param orgExecutions  the original execution vertexes
-	 * @param connectedExecutions  the total connected executions
-	 */
-	private static void getAllPipelinedConnectedVertexes(List<ExecutionVertex> orgExecutions, List<ExecutionVertex> connectedExecutions) {
-		List<ExecutionVertex> newAddedExecutions = new ArrayList<>();
-		for (ExecutionVertex ev : orgExecutions) {
-			// Add downstream ExecutionVertex
-			for (IntermediateResultPartition irp : ev.getProducedPartitions().values()) {
-				if (irp.getIntermediateResult().getResultType().isPipelined()) {
-					for (List<ExecutionEdge> consumers : irp.getConsumers()) {
-						for (ExecutionEdge consumer : consumers) {
-							ExecutionVertex cev = consumer.getTarget();
-							if (!connectedExecutions.contains(cev)) {
-								newAddedExecutions.add(cev);
+			if (hasPipelinedInputs) {
+				// build upon the predecessors
+				for (ExecutionVertex ev : ejv.getTaskVertices()) {
+
+					// remember the region in which we are
+					List<ExecutionVertex> thisRegion = null;
+
+					for (int inputNum = 0; inputNum < numInputs; inputNum++) {
+						if (inputs.get(inputNum).getResultType().isPipelined()) {
+
+							for (ExecutionEdge edge : ev.getInputEdges(inputNum)) {
+								final ExecutionVertex predecessor = edge.getSource().getProducer();
+								final List<ExecutionVertex> predecessorRegion = vertexToPipelined.get(predecessor);
+
+								if (thisRegion != null) {
+									// we already have a region. see if it is the same as the predecessor's region
+									if (predecessorRegion != thisRegion) {
+
+										// we need to merge our region and the predecessor's region
+										thisRegion.addAll(predecessorRegion);
+										distinctRegions.remove(predecessorRegion);
+
+										// remap the vertices from that merged region
+										for (ExecutionVertex inPredRegion: predecessorRegion) {
+											vertexToPipelined.put(inPredRegion, thisRegion);
+										}
+									}
+								}
+								else {
+									// first case, make this our region
+									thisRegion = predecessorRegion;
+									thisRegion.add(ev);
+									vertexToPipelined.put(ev, thisRegion);
+								}
 							}
 						}
 					}
 				}
 			}
-			if (!newAddedExecutions.isEmpty()) {
-				connectedExecutions.addAll(newAddedExecutions);
-				getAllPipelinedConnectedVertexes(newAddedExecutions, connectedExecutions);
-				newAddedExecutions.clear();
-			}
-			// Add upstream ExecutionVertex
-			int inputNum = ev.getNumberOfInputs();
-			for (int i = 0; i < inputNum; i++) {
-				for (ExecutionEdge input : ev.getInputEdges(i)) {
-					if (input.getSource().getIntermediateResult().getResultType().isPipelined()) {
-						ExecutionVertex pev = input.getSource().getProducer();
-						if (!connectedExecutions.contains(pev)) {
-							newAddedExecutions.add(pev);
-						}
-					}
+			else {
+				// first one, gets an individual region
+				for (ExecutionVertex ev : ejv.getTaskVertices()) {
+					ArrayList<ExecutionVertex> region = new ArrayList<>(1);
+					region.add(ev);
+					vertexToPipelined.put(ev, region);
+					distinctRegions.put(region, null);
 				}
 			}
-			if (!newAddedExecutions.isEmpty()) {
-				connectedExecutions.addAll(0, newAddedExecutions);
-				getAllPipelinedConnectedVertexes(newAddedExecutions, connectedExecutions);
-				newAddedExecutions.clear();
+		}
+
+		// now that we have all regions, create the failover region objects 
+		for (List<ExecutionVertex> region : distinctRegions.keySet()) {
+			final FailoverRegion failoverRegion = new FailoverRegion(executionGraph, region);
+			for (ExecutionVertex ev : region) {
+				vertexToRegion.put(ev, failoverRegion);
 			}
 		}
 	}
