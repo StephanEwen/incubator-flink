@@ -188,21 +188,17 @@ public class ExecutionGraphTestUtils {
 
 		@Override
 		public Object handleMessage(Object message) {
-			Object result = null;
-			if(message instanceof SubmitTask) {
+			if (message instanceof SubmitTask) {
 				SubmitTask submitTask = (SubmitTask) message;
 				lastTDD = submitTask.tasks();
-
-				result = Acknowledge.get();
+				return Acknowledge.get();
 			} else if(message instanceof CancelTask) {
-				CancelTask cancelTask = (CancelTask) message;
-
-				result = Acknowledge.get();
+				return Acknowledge.get();
 			} else if(message instanceof FailIntermediateResultPartitions) {
-				result = new Object();
+				return new Object();
+			} else {
+				return null;
 			}
-
-			return result;
 		}
 	}
 

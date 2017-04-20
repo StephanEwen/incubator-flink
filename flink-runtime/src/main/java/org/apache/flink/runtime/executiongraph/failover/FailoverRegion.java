@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.executiongraph.failover;
 
-//import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.AcceptFunction;
 import org.apache.flink.runtime.concurrent.Future;
@@ -28,6 +27,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.util.FlinkException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,11 +44,14 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * It will change from CREATED to CANCELING and then to CANCELLED and at last to RUNNING,
  */
 public class FailoverRegion {
+
 	private static final AtomicReferenceFieldUpdater<FailoverRegion, JobStatus> STATE_UPDATER =
 			AtomicReferenceFieldUpdater.newUpdater(FailoverRegion.class, JobStatus.class, "state");
 
 	/** The log object used for debugging. */
-	static final Logger LOG = LoggerFactory.getLogger(FailoverRegion.class);
+	private static final Logger LOG = LoggerFactory.getLogger(FailoverRegion.class);
+
+	// ------------------------------------------------------------------------
 
 	// a unique id for debugging
 	private final ResourceID id = ResourceID.generate();
@@ -94,18 +97,6 @@ public class FailoverRegion {
 
 	public JobStatus getState() {
 		return state;
-	}
-
-	/**
-	 *  whether an execution vertex is contained in this sub graph
-	 */
-	public boolean containsExecution(ExecutionVertex ev) {
-		for (ExecutionVertex vertex : connectedExecutionVertexes) {
-			if (vertex.equals(ev)) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/**
