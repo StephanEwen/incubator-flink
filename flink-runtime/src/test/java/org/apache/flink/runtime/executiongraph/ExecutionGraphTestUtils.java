@@ -18,23 +18,35 @@
 
 package org.apache.flink.runtime.executiongraph;
 
+import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.util.concurrent.ScheduledExecutorService;
 
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
+import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
+import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
 import org.apache.flink.runtime.instance.BaseTestingActorGateway;
 import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.instance.Instance;
+import org.apache.flink.runtime.instance.SlotProvider;
+import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobmanager.slots.AllocatedSlot;
+import org.apache.flink.runtime.jobmanager.slots.SlotOwner;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
@@ -52,13 +64,15 @@ import org.apache.flink.runtime.messages.TaskMessages.CancelTask;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.util.SerializedValue;
 
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
+import org.slf4j.Logger;
 
+import org.slf4j.LoggerFactory;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.ExecutionContext$;
 
 public class ExecutionGraphTestUtils {
+
+	private static final Logger TEST_LOGGER = LoggerFactory.getLogger(ExecutionGraphTestUtils.class);
 
 	// --------------------------------------------------------------------------------------------
 	//  state modifications
@@ -100,10 +114,55 @@ public class ExecutionGraphTestUtils {
 			throw new RuntimeException("Modifying the status failed", e);
 		}
 	}
-	
-	// --------------------------------------------------------------------------------------------
+
+	// ------------------------------------------------------------------------
+	//  Mocking Slots
+	// ------------------------------------------------------------------------
+
+	public static SimpleSlot createMockSimpleSlot(JobID jid) {
+		final TaskManagerGateway gateway = mock(TaskManagerGateway.class);
+		when(gateway.submitTask(any(TaskDeploymentDescriptor.class), any(Time.class)))
+				.thenReturn(new FlinkCompletableFuture<Acknowledge>());
+		
+		final TaskManagerLocation location = new TaskManagerLocation(
+				ResourceID.generate(), InetAddress.getLoopbackAddress(), 6572);
+
+		final AllocatedSlot allocatedSlot = new AllocatedSlot(
+				new AllocationID(),
+				jid,
+				location,
+				0,
+				ResourceProfile.UNKNOWN,
+				gateway);
+
+		return new SimpleSlot(allocatedSlot, mock(SlotOwner.class), 0);
+	}
+
+	// ------------------------------------------------------------------------
+	//  Mocking ExecutionGraph
+	// ------------------------------------------------------------------------
+
+	public static ExecutionGraph createSimpleTestGraph(JobID jid, JobVertex... vertices) throws Exception {
+
+		return ExecutionGraphBuilder.buildGraph(
+				null,
+				new JobGraph(jid, "test job", vertices),
+				new Configuration(),
+				TestingUtils.defaultExecutor(),
+				TestingUtils.defaultExecutor(),
+				mock(SlotProvider.class),
+				ExecutionGraphTestUtils.class.getClassLoader(),
+				mock(CheckpointRecoveryFactory.class),
+				Time.seconds(10),
+				new NoRestartStrategy(),
+				new UnregisteredMetricsGroup(),
+				1,
+				TEST_LOGGER);
+	}
+
+	// ------------------------------------------------------------------------
 	//  utility mocking methods
-	// --------------------------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
 
 	public static Instance getInstance(final TaskManagerGateway gateway) throws Exception {
 		return getInstance(gateway, 1);
@@ -188,17 +247,7 @@ public class ExecutionGraphTestUtils {
 			new NoRestartStrategy(),
 			new Scheduler(ExecutionContext$.MODULE$.fromExecutor(executor)));
 
-		ExecutionJobVertex ejv = spy(new ExecutionJobVertex(graph, ajv, 1,
-				AkkaUtils.getDefaultTimeout()));
-
-		Answer<Void> noop = new Answer<Void>() {
-			@Override
-			public Void answer(InvocationOnMock invocation) {
-				return null;
-			}
-		};
-
-		return ejv;
+		return spy(new ExecutionJobVertex(graph, ajv, 1, AkkaUtils.getDefaultTimeout()));
 	}
 	
 	public static ExecutionJobVertex getExecutionVertex(JobVertexID id) throws Exception {

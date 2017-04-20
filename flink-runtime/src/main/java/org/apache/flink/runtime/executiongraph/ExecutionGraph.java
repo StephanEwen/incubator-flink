@@ -18,8 +18,6 @@
 
 package org.apache.flink.runtime.executiongraph;
 
-import org.apache.commons.lang3.StringUtils;
-
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.Archiveable;
 import org.apache.flink.api.common.ArchivedExecutionConfig;
@@ -41,9 +39,11 @@ import org.apache.flink.runtime.checkpoint.CheckpointStatsTracker;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
 import org.apache.flink.runtime.concurrent.AcceptFunction;
 import org.apache.flink.runtime.concurrent.BiFunction;
+import org.apache.flink.runtime.concurrent.CompletableFuture;
 import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.FutureUtils.ConjunctFuture;
+import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
 import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy;
@@ -71,6 +71,7 @@ import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 
+import org.apache.flink.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -227,6 +228,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/** Current status of the job execution */
 	private volatile JobStatus state = JobStatus.CREATED;
+
+	/** A future that completes once the job has reached a terminal state */
+	private volatile CompletableFuture<JobStatus> terminationFuture;
 
 	/** On each global recovery, this version is incremented. The version breaks conflicts
 	 * between concurrent restart attempts by local failover strategies */
@@ -760,6 +764,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			newExecJobVertices.add(ejv);
 		}
 
+		terminationFuture = new FlinkCompletableFuture<>();
 		failoverStrategy.notifyNewVertices(newExecJobVertices);
 	}
 
@@ -960,8 +965,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			else if (current == JobStatus.RESTARTING) {
 				synchronized (progressLock) {
 					if (transitionState(current, JobStatus.CANCELED)) {
-						postRunCleanup();
-						progressLock.notifyAll();
+						onTerminalState(JobStatus.CANCELED);
 
 						LOG.info("Canceled during restart.");
 						return;
@@ -991,7 +995,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * Suspends the current ExecutionGraph.
 	 *
 	 * The JobStatus will be directly set to SUSPENDED iff the current state is not a terminal
-	 * state. All ExecutionJobVertices will be canceled and the postRunCleanup is executed.
+	 * state. All ExecutionJobVertices will be canceled and the onTerminalState() is executed.
 	 *
 	 * The SUSPENDED state is a local terminal state which stops the execution of the job but does
 	 * not remove the job from the HA job store so that it can be recovered by another JobManager.
@@ -1002,7 +1006,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		while (true) {
 			JobStatus currentState = state;
 
-			if (currentState.isGloballyTerminalState()) {
+			if (currentState.isTerminalState()) {
 				// stay in a terminal state
 				return;
 			} else if (transitionState(currentState, JobStatus.SUSPENDED, suspensionCause)) {
@@ -1013,10 +1017,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				}
 
 				synchronized (progressLock) {
-						postRunCleanup();
-						progressLock.notifyAll();
+					onTerminalState(JobStatus.SUSPENDED);
 
-						LOG.info("Job {} has been suspended.", getJobID());
+					LOG.info("Job {} has been suspended.", getJobID());
 				}
 
 				return;
@@ -1093,10 +1096,6 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 					return;
 				} else if (current != JobStatus.RESTARTING) {
 					throw new IllegalStateException("Can only restart job from state restarting.");
-				}
-
-				if (slotProvider == null) {
-					throw new IllegalStateException("The execution graph has not been scheduled before - slotProvider is null.");
 				}
 
 				this.currentExecutions.clear();
@@ -1176,32 +1175,32 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		return null;
 	}
 
-	/**
-	 * For testing: This waits until the job execution has finished.
-	 */
 	@VisibleForTesting
-	public void waitUntilFinished() throws InterruptedException {
-		// we may need multiple attempts in the presence of failures / recovery
-		while (true) {
-			for (ExecutionJobVertex ejv : verticesInCreationOrder) {
-				for (ExecutionVertex ev : ejv.getTaskVertices()) {
-					try {
-						ev.getCurrentExecutionAttempt().getTerminationFuture().get();
-					}
-					catch (ExecutionException e) {
-						// this should never happen
-						throw new RuntimeException(e);
-					}
-				}
-			}
+	public Future<JobStatus> getTerminationFuture() {
+		return terminationFuture;
+	}
 
-			// now that all vertices have been (at some point) in a terminal state,
-			// we need to check if the job as a whole has entered a final state
-			if (state.isTerminalState()) {
-				return;
-			}
+	@VisibleForTesting
+	public JobStatus waitUntilTerminal() throws InterruptedException {
+		try {
+			return terminationFuture.get();
+		}
+		catch (ExecutionException e) {
+			// this should never happen
+			// it would be a bug, so we  don't expect this to be handled and throw
+			// an unchecked exception here
+			throw new RuntimeException(e);
 		}
 	}
+
+	@VisibleForTesting
+	FailoverStrategy getFailoverStrategy() {
+		return this.failoverStrategy;
+	}
+
+	// ------------------------------------------------------------------------
+	//  State Transitions
+	// ------------------------------------------------------------------------
 
 	private boolean transitionState(JobStatus current, JobStatus newState) {
 		return transitionState(current, newState, null);
@@ -1228,11 +1227,41 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		}
 	}
 
+	// ------------------------------------------------------------------------
+	//  Job Status Progress
+	// ------------------------------------------------------------------------
+
+	/**
+	 * Called whenever a vertex reaches state FINISHED (completed successfully).
+	 * Once all vertices are in the FINISHED state, the program is successfully done.
+	 */
 	void vertexFinished() {
-		int numFinished = verticesFinished.incrementAndGet();
+		final int numFinished = verticesFinished.incrementAndGet();
 		if (numFinished == numVerticesTotal) {
 			// done :-)
-			allVerticesInTerminalState();
+
+			// check whether we are still in "RUNNING" and trigger the final cleanup
+			if (state == JobStatus.RUNNING) {
+				// we do the final cleanup in the I/O executor, because it may involve
+				// some heavier work
+
+				try {
+					for (ExecutionJobVertex ejv : verticesInCreationOrder) {
+						ejv.getJobVertex().finalizeOnMaster(getUserClassLoader());
+					}
+				}
+				catch (Throwable t) {
+					ExceptionUtils.rethrowIfFatalError(t);
+					failGlobal(new Exception("Failed to finalize execution on master", t));
+					return;
+				}
+
+				// if we do not make this state transition, then a concurrent
+				// cancellation or failure happened
+				if (transitionState(JobStatus.RUNNING, JobStatus.FINISHED)) {
+					onTerminalState(JobStatus.FINISHED);
+				}
+			}
 		}
 	}
 
@@ -1240,6 +1269,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		verticesFinished.getAndDecrement();
 	}
 
+	/**
+	 * This method is a callback during cancellation/failover and called when all tasks
+	 * have reached a terminal state (cancelled/failed/finished).
+	 */
 	private void allVerticesInTerminalState() {
 		// we are done, transition to the final state
 		JobStatus current;
@@ -1247,14 +1280,11 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			current = this.state;
 
 			if (current == JobStatus.RUNNING) {
-				if (transitionState(current, JobStatus.FINISHED)) {
-					postRunCleanup();
-					break;
-				}
+				failGlobal(new Exception("ExecutionGraph went into allVerticesInTerminalState() from RUNNING"));
 			}
 			else if (current == JobStatus.CANCELLING) {
 				if (transitionState(current, JobStatus.CANCELED)) {
-					postRunCleanup();
+					onTerminalState(JobStatus.CANCELED);
 					break;
 				}
 			}
@@ -1308,18 +1338,16 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 					restartStrategy.restart(this);
 
 					return true;
-				} else if (!isRestartable && transitionState(currentState, JobStatus.FAILED, failureCause)) {
-					final List<String> reasonsForNoRestart = new ArrayList<>(2);
-					if (!isFailureCauseAllowingRestart) {
-						reasonsForNoRestart.add("a type of SuppressRestartsException was thrown");
-					}
-					if (!isRestartStrategyAllowingRestart) {
-						reasonsForNoRestart.add("the restart strategy prevented it");
-					}
+				}
+				else if (!isRestartable && transitionState(currentState, JobStatus.FAILED, failureCause)) {
+					final String cause1 = isFailureCauseAllowingRestart ? null :  
+							"a type of SuppressRestartsException was thrown";
+					final String cause2 = isRestartStrategyAllowingRestart ? null :
+						"the restart strategy prevented it";
 
 					LOG.info("Could not restart the job {} ({}) because {}.", getJobName(), getJobID(),
-						StringUtils.join(reasonsForNoRestart, " and "), failureCause);
-					postRunCleanup();
+						StringUtils.concatenateWithAnd(cause1, cause2), failureCause);
+					onTerminalState(JobStatus.FAILED);
 
 					return true;
 				} else {
@@ -1333,15 +1361,19 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		}
 	}
 
-	private void postRunCleanup() {
+	private void onTerminalState(JobStatus status) {
 		try {
 			CheckpointCoordinator coord = this.checkpointCoordinator;
 			this.checkpointCoordinator = null;
 			if (coord != null) {
-				coord.shutdown(state);
+				coord.shutdown(status);
 			}
-		} catch (Exception e) {
+		}
+		catch (Exception e) {
 			LOG.error("Error while cleaning up after execution", e);
+		}
+		finally {
+			terminationFuture.complete(status);
 		}
 	}
 
