@@ -68,7 +68,6 @@ import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.testutils.DirectScheduledExecutorService;
 import org.apache.flink.util.SerializedValue;
 
-import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.LoggerFactory;
 
@@ -340,7 +339,6 @@ public class ExecutionGraphDeploymentTest {
 		}
 	}
 
-	@Ignore
 	@Test
 	/**
 	 * Tests that a blocking batch job fails if there are not enough resources left to schedule the
