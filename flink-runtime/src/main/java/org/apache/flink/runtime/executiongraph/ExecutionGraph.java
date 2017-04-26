@@ -954,9 +954,6 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 						}
 					});
 
-					for (ExecutionJobVertex ejv : verticesInCreationOrder) {
-						ejv.cancel();
-					}
 					return;
 				}
 			}

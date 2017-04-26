@@ -25,6 +25,7 @@ import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.concurrent.Executors;
+import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy;
 import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy.Factory;
 import org.apache.flink.runtime.executiongraph.failover.RestartPipelinedRegionStrategy;
@@ -55,11 +56,16 @@ import java.util.Iterator;
 import java.util.List;
 
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.SimpleActorGateway;
+import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.waitUntilFailoverRegionState;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 public class FailoverRegionTest extends TestLogger {
 
+	/**
+	 * Tests that a job only has one failover region and can recover from task failure successfully
+	 * @throws Exception
+	 */
 	@Test
 	public void testSingleRegionFailover() throws Exception {
 		RestartStrategy restartStrategy = new InfiniteDelayRestartStrategy(10);
@@ -79,6 +85,10 @@ public class FailoverRegionTest extends TestLogger {
 		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(ev).getState());
 	}
 
+	/**
+	 * Tests that a job has server failover regions and one region failover does not influence others
+	 * @throws Exception
+	 */
 	@Test
 	public void testMultiRegionsFailover() throws Exception {
 		Instance instance = ExecutionGraphTestUtils.getInstance(
@@ -176,6 +186,10 @@ public class FailoverRegionTest extends TestLogger {
 		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(ev3).getState());
 	}
 
+	/**
+	 * Tests that when a task fail, and restart strategy doesn't support restarting, the job will go to failed
+	 * @throws Exception
+	 */
 	@Test
 	public void testNoManualRestart() throws Exception {
 		NoRestartStrategy restartStrategy = new NoRestartStrategy();
@@ -192,6 +206,10 @@ public class FailoverRegionTest extends TestLogger {
 		assertEquals(JobStatus.FAILED, eg.getState());
 	}
 
+	/**
+	 * Tests that two failover regions failover at the same time, they will not influence each orther
+	 * @throws Exception
+	 */
 	@Test
 	public void testMutilRegionFailoverAtSameTime() throws Exception {
 		Instance instance = ExecutionGraphTestUtils.getInstance(
@@ -260,17 +278,22 @@ public class FailoverRegionTest extends TestLogger {
 
 		ev11.getCurrentExecutionAttempt().fail(new Exception("new fail"));
 		ev31.getCurrentExecutionAttempt().fail(new Exception("new fail"));
-		ExecutionVertex ev3 = eg.getJobVertex(v3.getID()).getTaskVertices()[0];
 		assertEquals(JobStatus.CANCELLING, strategy.getFailoverRegion(ev11).getState());
 		assertEquals(JobStatus.CANCELLING, strategy.getFailoverRegion(ev31).getState());
 
 		ev32.getCurrentExecutionAttempt().cancelingComplete();
-		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(ev31).getState());
+		waitUntilFailoverRegionState(strategy.getFailoverRegion(ev31), JobStatus.RUNNING, 1000);
 
 		ev12.getCurrentExecutionAttempt().cancelingComplete();
-		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(ev11).getState());
+		waitUntilFailoverRegionState(strategy.getFailoverRegion(ev11), JobStatus.RUNNING, 1000);
 	}
 
+	/**
+	 * Tests that if a task reports the result of its preceding task is failed,
+	 * its preceding task will be considered as failed, and start to failover
+	 * TODO: as the report part is not finished yet, this case is ignored temporarily
+	 * @throws Exception
+	 */
 	@Ignore
 	@Test
 	public void testSucceedingNoticePreceding() throws Exception {
@@ -332,6 +355,10 @@ public class FailoverRegionTest extends TestLogger {
 		assertEquals(JobStatus.CANCELLING, strategy.getFailoverRegion(ev11).getState());
 	}
 
+	/**
+	 * Tests that a new failure comes while the failover region is in CANCELLING
+	 * @throws Exception
+	 */
 	@Test
 	public void testFailWhileCancelling() throws Exception {
 		RestartStrategy restartStrategy = new InfiniteDelayRestartStrategy();
@@ -352,6 +379,10 @@ public class FailoverRegionTest extends TestLogger {
 		assertEquals(JobStatus.CANCELLING, strategy.getFailoverRegion(ev1).getState());
 	}
 
+	/**
+	 * Tests that a new failure comes while the failover region is restarting
+	 * @throws Exception
+	 */
 	@Test
 	public void testFailWhileRestarting() throws Exception {
 		RestartStrategy restartStrategy = new InfiniteDelayRestartStrategy();

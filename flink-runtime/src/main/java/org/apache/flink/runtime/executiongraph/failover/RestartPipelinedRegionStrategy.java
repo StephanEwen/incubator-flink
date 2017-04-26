@@ -46,7 +46,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  */
 public class RestartPipelinedRegionStrategy extends FailoverStrategy {
 
-	private static final Logger LOG = LoggerFactory.getLogger(RestartIndividualStrategy.class);
+	private static final Logger LOG = LoggerFactory.getLogger(RestartPipelinedRegionStrategy.class);
 
 	/** The execution graph on which this FailoverStrategy works */
 	private final ExecutionGraph executionGraph;
