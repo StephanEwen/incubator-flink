@@ -195,7 +195,7 @@ public class FailoverRegion {
 		catch (GlobalModVersionMismatch e) {
 			// happens when a global recovery happens concurrently to the regional recovery
 			// go back to a clean state
-			state = JobStatus.CREATED;
+			state = JobStatus.RUNNING;
 		}
 		catch (Throwable e) {
 			LOG.info("FailoverRegion {} reset fail, will failover again.", id);

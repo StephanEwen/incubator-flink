@@ -214,9 +214,10 @@ public class PipelinedRegionFailoverConcurrencyTest {
 		final ExecutionGraph graph = createSampleGraph(
 				jid,
 				new FailoverPipelinedRegionWithCustomExecutor(executor),
-				new FixedDelayRestartStrategy(1, 0), // one restart, no delay
+				new FixedDelayRestartStrategy(2, 0), // twice restart, no delay
 				slotProvider,
 				2);
+		RestartPipelinedRegionStrategy strategy = (RestartPipelinedRegionStrategy)graph.getFailoverStrategy();
 
 		final ExecutionJobVertex ejv = graph.getVerticesTopologically().iterator().next();
 		final ExecutionVertex vertex1 = ejv.getTaskVertices()[0];
@@ -224,10 +225,12 @@ public class PipelinedRegionFailoverConcurrencyTest {
 
 		graph.scheduleForExecution();
 		assertEquals(JobStatus.RUNNING, graph.getState());
+		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(vertex1).getState());
 
 		// let one of the vertices fail - that triggers a local recovery action
 		vertex2.getCurrentExecutionAttempt().fail(new Exception("test failure"));
 		assertEquals(ExecutionState.FAILED, vertex2.getCurrentExecutionAttempt().getState());
+		assertEquals(JobStatus.CANCELLING, strategy.getFailoverRegion(vertex2).getState());
 
 		// graph should still be running and the failover recovery action should be queued
 		assertEquals(JobStatus.RUNNING, graph.getState());
@@ -258,12 +261,38 @@ public class PipelinedRegionFailoverConcurrencyTest {
 
 		// validate that the graph is still peachy
 		assertEquals(JobStatus.RUNNING, graph.getState());
+		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(vertex1).getState());
+		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(vertex2).getState());
 		assertEquals(ExecutionState.RUNNING, vertex1.getCurrentExecutionAttempt().getState());
 		assertEquals(ExecutionState.RUNNING, vertex2.getCurrentExecutionAttempt().getState());
 		assertEquals(1, vertex1.getCurrentExecutionAttempt().getAttemptNumber());
 		assertEquals(1, vertex2.getCurrentExecutionAttempt().getAttemptNumber());
 		assertEquals(1, vertex1.getCopyOfPriorExecutionsList().size());
 		assertEquals(1, vertex2.getCopyOfPriorExecutionsList().size());
+
+		// make sure all slots are in use
+		assertEquals(0, slotProvider.getNumberOfAvailableSlots());
+
+		// validate that a task failure then can be handled by the local recovery
+		vertex2.getCurrentExecutionAttempt().fail(new Exception("test failure"));
+		assertEquals(1, executor.numQueuedRunnables());
+
+		// let the local recovery action continue - this should recover the vertex2
+		executor.trigger();
+
+		waitUntilExecutionState(vertex2.getCurrentExecutionAttempt(), ExecutionState.DEPLOYING, 1000);
+		vertex2.getCurrentExecutionAttempt().switchToRunning();
+
+		// validate that the local recovery result
+		assertEquals(JobStatus.RUNNING, graph.getState());
+		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(vertex1).getState());
+		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(vertex2).getState());
+		assertEquals(ExecutionState.RUNNING, vertex1.getCurrentExecutionAttempt().getState());
+		assertEquals(ExecutionState.RUNNING, vertex2.getCurrentExecutionAttempt().getState());
+		assertEquals(1, vertex1.getCurrentExecutionAttempt().getAttemptNumber());
+		assertEquals(2, vertex2.getCurrentExecutionAttempt().getAttemptNumber());
+		assertEquals(1, vertex1.getCopyOfPriorExecutionsList().size());
+		assertEquals(2, vertex2.getCopyOfPriorExecutionsList().size());
 
 		// make sure all slots are in use
 		assertEquals(0, slotProvider.getNumberOfAvailableSlots());
