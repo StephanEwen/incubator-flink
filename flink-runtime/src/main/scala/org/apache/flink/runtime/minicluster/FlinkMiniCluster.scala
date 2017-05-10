@@ -432,20 +432,27 @@ abstract class FlinkMiniCluster(
       _.stop()
     }
 
-    val tmFutures = taskManagerActors map {
-      _.map(gracefulStop(_, timeout))
-    } getOrElse(Seq())
+    try {
+      val tmFutures = taskManagerActors map {
+        _.map(gracefulStop(_, timeout))
+      } getOrElse(Seq())
+  
+  
+      val jmFutures = jobManagerActors map {
+        _.map(gracefulStop(_, timeout))
+      } getOrElse(Seq())
+  
+      val rmFutures = resourceManagerActors map {
+        _.map(gracefulStop(_, timeout))
+      } getOrElse(Seq())
+  
+      Await.ready(Future.sequence(jmFutures ++ tmFutures ++ rmFutures), timeout)
 
-
-    val jmFutures = jobManagerActors map {
-      _.map(gracefulStop(_, timeout))
-    } getOrElse(Seq())
-
-    val rmFutures = resourceManagerActors map {
-      _.map(gracefulStop(_, timeout))
-    } getOrElse(Seq())
-
-    Await.ready(Future.sequence(jmFutures ++ tmFutures ++ rmFutures), timeout)
+    } catch {
+      case _: IllegalArgumentException =>
+                  // ignore, this happens when the actor system is already shut down
+                  //  before the 'gracefulStop()' function has sent the poison pills
+    }
 
     if (!useSingleActorSystem) {
       taskManagerActorSystems foreach {

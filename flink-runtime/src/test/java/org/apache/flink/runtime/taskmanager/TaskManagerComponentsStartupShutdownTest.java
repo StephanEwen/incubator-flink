@@ -200,11 +200,14 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 			assertTrue(ioManager.isProperlyShutDown());
 			assertTrue(memManager.isShutdown());
 		} finally {
-			TestingUtils.stopActorsGracefully(Arrays.asList(jobManager, taskManager));
+			if (actorSystem != null && !actorSystem.isTerminated()) {
+				try {
+					TestingUtils.stopActorsGracefully(Arrays.asList(jobManager, taskManager));
+				} catch (IllegalStateException e) {
+					// thrown when the actor system is shut down already
+				}
 
-			if (actorSystem != null) {
 				actorSystem.shutdown();
-
 				actorSystem.awaitTermination(TestingUtils.TESTING_TIMEOUT());
 			}
 

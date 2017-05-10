@@ -841,6 +841,16 @@ under the License.
 				<flink-fast-tests-pattern>%regex[.*/[A-R].*]</flink-fast-tests-pattern>
 			</properties>
 		</profile>
+
+		<!-- Use vanilla akka, rather than flakka, where possible -->
+		<profile>
+			<id>vanilla-akka</id>
+			<properties>
+				<akka.groupId>com.typesafe.akka</akka.groupId>
+				<akka.artifactPrefix>akka</akka.artifactPrefix>
+				<akka.version>2.4.18</akka.version>
+			</properties>
+		</profile>
 	</profiles>
 
 	<!-- ================================================================== -->
