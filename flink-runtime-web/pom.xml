@@ -90,8 +90,8 @@ under the License.
 		</dependency>
 
 		<dependency>
-			<groupId>com.data-artisans</groupId>
-			<artifactId>flakka-testkit_${scala.binary.version}</artifactId>
+			<groupId>${akka.groupId}</groupId>
+			<artifactId>${akka.artifactPrefix}-testkit_${scala.binary.version}</artifactId>
 			<scope>test</scope>
 		</dependency>
 
