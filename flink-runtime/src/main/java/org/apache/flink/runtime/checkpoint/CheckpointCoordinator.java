@@ -55,6 +55,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -839,20 +840,28 @@ public class CheckpointCoordinator {
 		try {
 			try {
 				// externalize the checkpoint if required
+				Future<CompletedCheckpoint> completionFuture;
 				if (pendingCheckpoint.getProps().externalizeCheckpoint()) {
-					completedCheckpoint = pendingCheckpoint.finalizeCheckpointExternalized();
+					completionFuture = pendingCheckpoint.finalizeCheckpointExternalized();
 				} else {
-					completedCheckpoint = pendingCheckpoint.finalizeCheckpointNonExternalized();
+					completionFuture = pendingCheckpoint.finalizeCheckpointNonExternalized();
 				}
-			} catch (Exception e1) {
+
+				try {
+					completedCheckpoint = completionFuture.get(checkpointTimeout, TimeUnit.MILLISECONDS);
+				}
+				catch (ExecutionException e) {
+					throw e.getCause();
+				}
+			} catch (Throwable t) {
 				// abort the current pending checkpoint if we fails to finalize the pending checkpoint.
 				if (!pendingCheckpoint.isDiscarded()) {
-					pendingCheckpoint.abortError(e1);
+					pendingCheckpoint.abortError(t);
 				}
-	
-				throw new CheckpointException("Could not finalize the pending checkpoint " + checkpointId + '.', e1);
+
+				throw new CheckpointException("Could not finalize the pending checkpoint " + checkpointId + '.', t);
 			}
-	
+
 			// the pending checkpoint must be discarded after the finalization
 			Preconditions.checkState(pendingCheckpoint.isDiscarded() && completedCheckpoint != null);
 

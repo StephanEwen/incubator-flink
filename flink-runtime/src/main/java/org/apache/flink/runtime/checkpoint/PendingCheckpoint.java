@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.checkpoint.savepoint.Savepoint;
 import org.apache.flink.runtime.checkpoint.savepoint.SavepointStore;
 import org.apache.flink.runtime.checkpoint.savepoint.SavepointV2;
+import org.apache.flink.runtime.concurrent.CompletableFuture;
 import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -104,8 +105,8 @@ public class PendingCheckpoint {
 	/** Target directory to potentially persist checkpoint to; <code>null</code> if none configured. */
 	private final String targetDirectory;
 
-	/** The promise to fulfill once the checkpoint has been completed. */
-	private final FlinkCompletableFuture<CompletedCheckpoint> onCompletionPromise;
+	/** The future to complete once the checkpoint has been completed. */
+	private final CompletableFuture<CompletedCheckpoint> completionFuture;
 
 	/** The executor for potentially blocking I/O operations, like state disposal */
 	private final Executor executor;
@@ -150,7 +151,7 @@ public class PendingCheckpoint {
 		this.operatorStates = new HashMap<>();
 		this.masterState = new ArrayList<>();
 		this.acknowledgedTasks = new HashSet<>(verticesToConfirm.size());
-		this.onCompletionPromise = new FlinkCompletableFuture<>();
+		this.completionFuture = new FlinkCompletableFuture<>();
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -251,10 +252,10 @@ public class PendingCheckpoint {
 	 * @return A future to the completed checkpoint
 	 */
 	public Future<CompletedCheckpoint> getCompletionFuture() {
-		return onCompletionPromise;
+		return completionFuture;
 	}
 
-	public CompletedCheckpoint finalizeCheckpointExternalized() throws IOException {
+	public Future<CompletedCheckpoint> finalizeCheckpointExternalized() throws IOException {
 
 		synchronized (lock) {
 			checkState(isFullyAcknowledged(), "Pending checkpoint has not been fully acknowledged yet.");
@@ -291,14 +292,14 @@ public class PendingCheckpoint {
 				}
 			}
 			catch (Throwable t) {
-				onCompletionPromise.completeExceptionally(t);
+				completionFuture.completeExceptionally(t);
 				ExceptionUtils.rethrowIOException(t);
 				return null; // silence the compiler
 			}
 		}
 	}
 
-	public CompletedCheckpoint finalizeCheckpointNonExternalized() {
+	public Future<CompletedCheckpoint> finalizeCheckpointNonExternalized() {
 		synchronized (lock) {
 			checkState(isFullyAcknowledged(), "Pending checkpoint has not been fully acknowledged yet.");
 
@@ -308,7 +309,7 @@ public class PendingCheckpoint {
 				return finalizeInternal(null, null);
 			}
 			catch (Throwable t) {
-				onCompletionPromise.completeExceptionally(t);
+				completionFuture.completeExceptionally(t);
 				ExceptionUtils.rethrow(t);
 				return null; // silence the compiler
 			}
@@ -316,7 +317,7 @@ public class PendingCheckpoint {
 	}
 
 	@GuardedBy("lock")
-	private CompletedCheckpoint finalizeInternal(
+	private Future<CompletedCheckpoint> finalizeInternal(
 			@Nullable StreamStateHandle externalMetadata,
 			@Nullable String externalPointer) {
 
@@ -333,7 +334,7 @@ public class PendingCheckpoint {
 				externalMetadata,
 				externalPointer);
 
-		onCompletionPromise.complete(completed);
+		completionFuture.complete(completed);
 
 		// to prevent null-pointers from concurrent modification, copy reference onto stack
 		PendingCheckpointStats statsCallback = this.statsCallback;
@@ -348,7 +349,7 @@ public class PendingCheckpoint {
 		// mark this pending checkpoint as disposed, but do NOT drop the state
 		dispose(false);
 
-		return completed;
+		return completionFuture;
 	}
 
 	/**
@@ -482,7 +483,7 @@ public class PendingCheckpoint {
 	public void abortExpired() {
 		try {
 			Exception cause = new Exception("Checkpoint expired before completing");
-			onCompletionPromise.completeExceptionally(cause);
+			completionFuture.completeExceptionally(cause);
 			reportFailedCheckpoint(cause);
 		} finally {
 			dispose(true);
@@ -495,7 +496,7 @@ public class PendingCheckpoint {
 	public void abortSubsumed() {
 		try {
 			Exception cause = new Exception("Checkpoints has been subsumed");
-			onCompletionPromise.completeExceptionally(cause);
+			completionFuture.completeExceptionally(cause);
 			reportFailedCheckpoint(cause);
 
 			if (props.forceCheckpoint()) {
@@ -509,7 +510,7 @@ public class PendingCheckpoint {
 	public void abortDeclined() {
 		try {
 			Exception cause = new Exception("Checkpoint was declined (tasks not ready)");
-			onCompletionPromise.completeExceptionally(cause);
+			completionFuture.completeExceptionally(cause);
 			reportFailedCheckpoint(cause);
 		} finally {
 			dispose(true);
@@ -523,7 +524,7 @@ public class PendingCheckpoint {
 	public void abortError(Throwable cause) {
 		try {
 			Exception failure = new Exception("Checkpoint failed: " + cause.getMessage(), cause);
-			onCompletionPromise.completeExceptionally(failure);
+			completionFuture.completeExceptionally(failure);
 			reportFailedCheckpoint(failure);
 		} finally {
 			dispose(true);
