@@ -18,14 +18,6 @@
 
 package org.apache.flink.runtime.taskmanager;
 
-import static org.junit.Assert.*;
-
-import akka.actor.ActorRef;
-import akka.actor.ActorSystem;
-import akka.actor.Kill;
-import akka.actor.Props;
-import akka.testkit.JavaTestKit;
-
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.ConfigConstants;
@@ -46,7 +38,6 @@ import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.jobmanager.JobManager;
 import org.apache.flink.runtime.jobmanager.MemoryArchivist;
-import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.messages.TaskManagerMessages;
 import org.apache.flink.runtime.metrics.MetricRegistry;
@@ -54,15 +45,22 @@ import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.taskexecutor.TaskManagerConfiguration;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
-
 import org.apache.flink.util.TestLogger;
-import org.junit.Test;
 
-import scala.concurrent.duration.FiniteDuration;
+import akka.actor.ActorRef;
+import akka.actor.ActorSystem;
+import akka.actor.Kill;
+import akka.actor.Props;
+import akka.testkit.JavaTestKit;
+import org.junit.Test;
 
 import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
+
+import scala.concurrent.duration.FiniteDuration;
+
+import static org.junit.Assert.assertTrue;
 
 public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 
@@ -126,7 +124,7 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 			// note: the network buffer memory configured here is not actually used below but set
 			// accordingly to be consistent
 			final NetworkEnvironmentConfiguration netConf = new NetworkEnvironmentConfiguration(
-					0.1f, networkBufNum * BUFFER_SIZE, networkBufNum * BUFFER_SIZE, BUFFER_SIZE, MemoryType.HEAP, IOManager.IOMode.SYNC,
+					0.1f, networkBufNum * BUFFER_SIZE, networkBufNum * BUFFER_SIZE, BUFFER_SIZE, IOManager.IOMode.SYNC,
 					0, 0, 2, 8, null);
 
 			ResourceID taskManagerId = ResourceID.generate();
@@ -136,7 +134,7 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 			final MemoryManager memManager = new MemoryManager(networkBufNum * BUFFER_SIZE, 1, BUFFER_SIZE, MemoryType.HEAP, false);
 			final IOManager ioManager = new IOManagerAsync(TMP_DIR);
 			final NetworkEnvironment network = new NetworkEnvironment(
-				new NetworkBufferPool(32, netConf.networkBufferSize(), netConf.memoryType()),
+				new NetworkBufferPool(32, netConf.networkBufferSize()),
 				new LocalConnectionManager(),
 				new ResultPartitionManager(),
 				new TaskEventDispatcher(),

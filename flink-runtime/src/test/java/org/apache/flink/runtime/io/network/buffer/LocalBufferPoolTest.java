@@ -18,9 +18,9 @@
 
 package org.apache.flink.runtime.io.network.buffer;
 
-import com.google.common.collect.Lists;
-import org.apache.flink.core.memory.MemoryType;
 import org.apache.flink.runtime.util.event.EventListener;
+
+import com.google.common.collect.Lists;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -62,7 +62,7 @@ public class LocalBufferPoolTest {
 
 	@Before
 	public void setupLocalBufferPool() {
-		networkBufferPool = new NetworkBufferPool(numBuffers, memorySegmentSize, MemoryType.HEAP);
+		networkBufferPool = new NetworkBufferPool(numBuffers, memorySegmentSize);
 		localBufferPool = new LocalBufferPool(networkBufferPool, 1);
 
 		assertEquals(0, localBufferPool.getNumberOfAvailableMemorySegments());
@@ -76,6 +76,7 @@ public class LocalBufferPoolTest {
 
 		String msg = "Did not return all buffers to memory segment pool after test.";
 		assertEquals(msg, numBuffers, networkBufferPool.getNumberOfAvailableMemorySegments());
+		networkBufferPool.destroy();
 	}
 
 	@AfterClass
