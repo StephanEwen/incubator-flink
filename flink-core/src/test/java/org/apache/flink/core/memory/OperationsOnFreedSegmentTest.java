@@ -30,6 +30,10 @@ import java.nio.ByteBuffer;
 
 import static org.junit.Assert.*;
 
+/**
+ * Various tests with freed memory segments for {@link HeapMemorySegment} and {@link
+ * HybridMemorySegment} (in both heap and off-heap modes).
+ */
 public class OperationsOnFreedSegmentTest {
 
 	private static final int PAGE_SIZE = (int) ((Math.random() * 10000) + 1000);
