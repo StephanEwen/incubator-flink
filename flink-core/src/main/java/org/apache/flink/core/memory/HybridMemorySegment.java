@@ -200,7 +200,7 @@ public final class HybridMemorySegment extends MemorySegment {
 	@Override
 	public final void get(int index, byte[] dst, int offset, int length) {
 		// check the byte array offset and length and the status
-		if ( (offset | length | (offset + length) | (dst.length - (offset + length))) < 0) {
+		if ((offset | length | (offset + length) | (dst.length - (offset + length))) < 0) {
 			throw new IndexOutOfBoundsException();
 		}
 
