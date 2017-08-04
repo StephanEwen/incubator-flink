@@ -36,9 +36,9 @@ import static org.junit.Assert.fail;
 public class CrossSegmentTypeTest {
 
 	private final int pageSize = 32*1024;
-	
+
 	// ------------------------------------------------------------------------
-	
+
 	@Test
 	public void testCompareBytesMixedSegments() {
 		MemorySegment[] segs1 = {
@@ -61,11 +61,11 @@ public class CrossSegmentTypeTest {
 			}
 		}
 	}
-	
+
 	private void testCompare(MemorySegment seg1, MemorySegment seg2, Random random) {
 		assertEquals(pageSize, seg1.size());
 		assertEquals(pageSize, seg2.size());
-		
+
 		final byte[] bytes1 = new byte[pageSize];
 		final byte[] bytes2 = new byte[pageSize];
 
@@ -80,7 +80,7 @@ public class CrossSegmentTypeTest {
 				bytes2[i + shift] = val;
 			}
 		}
-		
+
 		seg1.put(0, bytes1);
 		seg2.put(0, bytes2);
 
@@ -101,7 +101,6 @@ public class CrossSegmentTypeTest {
 			}
 		}
 	}
-
 
 	@Test
 	public void testSwapBytesMixedSegments() {
@@ -127,7 +126,7 @@ public class CrossSegmentTypeTest {
 			}
 		}
 	}
-	
+
 	private void testSwap(MemorySegment seg1, MemorySegment seg2, Random random, int smallerSize) {
 		assertEquals(pageSize, seg1.size());
 		assertEquals(smallerSize, seg2.size());
@@ -136,7 +135,7 @@ public class CrossSegmentTypeTest {
 		final byte[] bytes2 = new byte[smallerSize];
 
 		Arrays.fill(bytes2, (byte) 1);
-		
+
 		seg1.put(0, bytes1);
 		seg2.put(0, bytes2);
 
@@ -188,29 +187,29 @@ public class CrossSegmentTypeTest {
 
 		byte[] expected = new byte[pageSize];
 		byte[] actual = new byte[pageSize];
-		
+
 		// zero out the memory
 		seg1.put(0, expected);
 		seg2.put(0, expected);
-		
+
 		for (int i = 0; i < 40; i++) {
 			int numBytes = random.nextInt(pageSize / 20);
 			byte[] bytes = new byte[numBytes];
 			random.nextBytes(bytes);
-			
+
 			int thisPos = random.nextInt(pageSize - numBytes);
 			int otherPos = random.nextInt(pageSize - numBytes);
-			
+
 			// track what we expect
 			System.arraycopy(bytes, 0, expected, otherPos, numBytes);
-			
+
 			seg1.put(thisPos, bytes);
 			seg1.copyTo(thisPos, seg2, otherPos, numBytes);
 		}
-		
+
 		seg2.get(0, actual);
 		assertArrayEquals(expected, actual);
-		
+
 		// test out of bound conditions
 
 		final int[] validOffsets = { 0, 1, pageSize / 10 * 9 };
@@ -233,7 +232,7 @@ public class CrossSegmentTypeTest {
 						fail("should fail with an IndexOutOfBoundsException");
 					}
 					catch (IndexOutOfBoundsException ignored) {}
-					
+
 					try {
 						seg2.copyTo(off1, seg1, off2, len);
 						fail("should fail with an IndexOutOfBoundsException");

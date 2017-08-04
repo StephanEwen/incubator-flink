@@ -65,7 +65,7 @@ public final class MemorySegmentFactory {
 	 *
 	 * <p>This method is similar to {@link #allocateUnpooledSegment(int)}, but additionally sets
 	 * the owner of the memory segment.
-	 * 
+	 *
 	 * @param size The size of the memory segment to allocate.
 	 * @param owner The owner to associate with the memory segment.
 	 * @return A new memory segment, backed by unpooled heap memory.
@@ -79,7 +79,7 @@ public final class MemorySegmentFactory {
 	 *
 	 * <p>This method is intended to be used for components which pool memory and create
 	 * memory segments around long-lived memory regions.
-	 * 
+	 *
 	 * @param memory The heap memory to be represented by the memory segment.
 	 * @param owner The owner to associate with the memory segment.
 	 * @return A new memory segment representing the given heap memory.
