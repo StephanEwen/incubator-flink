@@ -30,19 +30,21 @@ import java.util.Objects;
  * This class represents a piece of heap memory managed by Flink.
  * The segment is backed by a byte array and features random put and get methods for the basic types,
  * as well as compare and swap methods.
- * <p>
- * This class specialized byte access and byte copy calls for heap memory, while reusing the
+ *
+ * <p>This class specialized byte access and byte copy calls for heap memory, while reusing the
  * multi-byte type accesses and cross-segment operations from the MemorySegment.
- * <p>
- * Note that memory segments should usually not be allocated manually, but rather through the
+ *
+ * <p>Note that memory segments should usually not be allocated manually, but rather through the
  * {@link MemorySegmentFactory}.
  */
 @SuppressWarnings("unused")
 @Internal
 public final class HeapMemorySegment extends MemorySegment {
 
-	/** An extra reference to the heap memory, so we can let byte array checks fail 
-	 *  by the built-in checks automatically without extra checks */
+	/**
+	 * An extra reference to the heap memory, so we can let byte array checks fail by the built-in
+	 * checks automatically without extra checks.
+	 */
 	private byte[] memory;
 
 	/**
@@ -202,10 +204,9 @@ public final class HeapMemorySegment extends MemorySegment {
 
 		/**
 		 * Creates a memory segment that wraps the given byte array.
-		 * <p>
-		 * This method is intended to be used for components which pool memory and create
-		 * memory segments around long-lived memory regions.
 		 *
+		 * <p>This method is intended to be used for components which pool memory and create
+		 * memory segments around long-lived memory regions.
 		 *
 		 * @param memory The heap memory to be represented by the memory segment.
 		 * @param owner The owner to associate with the memory segment.
@@ -215,7 +216,9 @@ public final class HeapMemorySegment extends MemorySegment {
 			return new HeapMemorySegment(memory, owner);
 		}
 
-		/** prevent external instantiation */
+		/**
+		 * Prevent external instantiation.
+		 */
 		HeapMemorySegmentFactory() {}
 	}
 
