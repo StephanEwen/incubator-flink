@@ -28,6 +28,8 @@ import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+
 import org.junit.AfterClass;
 import org.junit.Test;
 import org.mockito.invocation.InvocationOnMock;
@@ -177,7 +179,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 	public void testConsumeSpilledPartition() throws Exception {
 		SpillableSubpartition partition = createSubpartition();
 
-		Buffer buffer = new Buffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE);
+		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE);
 		buffer.retain();
 		buffer.retain();
 
@@ -241,7 +243,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 	public void testConsumeSpillablePartitionSpilledDuringConsume() throws Exception {
 		SpillableSubpartition partition = createSubpartition();
 
-		Buffer buffer = new Buffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE);
+		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE);
 		buffer.retain();
 		buffer.retain();
 

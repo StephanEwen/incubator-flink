@@ -279,7 +279,7 @@ public class ResultPartition implements BufferPoolOwner {
 
 				// Update statistics
 				totalNumberOfBuffers++;
-				totalNumberOfBytes += buffer.getSize();
+				totalNumberOfBytes += buffer.getWriterIndex();
 			}
 		}
 		finally {

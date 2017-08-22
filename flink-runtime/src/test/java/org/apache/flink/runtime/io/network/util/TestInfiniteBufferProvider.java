@@ -22,6 +22,7 @@ import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.util.event.EventListener;
 
 import java.io.IOException;
@@ -75,7 +76,7 @@ public class TestInfiniteBufferProvider implements BufferProvider {
 
 		@Override
 		public void recycle(MemorySegment segment) {
-			buffers.add(new Buffer(segment, this));
+			buffers.add(new NetworkBuffer(segment, this));
 		}
 	}
 }

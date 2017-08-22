@@ -22,6 +22,7 @@ import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.BufferResponse;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.ErrorResponse;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
@@ -81,7 +82,7 @@ public class PartitionRequestClientHandlerTest {
 		when(inputChannel.getBufferProvider()).thenReturn(bufferProvider);
 
 		final BufferResponse ReceivedBuffer = createBufferResponse(
-				TestBufferFactory.createBuffer(), 0, inputChannel.getInputChannelId());
+				TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0, inputChannel.getInputChannelId());
 
 		final PartitionRequestClientHandler client = new PartitionRequestClientHandler();
 		client.addInputChannel(inputChannel);
@@ -98,15 +99,14 @@ public class PartitionRequestClientHandlerTest {
 	public void testReceiveEmptyBuffer() throws Exception {
 		// Minimal mock of a remote input channel
 		final BufferProvider bufferProvider = mock(BufferProvider.class);
-		when(bufferProvider.requestBuffer()).thenReturn(TestBufferFactory.createBuffer());
+		when(bufferProvider.requestBuffer()).thenReturn(TestBufferFactory.createBuffer(0));
 
 		final RemoteInputChannel inputChannel = mock(RemoteInputChannel.class);
 		when(inputChannel.getInputChannelId()).thenReturn(new InputChannelID());
 		when(inputChannel.getBufferProvider()).thenReturn(bufferProvider);
 
 		// An empty buffer of size 0
-		final Buffer emptyBuffer = TestBufferFactory.createBuffer();
-		emptyBuffer.setSize(0);
+		final Buffer emptyBuffer = TestBufferFactory.createBuffer(0);
 
 		final BufferResponse receivedBuffer = createBufferResponse(
 				emptyBuffer, 0, inputChannel.getInputChannelId());
@@ -129,7 +129,7 @@ public class PartitionRequestClientHandlerTest {
 	public void testReceivePartitionNotFoundException() throws Exception {
 		// Minimal mock of a remote input channel
 		final BufferProvider bufferProvider = mock(BufferProvider.class);
-		when(bufferProvider.requestBuffer()).thenReturn(TestBufferFactory.createBuffer());
+		when(bufferProvider.requestBuffer()).thenReturn(TestBufferFactory.createBuffer(0));
 
 		final RemoteInputChannel inputChannel = mock(RemoteInputChannel.class);
 		when(inputChannel.getInputChannelId()).thenReturn(new InputChannelID());
@@ -240,12 +240,14 @@ public class PartitionRequestClientHandlerTest {
 
 	private static Buffer createBuffer(boolean fill) {
 		MemorySegment segment = MemorySegmentFactory.allocateUnpooledSegment(1024, null);
+		NetworkBuffer buffer = new NetworkBuffer(segment, DiscardingRecycler.INSTANCE, true);
 		if (fill) {
 			for (int i = 0; i < 1024; i++) {
 				segment.put(i, (byte) i);
 			}
+			buffer.setWriterIndex(1024);
 		}
-		return new Buffer(segment, DiscardingRecycler.INSTANCE, true);
+		return buffer;
 	}
 
 	/**

@@ -228,7 +228,7 @@ class LocalBufferPool implements BufferPool {
 				}
 			}
 
-			return new Buffer(availableMemorySegments.poll(), this);
+			return new NetworkBuffer(availableMemorySegments.poll(), this);
 		}
 	}
 
@@ -247,7 +247,7 @@ class LocalBufferPool implements BufferPool {
 				}
 				else {
 					try {
-						listener.onEvent(new Buffer(segment, this));
+						listener.onEvent(new NetworkBuffer(segment, this));
 					}
 					catch (Throwable ignored) {
 						availableMemorySegments.add(segment);

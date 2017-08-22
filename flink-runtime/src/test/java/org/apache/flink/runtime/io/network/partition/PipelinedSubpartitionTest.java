@@ -23,6 +23,7 @@ import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
+import org.apache.flink.runtime.io.network.util.TestBufferFactory;
 import org.apache.flink.runtime.io.network.util.TestConsumerCallback;
 import org.apache.flink.runtime.io.network.util.TestPooledBufferProvider;
 import org.apache.flink.runtime.io.network.util.TestProducerSource;
@@ -35,7 +36,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import static org.apache.flink.runtime.io.network.util.TestBufferFactory.createBuffer;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -101,7 +101,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		verify(listener, times(1)).notifyBuffersAvailable(eq(0L));
 
 		// Add data to the queue...
-		subpartition.add(createBuffer());
+		subpartition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE));
 
 		// ...should have resulted in a notification
 		verify(listener, times(1)).notifyBuffersAvailable(eq(1L));
@@ -111,7 +111,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		assertNull(view.getNextBuffer());
 
 		// Add data to the queue...
-		subpartition.add(createBuffer());
+		subpartition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE));
 		verify(listener, times(2)).notifyBuffersAvailable(eq(1L));
 	}
 

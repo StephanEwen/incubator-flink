@@ -166,7 +166,7 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 			return null;
 		}
 
-		this.targetBuffer.setSize(this.position);
+		this.targetBuffer.setWriterIndex(this.position);
 		return this.targetBuffer;
 	}
 

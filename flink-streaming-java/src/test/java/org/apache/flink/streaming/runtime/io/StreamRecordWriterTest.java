@@ -26,6 +26,7 @@ import org.apache.flink.runtime.io.network.api.writer.RoundRobinChannelSelector;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.types.LongValue;
 
 import org.junit.Test;
@@ -91,7 +92,7 @@ public class StreamRecordWriterTest {
 		when(mockProvider.requestBufferBlocking()).thenAnswer(new Answer<Buffer>() {
 			@Override
 			public Buffer answer(InvocationOnMock invocation) {
-				return new Buffer(
+				return new NetworkBuffer(
 						MemorySegmentFactory.allocateUnpooledSegment(4096),
 						FreeingBufferRecycler.INSTANCE);
 			}

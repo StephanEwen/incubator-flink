@@ -28,6 +28,7 @@ import org.apache.flink.runtime.io.network.api.serialization.types.IntType;
 import org.apache.flink.runtime.io.network.api.serialization.types.SerializationTestType;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.serialization.types.LargeObjectType;
 import org.junit.Test;
 
@@ -52,7 +53,7 @@ public class LargeRecordsTest {
 			final RecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<SerializationTestType>();
 			final RecordDeserializer<SerializationTestType> deserializer = new AdaptiveSpanningRecordDeserializer<SerializationTestType>();
 
-			final Buffer buffer = new Buffer(MemorySegmentFactory.allocateUnpooledSegment(SEGMENT_SIZE), mock(BufferRecycler.class));
+			final Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(SEGMENT_SIZE), mock(BufferRecycler.class));
 
 			List<SerializationTestType> originalRecords = new ArrayList<SerializationTestType>((NUM_RECORDS + 1) / 2);
 			List<SerializationTestType> deserializedRecords = new ArrayList<SerializationTestType>((NUM_RECORDS + 1) / 2);
@@ -118,7 +119,7 @@ public class LargeRecordsTest {
 			
 			// move the last (incomplete buffer)
 			Buffer last = serializer.getCurrentBuffer();
-			deserializer.setNextMemorySegment(last.getMemorySegment(), last.getSize());
+			deserializer.setNextMemorySegment(last.getMemorySegment(), last.getWriterIndex());
 			serializer.clear();
 			
 			// deserialize records, as many as there are in the last buffer
@@ -152,7 +153,7 @@ public class LargeRecordsTest {
 					new SpillingAdaptiveSpanningRecordDeserializer<SerializationTestType>(
 							new String[] { System.getProperty("java.io.tmpdir") } );
 
-			final Buffer buffer = new Buffer(MemorySegmentFactory.allocateUnpooledSegment(SEGMENT_SIZE), mock(BufferRecycler.class));
+			final Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(SEGMENT_SIZE), mock(BufferRecycler.class));
 
 			List<SerializationTestType> originalRecords = new ArrayList<>((NUM_RECORDS + 1) / 2);
 			List<SerializationTestType> deserializedRecords = new ArrayList<>((NUM_RECORDS + 1) / 2);
@@ -218,7 +219,7 @@ public class LargeRecordsTest {
 			
 			// move the last (incomplete buffer)
 			Buffer last = serializer.getCurrentBuffer();
-			deserializer.setNextMemorySegment(last.getMemorySegment(), last.getSize());
+			deserializer.setNextMemorySegment(last.getMemorySegment(), last.getWriterIndex());
 			serializer.clear();
 			
 			// deserialize records, as many as there are in the last buffer

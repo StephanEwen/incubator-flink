@@ -259,17 +259,19 @@ abstract class NettyMessage {
 		@Override
 		ByteBuf write(ByteBufAllocator allocator) throws IOException {
 			assert buffer != null; // see BufferResponse()
-			int length = 16 + 4 + 1 + 4 + buffer.getSize();
 
 			ByteBuf result = null;
 			try {
+				ByteBuffer nioBufferReadable = buffer.getNioBufferReadable();
+				int length = 16 + 4 + 1 + 4 + nioBufferReadable.remaining();
+
 				result = allocateBuffer(allocator, ID, length);
 
 				receiverId.writeTo(result);
 				result.writeInt(sequenceNumber);
 				result.writeBoolean(buffer.isBuffer());
-				result.writeInt(buffer.getSize());
-				result.writeBytes(buffer.getNioBuffer());
+				result.writeInt(nioBufferReadable.remaining());
+				result.writeBytes(nioBufferReadable);
 
 				return result;
 			}

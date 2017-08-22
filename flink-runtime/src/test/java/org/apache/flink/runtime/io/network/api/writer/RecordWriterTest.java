@@ -33,6 +33,7 @@ import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.Se
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
@@ -96,7 +97,7 @@ public class RecordWriterTest {
 
 			final CountDownLatch sync = new CountDownLatch(2);
 
-			final Buffer buffer = spy(TestBufferFactory.createBuffer(4));
+			final Buffer buffer = spy(TestBufferFactory.createBuffer(4, 0));
 
 			// Return buffer for first request, but block for all following requests.
 			Answer<Buffer> request = new Answer<Buffer>() {
@@ -291,7 +292,7 @@ public class RecordWriterTest {
 	@Test
 	public void testSerializerClearedAfterClearBuffers() throws Exception {
 
-		final Buffer buffer = TestBufferFactory.createBuffer(16);
+		final Buffer buffer = TestBufferFactory.createBuffer(16, 0);
 
 		ResultPartitionWriter partitionWriter = createResultPartitionWriter(
 				createBufferProvider(buffer));
@@ -486,7 +487,7 @@ public class RecordWriterTest {
 					@Override
 					public Buffer answer(InvocationOnMock invocationOnMock) throws Throwable {
 						MemorySegment segment = MemorySegmentFactory.allocateUnpooledSegment(bufferSize);
-						Buffer buffer = new Buffer(segment, DiscardingRecycler.INSTANCE);
+						Buffer buffer = new NetworkBuffer(segment, DiscardingRecycler.INSTANCE);
 						return buffer;
 					}
 				}

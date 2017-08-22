@@ -29,6 +29,7 @@ import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
@@ -104,7 +105,7 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 						return new BufferAndAvailability(EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE), false);
 					} else if (input != null && input.isStreamRecord()) {
 						Object inputElement = input.getStreamRecord();
-						final Buffer buffer = new Buffer(
+						final Buffer buffer = new NetworkBuffer(
 							MemorySegmentFactory.allocateUnpooledSegment(bufferSize),
 							mock(BufferRecycler.class));
 

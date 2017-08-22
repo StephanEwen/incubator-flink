@@ -41,6 +41,7 @@ import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
@@ -151,7 +152,7 @@ public class StreamMockEnvironment implements Environment {
 
 				@Override
 				public Buffer answer(InvocationOnMock invocationOnMock) throws Throwable {
-					return new Buffer(
+					return new NetworkBuffer(
 						MemorySegmentFactory.allocateUnpooledSegment(bufferSize),
 						mock(BufferRecycler.class));
 				}

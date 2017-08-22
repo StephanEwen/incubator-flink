@@ -27,6 +27,8 @@ import org.apache.flink.runtime.io.network.api.serialization.types.Serialization
 import org.apache.flink.runtime.io.network.api.serialization.types.Util;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -42,7 +44,7 @@ public class SpanningRecordSerializerTest {
 		final int SEGMENT_SIZE = 16;
 
 		final SpanningRecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<SerializationTestType>();
-		final Buffer buffer = new Buffer(MemorySegmentFactory.allocateUnpooledSegment(SEGMENT_SIZE), mock(BufferRecycler.class));
+		final Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(SEGMENT_SIZE), mock(BufferRecycler.class));
 		final SerializationTestType randomIntRecord = Util.randomRecord(SerializationTestTypeFactory.INT);
 
 		Assert.assertFalse(serializer.hasData());
@@ -76,7 +78,7 @@ public class SpanningRecordSerializerTest {
 		final int SEGMENT_SIZE = 11;
 
 		final SpanningRecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<SerializationTestType>();
-		final Buffer buffer = new Buffer(MemorySegmentFactory.allocateUnpooledSegment(SEGMENT_SIZE), mock(BufferRecycler.class));
+		final Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(SEGMENT_SIZE), mock(BufferRecycler.class));
 
 		try {
 			Assert.assertEquals(RecordSerializer.SerializationResult.FULL_RECORD, serializer.setNextBuffer(buffer));
@@ -202,7 +204,7 @@ public class SpanningRecordSerializerTest {
 		final int SERIALIZATION_OVERHEAD = 4; // length encoding
 
 		final SpanningRecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<SerializationTestType>();
-		final Buffer buffer = new Buffer(MemorySegmentFactory.allocateUnpooledSegment(segmentSize), mock(BufferRecycler.class));
+		final Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(segmentSize), mock(BufferRecycler.class));
 
 		// -------------------------------------------------------------------------------------------------------------
 
