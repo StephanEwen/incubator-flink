@@ -22,6 +22,7 @@ import com.google.common.collect.Lists;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
 import org.apache.flink.runtime.io.network.partition.ProducerFailedException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -38,6 +39,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -53,12 +56,14 @@ public class RemoteInputChannelTest {
 		// Setup
 		final SingleInputGate inputGate = mock(SingleInputGate.class);
 		final RemoteInputChannel inputChannel = createRemoteInputChannel(inputGate);
+		final Buffer buffer = TestBufferFactory.createBuffer();
+		buffer.retain(); // used twice
 
 		// The test
-		inputChannel.onBuffer(TestBufferFactory.getMockBuffer(), 0);
+		inputChannel.onBuffer(buffer, 0);
 
 		// This does not yet throw the exception, but sets the error at the channel.
-		inputChannel.onBuffer(TestBufferFactory.getMockBuffer(), 29);
+		inputChannel.onBuffer(buffer, 29);
 
 		try {
 			inputChannel.getNextBuffer();
@@ -66,6 +71,10 @@ public class RemoteInputChannelTest {
 			fail("Did not throw expected exception after enqueuing an out-of-order buffer.");
 		}
 		catch (Exception expected) {
+			assertFalse(buffer.isRecycled());
+			// free remaining buffer instances
+			inputChannel.releaseAllResources();
+			assertTrue(buffer.isRecycled());
 		}
 
 		// Need to notify the input gate for the out-of-order buffer as well. Otherwise the
@@ -82,6 +91,7 @@ public class RemoteInputChannelTest {
 
 		// Setup
 		final ExecutorService executor = Executors.newFixedThreadPool(2);
+		final Buffer buffer = TestBufferFactory.createBuffer();
 
 		try {
 			// Test
@@ -95,7 +105,10 @@ public class RemoteInputChannelTest {
 					public Void call() throws Exception {
 						while (true) {
 							for (int j = 0; j < 128; j++) {
-								inputChannel.onBuffer(TestBufferFactory.getMockBuffer(), j);
+								// this is the same buffer over and over again which will be
+								// recycled by the RemoteInputChannel
+								buffer.retain();
+								inputChannel.onBuffer(buffer, j);
 							}
 
 							if (inputChannel.isReleased()) {
@@ -130,6 +143,9 @@ public class RemoteInputChannelTest {
 		}
 		finally {
 			executor.shutdown();
+			assertFalse(buffer.isRecycled());
+			buffer.recycle();
+			assertTrue(buffer.isRecycled());
 		}
 	}
 
