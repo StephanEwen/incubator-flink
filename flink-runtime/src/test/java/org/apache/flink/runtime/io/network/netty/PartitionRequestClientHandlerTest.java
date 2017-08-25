@@ -259,7 +259,7 @@ public class PartitionRequestClientHandlerTest {
 			InputChannelID receivingChannelId) throws IOException {
 
 		// Mock buffer to serialize
-		BufferResponse resp = new BufferResponse(buffer, sequenceNumber, receivingChannelId);
+		BufferResponse resp = new BufferResponse((NetworkBuffer) buffer, sequenceNumber, receivingChannelId);
 
 		ByteBuf serialized = resp.write(UnpooledByteBufAllocator.DEFAULT);
 
