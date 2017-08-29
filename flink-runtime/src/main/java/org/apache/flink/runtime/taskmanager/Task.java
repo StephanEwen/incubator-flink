@@ -49,7 +49,6 @@ import org.apache.flink.runtime.executiongraph.TaskInformation;
 import org.apache.flink.runtime.filecache.FileCache;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
-import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
@@ -182,8 +181,6 @@ public class Task implements Runnable, TaskActions {
 	private final SerializedValue<ExecutionConfig> serializedExecutionConfig;
 
 	private final ResultPartition[] producedPartitions;
-
-	private final ResultPartitionWriter[] writers;
 
 	private final SingleInputGate[] inputGates;
 
@@ -345,7 +342,6 @@ public class Task implements Runnable, TaskActions {
 
 		// Produced intermediate result partitions
 		this.producedPartitions = new ResultPartition[resultPartitionDeploymentDescriptors.size()];
-		this.writers = new ResultPartitionWriter[resultPartitionDeploymentDescriptors.size()];
 
 		int counter = 0;
 
@@ -364,8 +360,6 @@ public class Task implements Runnable, TaskActions {
 				resultPartitionConsumableNotifier,
 				ioManager,
 				desc.sendScheduleOrUpdateConsumersMessage());
-
-			writers[counter] = new ResultPartitionWriter(producedPartitions[counter]);
 
 			++counter;
 		}
@@ -430,15 +424,11 @@ public class Task implements Runnable, TaskActions {
 		return this.taskConfiguration;
 	}
 
-	public ResultPartitionWriter[] getAllWriters() {
-		return writers;
-	}
-
 	public SingleInputGate[] getAllInputGates() {
 		return inputGates;
 	}
 
-	public ResultPartition[] getProducedPartitions() {
+	public ResultPartition[] getAllOutputPartitions() {
 		return producedPartitions;
 	}
 
@@ -655,7 +645,7 @@ public class Task implements Runnable, TaskActions {
 				jobConfiguration, taskConfiguration, userCodeClassLoader,
 				memoryManager, ioManager, broadcastVariableManager,
 				accumulatorRegistry, kvStateRegistry, inputSplitProvider,
-				distributedCacheEntries, writers, inputGates, network.getTaskEventDispatcher(),
+				distributedCacheEntries, producedPartitions, inputGates, network.getTaskEventDispatcher(),
 				checkpointResponder, taskManagerConfig, metrics, this);
 
 			// let the task code create its readers and writers

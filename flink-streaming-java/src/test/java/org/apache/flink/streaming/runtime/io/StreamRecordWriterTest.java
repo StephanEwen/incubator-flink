@@ -21,12 +21,12 @@ package org.apache.flink.streaming.runtime.io;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
-import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.api.writer.RoundRobinChannelSelector;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.types.LongValue;
 
 import org.junit.Test;
@@ -42,8 +42,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * This test uses the PowerMockRunner runner to work around the fact that the
- * {@link ResultPartitionWriter} class is final.
+ * Tests for {@link StreamRecordWriter}.
  */
 public class StreamRecordWriterTest {
 
@@ -55,7 +54,7 @@ public class StreamRecordWriterTest {
 	public void testPropagateAsyncFlushError() {
 		FailingWriter<LongValue> testWriter = null;
 		try {
-			ResultPartitionWriter mockResultPartitionWriter = getMockWriter(5);
+			ResultPartition mockResultPartitionWriter = getMockWriter(5);
 
 			// test writer that flushes every 5ms and fails after 3 flushes
 			testWriter = new FailingWriter<LongValue>(mockResultPartitionWriter,
@@ -87,7 +86,7 @@ public class StreamRecordWriterTest {
 		}
 	}
 
-	private static ResultPartitionWriter getMockWriter(int numPartitions) throws Exception {
+	private static ResultPartition getMockWriter(int numPartitions) throws Exception {
 		BufferProvider mockProvider = mock(BufferProvider.class);
 		when(mockProvider.requestBufferBlocking()).thenAnswer(new Answer<Buffer>() {
 			@Override
@@ -98,9 +97,9 @@ public class StreamRecordWriterTest {
 			}
 		});
 
-		ResultPartitionWriter mockWriter = mock(ResultPartitionWriter.class);
+		ResultPartition mockWriter = mock(ResultPartition.class);
 		when(mockWriter.getBufferProvider()).thenReturn(mockProvider);
-		when(mockWriter.getNumberOfOutputChannels()).thenReturn(numPartitions);
+		when(mockWriter.getNumberOfSubpartitions()).thenReturn(numPartitions);
 
 		return mockWriter;
 	}
@@ -111,7 +110,7 @@ public class StreamRecordWriterTest {
 
 		private int flushesBeforeException;
 
-		private FailingWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector,
+		private FailingWriter(ResultPartition writer, ChannelSelector<T> channelSelector,
 								long timeout, int flushesBeforeException) {
 			super(writer, channelSelector, timeout);
 			this.flushesBeforeException = flushesBeforeException;
