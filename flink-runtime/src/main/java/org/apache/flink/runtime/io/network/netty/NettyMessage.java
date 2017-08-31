@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -287,6 +288,12 @@ abstract class NettyMessage {
 
 		@Override
 		ByteBuf write(ByteBufAllocator allocator) throws IOException {
+			// do not send buffers with no (readable) data
+			return write(allocator, false);
+		}
+
+		@VisibleForTesting
+		final ByteBuf write(ByteBufAllocator allocator, boolean allowEmpty) throws IOException {
 			assert buffer != null; // see BufferResponse()
 			int headerLength = 16 + 4 + 1 + 4;
 
@@ -295,19 +302,28 @@ abstract class NettyMessage {
 				// in order to forward the buffer to netty, it needs an allocator set
 				buffer.setAllocator(allocator);
 
+				// define the part of the buffer that is ready to send
+				int readerIndex = buffer.readerIndex();
+				int readableBytes = buffer.readableBytes();
+				if (!allowEmpty && readableBytes == 0) {
+					return null;
+				}
+				ByteBuf readyToSend = buffer.slice(readerIndex, readableBytes);
+				buffer.readerIndex(readerIndex + readableBytes);
+
 				// only allocate header buffer - we will combine it with the data buffer below
-				headerBuf = allocateBuffer(allocator, ID, headerLength, buffer.readableBytes(), false);
+				headerBuf = allocateBuffer(allocator, ID, headerLength, readableBytes, false);
 
 				receiverId.writeTo(headerBuf);
 				headerBuf.writeInt(sequenceNumber);
 				headerBuf.writeBoolean(buffer.isBuffer());
-				headerBuf.writeInt(buffer.readableBytes());
+				headerBuf.writeInt(readableBytes);
 
 				CompositeByteBuf composityBuf = allocator.compositeBuffer();
 				composityBuf.addComponent(headerBuf);
-				composityBuf.addComponent(buffer);
-				// update writer index since we have data written to the components:
-				composityBuf.writerIndex(headerBuf.writerIndex() + buffer.writerIndex());
+				composityBuf.addComponent(readyToSend);
+				// update writer index since we have written data to the components:
+				composityBuf.writerIndex(headerBuf.writerIndex() + readyToSend.writerIndex());
 				return composityBuf;
 			}
 			catch (Throwable t) {

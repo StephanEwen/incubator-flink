@@ -41,6 +41,8 @@ import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
 import org.apache.flink.runtime.io.network.util.TestInfiniteBufferProvider;
 import org.apache.flink.runtime.io.network.util.TestTaskEvent;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.operators.testutils.UnregisteredTaskMetricsGroup;
 import org.apache.flink.types.IntValue;
 import org.apache.flink.util.XORShiftRandom;
 
@@ -98,7 +100,8 @@ public class RecordWriterTest {
 
 			final CountDownLatch sync = new CountDownLatch(2);
 
-			final Buffer buffer = spy(TestBufferFactory.createBuffer(4, 0));
+			// 8 bytes = one int for the buffer length + one IntValue below
+			final Buffer buffer = spy(TestBufferFactory.createBuffer(8, 0));
 
 			// Return buffer for first request, but block for all following requests.
 			Answer<Buffer> request = new Answer<Buffer>() {
@@ -129,13 +132,11 @@ public class RecordWriterTest {
 			Future<?> result = executor.submit(new Callable<Void>() {
 				@Override
 				public Void call() throws Exception {
-					IntValue val = new IntValue(0);
-
 					try {
-						recordWriter.emit(val);
-						recordWriter.flush();
+						recordWriter.emit(new IntValue(0));
 
-						recordWriter.emit(val);
+						// we will stall at this emit call
+						recordWriter.emit(new IntValue(1));
 					}
 					catch (InterruptedException e) {
 						recordWriter.clearBuffers();
@@ -160,10 +161,10 @@ public class RecordWriterTest {
 			verify(bufferProvider, times(2)).requestBufferBlocking();
 			verify(partitionWriter, times(1)).add(any(Buffer.class), anyInt());
 
-			// Verify that the written out buffer has only been recycled once
-			// (by the partition writer).
+			// Verify that the written out buffer has only been recycled twice
+			// (once each by the partition writer and the recordWriter).
 			assertTrue("Buffer not recycled.", buffer.isRecycled());
-			verify(buffer, times(1)).recycle();
+			verify(buffer, times(2)).recycle();
 		}
 		finally {
 			if (executor != null) {
@@ -199,12 +200,8 @@ public class RecordWriterTest {
 			RecordWriter<IntValue> recordWriter = new RecordWriter<>(partitionWriter);
 
 			try {
-				// Verify that emit correctly clears the buffer. The infinite loop looks
-				// dangerous indeed, but the buffer will only be flushed after its full. Adding a
-				// manual flush here doesn't test this case (see next).
-				for (;;) {
-					recordWriter.emit(new IntValue(0));
-				}
+				// Verify that emit correctly clears the buffer.
+				recordWriter.emit(new IntValue(0));
 			}
 			catch (Exception e) {
 				// Verify that the buffer is not part of the record writer state after a failure
@@ -219,21 +216,6 @@ public class RecordWriterTest {
 			verify(bufferPool, times(1)).requestBufferBlocking();
 
 			try {
-				// Verify that manual flushing correctly clears the buffer.
-				recordWriter.emit(new IntValue(0));
-				recordWriter.flush();
-
-				Assert.fail("Did not throw expected test Exception");
-			}
-			catch (Exception e) {
-				recordWriter.clearBuffers();
-			}
-
-			// Verify expected methods have been called
-			verify(partitionWriter, times(2)).add(any(Buffer.class), anyInt());
-			verify(bufferPool, times(2)).requestBufferBlocking();
-
-			try {
 				// Verify that broadcast emit correctly clears the buffer.
 				for (;;) {
 					recordWriter.broadcastEmit(new IntValue(0));
@@ -244,8 +226,8 @@ public class RecordWriterTest {
 			}
 
 			// Verify expected methods have been called
-			verify(partitionWriter, times(3)).add(any(Buffer.class), anyInt());
-			verify(bufferPool, times(3)).requestBufferBlocking();
+			verify(partitionWriter, times(2)).add(any(Buffer.class), anyInt());
+			verify(bufferPool, times(2)).requestBufferBlocking();
 
 			try {
 				// Verify that end of super step correctly clears the buffer.
@@ -259,8 +241,8 @@ public class RecordWriterTest {
 			}
 
 			// Verify expected methods have been called
-			verify(partitionWriter, times(4)).add(any(Buffer.class), anyInt());
-			verify(bufferPool, times(4)).requestBufferBlocking();
+			verify(partitionWriter, times(3)).add(any(Buffer.class), anyInt());
+			verify(bufferPool, times(3)).requestBufferBlocking();
 
 			try {
 				// Verify that broadcasting and event correctly clears the buffer.
@@ -274,8 +256,8 @@ public class RecordWriterTest {
 			}
 
 			// Verify expected methods have been called
-			verify(partitionWriter, times(5)).add(any(Buffer.class), anyInt());
-			verify(bufferPool, times(5)).requestBufferBlocking();
+			verify(partitionWriter, times(4)).add(any(Buffer.class), anyInt());
+			verify(bufferPool, times(4)).requestBufferBlocking();
 		}
 		finally {
 			if (bufferPool != null) {
@@ -293,23 +275,24 @@ public class RecordWriterTest {
 	@Test
 	public void testSerializerClearedAfterClearBuffers() throws Exception {
 
-		final Buffer buffer = TestBufferFactory.createBuffer(16, 0);
+		final Buffer buffer = spy(TestBufferFactory.createBuffer(16, 0));
 
 		ResultPartition partitionWriter = createResultPartition(
 				createBufferProvider(buffer));
 
 		RecordWriter<IntValue> recordWriter = new RecordWriter<IntValue>(partitionWriter);
 
-		// Fill a buffer, but don't write it out.
+		// Fill a buffer but not completely.
 		recordWriter.emit(new IntValue(0));
-		verify(partitionWriter, never()).add(any(Buffer.class), anyInt());
+		verify(partitionWriter, times(1)).add(any(Buffer.class), anyInt());
 
 		// Clear all buffers.
 		recordWriter.clearBuffers();
 
-		// This should not throw an Exception iff the serializer state
-		// has been cleared as expected.
-		recordWriter.flush();
+		// Verify that the written out buffer has only been recycled twice
+		// (once each by the partition writer and the recordWriter).
+		assertTrue("Buffer not recycled.", buffer.isRecycled());
+		verify(buffer, times(2)).recycle();
 	}
 
 	/**
@@ -366,34 +349,55 @@ public class RecordWriterTest {
 
 		ResultPartition partitionWriter = createCollectingPartitionWriter(queues, bufferProvider);
 		RecordWriter<ByteArrayIO> writer = new RecordWriter<>(partitionWriter, new RoundRobin<ByteArrayIO>());
+		TaskIOMetricGroup metrics = new TaskIOMetricGroup(new UnregisteredTaskMetricsGroup());
+		writer.setMetricGroup(metrics);
 		CheckpointBarrier barrier = new CheckpointBarrier(Integer.MAX_VALUE + 1292L, Integer.MAX_VALUE + 199L, CheckpointOptions.forFullCheckpoint());
+		int expectedBytesWritten = 0;
 
 		// Emit records on some channels first (requesting buffers), then
 		// broadcast the event. The record buffers should be emitted first, then
 		// the event. After the event, no new buffer should be requested.
+
+		assertEquals(expectedBytesWritten, metrics.getNumBytesOutCounter().getCount());
 
 		// (i) Smaller than the buffer size (single buffer request => 1)
 		byte[] bytes = new byte[bufferSize / 2];
 		rand.nextBytes(bytes);
 
 		writer.emit(new ByteArrayIO(bytes));
+		expectedBytesWritten += bytes.length + 4; // buffer + length
+		assertEquals(expectedBytesWritten, metrics.getNumBytesOutCounter().getCount());
 
 		// (ii) Larger than the buffer size (two buffer requests => 1 + 2)
 		bytes = new byte[bufferSize + 1];
 		rand.nextBytes(bytes);
 
 		writer.emit(new ByteArrayIO(bytes));
+		expectedBytesWritten += bytes.length + 4; // buffer + length
+		assertEquals(expectedBytesWritten, metrics.getNumBytesOutCounter().getCount());
 
 		// (iii) Exactly the buffer size (single buffer request => 1 + 2 + 1)
 		bytes = new byte[bufferSize - lenBytes];
 		rand.nextBytes(bytes);
 
 		writer.emit(new ByteArrayIO(bytes));
+		expectedBytesWritten += bytes.length + 4; // buffer + length
+		assertEquals(expectedBytesWritten, metrics.getNumBytesOutCounter().getCount());
 
 		// (iv) Nothing on the 4th channel (no buffer request => 1 + 2 + 1 + 0 = 4)
 
+		verify(bufferProvider, times(4)).requestBufferBlocking();
+
+		assertEquals(1, queues[0].size()); // 1 buffer
+		assertEquals(2, queues[1].size()); // 2 buffers
+		assertEquals(1, queues[2].size()); // 1 buffer
+		assertEquals(0, queues[3].size()); // 0 buffers
+
 		// (v) Broadcast the event
 		writer.broadcastEvent(barrier);
+
+		// bytes from serialized events are not counted
+		assertEquals(expectedBytesWritten, metrics.getNumBytesOutCounter().getCount());
 
 		verify(bufferProvider, times(4)).requestBufferBlocking();
 

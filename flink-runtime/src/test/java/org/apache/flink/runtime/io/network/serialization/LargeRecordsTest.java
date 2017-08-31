@@ -84,7 +84,7 @@ public class LargeRecordsTest {
 				if (serializer.addRecord(record).isFullBuffer()) {
 
 					// buffer is full => move to deserializer
-					deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), SEGMENT_SIZE);
+					deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, SEGMENT_SIZE);
 
 					// deserialize records, as many complete as there are
 					while (numRecordsDeserialized < deserializedRecords.size()) {
@@ -100,7 +100,7 @@ public class LargeRecordsTest {
 
 					// move buffers as long as necessary (for long records)
 					while (serializer.setNextBuffer(buffer).isFullBuffer()) {
-						deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), SEGMENT_SIZE);
+						deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, SEGMENT_SIZE);
 					}
 					
 					// deserialize records, as many as there are in the last buffer
@@ -119,7 +119,7 @@ public class LargeRecordsTest {
 			
 			// move the last (incomplete buffer)
 			Buffer last = serializer.getCurrentBuffer();
-			deserializer.setNextMemorySegment(last.getMemorySegment(), last.getWriterIndex());
+			deserializer.setNextMemorySegment(last.getMemorySegment(), 0, last.getWriterIndex());
 			serializer.clear();
 			
 			// deserialize records, as many as there are in the last buffer
@@ -184,7 +184,7 @@ public class LargeRecordsTest {
 				if (serializer.addRecord(record).isFullBuffer()) {
 
 					// buffer is full => move to deserializer
-					deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), SEGMENT_SIZE);
+					deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, SEGMENT_SIZE);
 
 					// deserialize records, as many complete as there are
 					while (numRecordsDeserialized < deserializedRecords.size()) {
@@ -200,7 +200,7 @@ public class LargeRecordsTest {
 
 					// move buffers as long as necessary (for long records)
 					while (serializer.setNextBuffer(buffer).isFullBuffer()) {
-						deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), SEGMENT_SIZE);
+						deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, SEGMENT_SIZE);
 					}
 					
 					// deserialize records, as many as there are in the last buffer
@@ -219,7 +219,7 @@ public class LargeRecordsTest {
 			
 			// move the last (incomplete buffer)
 			Buffer last = serializer.getCurrentBuffer();
-			deserializer.setNextMemorySegment(last.getMemorySegment(), last.getWriterIndex());
+			deserializer.setNextMemorySegment(last.getMemorySegment(), 0, last.getWriterIndex());
 			serializer.clear();
 			
 			// deserialize records, as many as there are in the last buffer

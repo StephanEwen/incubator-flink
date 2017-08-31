@@ -150,7 +150,7 @@ public class SpanningRecordSerializationTest {
 			// serialize record
 			if (serializer.addRecord(record).isFullBuffer()) {
 				// buffer is full => start deserializing
-				deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), segmentSize);
+				deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, segmentSize);
 
 				while (!serializedRecords.isEmpty()) {
 					SerializationTestType expected = serializedRecords.poll();
@@ -166,7 +166,7 @@ public class SpanningRecordSerializationTest {
 				}
 
 				while (serializer.setNextBuffer(buffer).isFullBuffer()) {
-					deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), segmentSize);
+					deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, segmentSize);
 				}
 
 
@@ -175,7 +175,7 @@ public class SpanningRecordSerializationTest {
 		}
 
 		// deserialize left over records
-		deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), (numBytes % segmentSize));
+		deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, (numBytes % segmentSize));
 
 		serializer.clear();
 

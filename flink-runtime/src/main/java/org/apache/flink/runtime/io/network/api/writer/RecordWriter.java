@@ -21,19 +21,21 @@ package org.apache.flink.runtime.io.network.api.writer;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
-import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
-import org.apache.flink.runtime.io.network.partition.ResultPartition;
-import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.util.XORShiftRandom;
 
 import java.io.IOException;
 import java.util.Random;
 
 import static org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.SerializationResult;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * A record-oriented runtime result writer.
@@ -112,28 +114,41 @@ public class RecordWriter<T extends IOReadableWritable> {
 		RecordSerializer<T> serializer = serializers[targetChannel];
 
 		synchronized (serializer) {
+			NetworkBuffer buffer = (NetworkBuffer) serializer.getCurrentBuffer();
+			int writerIndexBefore = (buffer == null) ? 0 : buffer.getWriterIndex();
+
 			SerializationResult result = serializer.addRecord(record);
 
-			while (result.isFullBuffer()) {
-				Buffer buffer = serializer.getCurrentBuffer();
+			// serialize any copy into network buffers until the whole record has been written
+			do {
+				if (buffer == null) {
+					// a serializer without a current target buffer should return this result:
+					checkState(result == SerializationResult.PARTIAL_RECORD_MEMORY_SEGMENT_FULL);
 
-				if (buffer != null) {
-					numBytesOut.inc(buffer.getWriterIndex());
-					writeAndClearBuffer(buffer, targetChannel, serializer);
-
-					// If this was a full record, we are done. Not breaking
-					// out of the loop at this point will lead to another
-					// buffer request before breaking out (that would not be
-					// a problem per se, but it can lead to stalls in the
-					// pipeline).
-					if (result.isFullRecord()) {
-						break;
-					}
-				} else {
-					buffer = targetPartition.getBufferProvider().requestBufferBlocking();
+					buffer = (NetworkBuffer) targetPartition.getBufferProvider().requestBufferBlocking();
+					writerIndexBefore = 0;
 					result = serializer.setNextBuffer(buffer);
 				}
-			}
+
+				// written anything?
+				if (buffer.getWriterIndex() > writerIndexBefore) {
+					// add to target sub-partition so the network stack can already read from it
+					// while we're completing the buffer (therefore, also retain it)
+					buffer.retain();
+					targetPartition.add(buffer, targetChannel);
+					numBytesOut.inc(buffer.getWriterIndex() - writerIndexBefore);
+				}
+
+				// make room for a new buffer if this one is full
+				if (result.isFullBuffer()) {
+					serializer.clearCurrentBuffer();
+					buffer.recycle();
+					buffer = null;
+				}
+			} while (!result.isFullRecord());
+
+			// NOTE: cleanup of the target buffers in cases of failures is handled some layers above
+			//       which (need to) call #clearBuffers() to also reset the serializers!
 		}
 	}
 
@@ -146,8 +161,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 				synchronized (serializer) {
 					Buffer buffer = serializer.getCurrentBuffer();
 					if (buffer != null) {
-						numBytesOut.inc(buffer.getWriterIndex());
-						writeAndClearBuffer(buffer, targetChannel, serializer);
+						serializer.clearCurrentBuffer();
+						buffer.recycle();
 					} else if (serializer.hasData()) {
 						// sanity check
 						throw new IllegalStateException("No buffer, but serializer has buffered data.");
@@ -166,22 +181,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 	}
 
 	public void flush() throws IOException {
-		for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
-			RecordSerializer<T> serializer = serializers[targetChannel];
-
-			synchronized (serializer) {
-				try {
-					Buffer buffer = serializer.getCurrentBuffer();
-
-					if (buffer != null) {
-						numBytesOut.inc(buffer.getWriterIndex());
-						targetPartition.add(buffer, targetChannel);
-					}
-				} finally {
-					serializer.clear();
-				}
-			}
-		}
 	}
 
 	public void clearBuffers() {
@@ -207,25 +206,6 @@ public class RecordWriter<T extends IOReadableWritable> {
      */
 	public void setMetricGroup(TaskIOMetricGroup metrics) {
 		numBytesOut = metrics.getNumBytesOutCounter();
-	}
-
-	/**
-	 * Writes the buffer to the {@link ResultPartition} and removes the
-	 * buffer from the serializer state.
-	 *
-	 * Needs to be synchronized on the serializer!
-	 */
-	private void writeAndClearBuffer(
-			Buffer buffer,
-			int targetChannel,
-			RecordSerializer<T> serializer) throws IOException {
-
-		try {
-			targetPartition.add(buffer, targetChannel);
-		}
-		finally {
-			serializer.clearCurrentBuffer();
-		}
 	}
 
 }

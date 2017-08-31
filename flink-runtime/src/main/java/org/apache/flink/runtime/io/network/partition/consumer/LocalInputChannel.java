@@ -195,7 +195,9 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 		long remaining = numBuffersAvailable.decrementAndGet();
 
 		if (remaining >= 0) {
-			numBytesIn.inc(next.getWriterIndex());
+			// note: reader index of the original buffer is increased during de-serialization
+			// TODO: wrap buffer so that the number of bytes read is consistent? (for now, the deserializer reads whatever it has then, not what we got here)
+			numBytesIn.inc(next.getWriterIndex() - next.getReaderIndex());
 			return new BufferAndAvailability(next, remaining > 0);
 		} else if (subpartitionView.isReleased()) {
 			throw new ProducerFailedException(subpartitionView.getFailureCause());

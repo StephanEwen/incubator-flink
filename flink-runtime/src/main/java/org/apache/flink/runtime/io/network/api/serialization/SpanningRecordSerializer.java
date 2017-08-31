@@ -148,6 +148,7 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		this.targetBuffer.getMemorySegment().put(this.position, source, toCopy);
 
 		this.position += toCopy;
+		this.targetBuffer.setWriterIndex(this.position);
 	}
 
 	private SerializationResult getSerializationResult() {
@@ -162,12 +163,7 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 
 	@Override
 	public Buffer getCurrentBuffer() {
-		if (targetBuffer == null) {
-			return null;
-		}
-
-		this.targetBuffer.setWriterIndex(this.position);
-		return this.targetBuffer;
+		return targetBuffer;
 	}
 
 	@Override

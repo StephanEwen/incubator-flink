@@ -55,7 +55,7 @@ public interface RecordDeserializer<T extends IOReadableWritable> {
 	
 	DeserializationResult getNextRecord(T target) throws IOException;
 
-	void setNextMemorySegment(MemorySegment segment, int numBytes) throws IOException;
+	void setNextMemorySegment(MemorySegment segment, int position, int numBytes) throws IOException;
 
 	void setNextBuffer(Buffer buffer) throws IOException;
 

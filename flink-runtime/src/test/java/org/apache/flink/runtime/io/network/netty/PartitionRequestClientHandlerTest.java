@@ -81,13 +81,14 @@ public class PartitionRequestClientHandlerTest {
 		when(inputChannel.getInputChannelId()).thenReturn(new InputChannelID());
 		when(inputChannel.getBufferProvider()).thenReturn(bufferProvider);
 
-		final BufferResponse ReceivedBuffer = createBufferResponse(
-				TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0, inputChannel.getInputChannelId());
+		final BufferResponse receivedBuffer = createBufferResponse(
+			TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0,
+			inputChannel.getInputChannelId(), false);
 
 		final PartitionRequestClientHandler client = new PartitionRequestClientHandler();
 		client.addInputChannel(inputChannel);
 
-		client.channelRead(mock(ChannelHandlerContext.class), ReceivedBuffer);
+		client.channelRead(mock(ChannelHandlerContext.class), receivedBuffer);
 	}
 
 	/**
@@ -109,7 +110,7 @@ public class PartitionRequestClientHandlerTest {
 		final Buffer emptyBuffer = TestBufferFactory.createBuffer(0);
 
 		final BufferResponse receivedBuffer = createBufferResponse(
-				emptyBuffer, 0, inputChannel.getInputChannelId());
+			emptyBuffer, 0, inputChannel.getInputChannelId(), true);
 
 		final PartitionRequestClientHandler client = new PartitionRequestClientHandler();
 		client.addInputChannel(inputChannel);
@@ -202,7 +203,7 @@ public class PartitionRequestClientHandlerTest {
 
 		handler.addInputChannel(inputChannel);
 
-		BufferResponse msg = createBufferResponse(createBuffer(true), 0, channelId);
+		BufferResponse msg = createBufferResponse(createBuffer(true), 0, channelId, false);
 
 		// Write 1st buffer msg. No buffer is available, therefore the buffer
 		// should be staged and auto read should be set to false.
@@ -213,10 +214,10 @@ public class PartitionRequestClientHandlerTest {
 		assertFalse(channel.config().isAutoRead());
 
 		// Write more buffers... all staged.
-		msg = createBufferResponse(createBuffer(true), 1, channelId);
+		msg = createBufferResponse(createBuffer(true), 1, channelId, false);
 		channel.writeInbound(msg);
 
-		msg = createBufferResponse(createBuffer(true), 2, channelId);
+		msg = createBufferResponse(createBuffer(true), 2, channelId, false);
 		channel.writeInbound(msg);
 
 		// Notify about buffer => handle 1st msg
@@ -256,12 +257,13 @@ public class PartitionRequestClientHandlerTest {
 	private BufferResponse createBufferResponse(
 			Buffer buffer,
 			int sequenceNumber,
-			InputChannelID receivingChannelId) throws IOException {
+			InputChannelID receivingChannelId,
+			boolean allowEmpty) throws IOException {
 
 		// Mock buffer to serialize
 		BufferResponse resp = new BufferResponse((NetworkBuffer) buffer, sequenceNumber, receivingChannelId);
 
-		ByteBuf serialized = resp.write(UnpooledByteBufAllocator.DEFAULT);
+		ByteBuf serialized = resp.write(UnpooledByteBufAllocator.DEFAULT, allowEmpty);
 
 		// Skip general header bytes
 		serialized.readBytes(NettyMessage.HEADER_LENGTH);

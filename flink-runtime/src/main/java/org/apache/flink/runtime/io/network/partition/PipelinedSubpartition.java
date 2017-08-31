@@ -71,6 +71,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 			}
 
 			// Add the buffer and update the stats
+			// TODO: only add the buffer if it is another instance!
 			buffers.add(buffer);
 			reader = readView;
 			updateStatistics(buffer);

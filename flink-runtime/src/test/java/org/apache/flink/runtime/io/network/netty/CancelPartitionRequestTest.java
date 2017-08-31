@@ -188,7 +188,7 @@ public class CancelPartitionRequestTest {
 		@Override
 		public Buffer getNextBuffer() throws IOException, InterruptedException {
 			Buffer buffer = bufferProvider.requestBufferBlocking();
-			buffer.setWriterIndex(buffer.getSize()); // fake some data
+			buffer.setWriterIndex(buffer.getSize()); // fake some data (empty buffers will not be sent!)
 			return buffer;
 		}
 

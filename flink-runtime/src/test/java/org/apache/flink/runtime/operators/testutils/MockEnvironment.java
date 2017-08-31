@@ -70,6 +70,10 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * Creates a mock {@link Environment} for tests with some convenience methods like outputs storing
+ * results into <tt>List&lt;Record&gt;</tt> instances ({@link #addOutput(List)}).
+ */
 public class MockEnvironment implements Environment {
 	
 	private final TaskInfo taskInfo;
@@ -176,7 +180,6 @@ public class MockEnvironment implements Environment {
 		this.userCodeClassLoader = Preconditions.checkNotNull(userCodeClassLoader);
 	}
 
-
 	public IteratorWrappingTestSingleInputGate<Record> addInput(MutableObjectIterator<Record> inputIterator) {
 		try {
 			final IteratorWrappingTestSingleInputGate<Record> reader = new IteratorWrappingTestSingleInputGate<Record>(bufferSize, Record.class, inputIterator);
@@ -216,24 +219,42 @@ public class MockEnvironment implements Environment {
 
 				@Override
 				public Void answer(InvocationOnMock invocationOnMock) throws Throwable {
-					Buffer buffer = (Buffer) invocationOnMock.getArguments()[0];
+					NetworkBuffer buffer = (NetworkBuffer) invocationOnMock.getArguments()[0];
+					NetworkBuffer readableBuffer = null;
+					try {
 
-					deserializer.setNextBuffer(buffer);
+						// define the part of the buffer that is ready to send (each part is sent only
+						// once although the buffer may be in the queue multiple times!)
+						readableBuffer = new NetworkBuffer(
+							MemorySegmentFactory.allocateUnpooledSegment(buffer.readableBytes()),
+							mock(BufferRecycler.class));
+						buffer.readBytes(readableBuffer, buffer.readableBytes());
 
-					while (deserializer.hasUnfinishedData()) {
-						RecordDeserializer.DeserializationResult result = deserializer.getNextRecord(record);
+						deserializer.setNextBuffer(readableBuffer);
 
-						if (result.isFullRecord()) {
-							outputList.add(record.createCopy());
+						while (deserializer.hasUnfinishedData()) {
+							RecordDeserializer.DeserializationResult result =
+								deserializer.getNextRecord(record);
+
+							if (result.isFullRecord()) {
+								outputList.add(record.createCopy());
+							}
+
+							if (result ==
+								RecordDeserializer.DeserializationResult.LAST_RECORD_FROM_BUFFER
+								||
+								result == RecordDeserializer.DeserializationResult.PARTIAL_RECORD) {
+								break;
+							}
 						}
 
-						if (result == RecordDeserializer.DeserializationResult.LAST_RECORD_FROM_BUFFER
-								|| result == RecordDeserializer.DeserializationResult.PARTIAL_RECORD) {
-							break;
+						return null;
+					} finally {
+						buffer.recycle();
+						if (readableBuffer != null) {
+							readableBuffer.recycle();
 						}
 					}
-
-					return null;
 				}
 			}).when(mockWriter).add(any(Buffer.class), anyInt());
 

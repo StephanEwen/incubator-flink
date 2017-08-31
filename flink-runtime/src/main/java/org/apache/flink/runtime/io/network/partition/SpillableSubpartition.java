@@ -101,6 +101,8 @@ class SpillableSubpartition extends ResultSubpartition {
 			updateStatistics(buffer);
 
 			if (spillWriter == null) {
+
+				// TODO: only add the buffer if it is another instance!
 				buffers.add(buffer);
 
 				return true;
@@ -108,6 +110,7 @@ class SpillableSubpartition extends ResultSubpartition {
 		}
 
 		// Didn't return early => go to disk
+		// TODO: can we overwrite the previous buffer file if it is the same buffer?
 		spillWriter.writeBlock(buffer);
 
 		return true;
