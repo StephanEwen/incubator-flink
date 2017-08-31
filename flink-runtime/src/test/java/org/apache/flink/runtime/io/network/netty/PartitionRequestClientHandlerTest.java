@@ -22,6 +22,7 @@ import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.BufferResponse;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.ErrorResponse;
@@ -30,7 +31,6 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
-import org.apache.flink.runtime.testutils.DiscardingRecycler;
 import org.apache.flink.runtime.util.event.EventListener;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
@@ -240,7 +240,7 @@ public class PartitionRequestClientHandlerTest {
 
 	private static Buffer createBuffer(boolean fill) {
 		MemorySegment segment = MemorySegmentFactory.allocateUnpooledSegment(1024, null);
-		NetworkBuffer buffer = new NetworkBuffer(segment, DiscardingRecycler.INSTANCE, true);
+		NetworkBuffer buffer = new NetworkBuffer(segment, FreeingBufferRecycler.INSTANCE, true);
 		if (fill) {
 			for (int i = 0; i < 1024; i++) {
 				segment.put(i, (byte) i);
