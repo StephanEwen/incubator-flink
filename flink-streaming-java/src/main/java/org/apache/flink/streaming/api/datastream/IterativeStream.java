@@ -46,7 +46,6 @@ public class IterativeStream<T> extends SingleOutputStreamOperator<T> {
 				new FeedbackTransformation<>(dataStream.getTransformation(), maxWaitTime));
 		this.originalInput = dataStream;
 		this.maxWaitTime = maxWaitTime;
-		setBufferTimeout(dataStream.environment.getBufferTimeout());
 	}
 
 	/**

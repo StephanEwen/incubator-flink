@@ -65,7 +65,6 @@ public class StreamConfig implements Serializable {
 	private static final String OUTPUT_SELECTOR_WRAPPER = "outputSelectorWrapper";
 	private static final String SERIALIZEDUDF = "serializedUDF";
 	private static final String USER_FUNCTION = "userFunction";
-	private static final String BUFFER_TIMEOUT = "bufferTimeout";
 	private static final String TYPE_SERIALIZER_IN_1 = "typeSerializer_in_1";
 	private static final String TYPE_SERIALIZER_IN_2 = "typeSerializer_in_2";
 	private static final String TYPE_SERIALIZER_OUT_1 = "typeSerializer_out";
@@ -92,7 +91,6 @@ public class StreamConfig implements Serializable {
 	//  Default Values
 	// ------------------------------------------------------------------------
 
-	private static final long DEFAULT_TIMEOUT = 100;
 	private static final CheckpointingMode DEFAULT_CHECKPOINTING_MODE = CheckpointingMode.EXACTLY_ONCE;
 
 
@@ -190,14 +188,6 @@ public class StreamConfig implements Serializable {
 		} catch (IOException e) {
 			throw new StreamTaskException("Could not serialize type serializer.", e);
 		}
-	}
-
-	public void setBufferTimeout(long timeout) {
-		config.setLong(BUFFER_TIMEOUT, timeout);
-	}
-
-	public long getBufferTimeout() {
-		return config.getLong(BUFFER_TIMEOUT, DEFAULT_TIMEOUT);
 	}
 
 	public void setStreamOperator(StreamOperator<?> operator) {
@@ -533,7 +523,6 @@ public class StreamConfig implements Serializable {
 		catch (Exception e) {
 			builder.append("\nOperator: Missing");
 		}
-		builder.append("\nBuffer timeout: ").append(getBufferTimeout());
 		builder.append("\nState Monitoring: ").append(isCheckpointingEnabled());
 		if (isChainStart() && getChainedOutputs(cl).size() > 0) {
 			builder.append("\n\n\n---------------------\nChained task configs\n---------------------\n");

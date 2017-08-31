@@ -304,7 +304,6 @@ public class OneInputStreamTaskTest extends TestLogger {
 
 		tailOperatorConfig.setStreamOperator(tailOperator);
 		tailOperatorConfig.setTypeSerializerIn1(StringSerializer.INSTANCE);
-		tailOperatorConfig.setBufferTimeout(0);
 		tailOperatorConfig.setChainIndex(2);
 		tailOperatorConfig.setChainEnd();
 		tailOperatorConfig.setOutputSelectors(Collections.<OutputSelector<?>>emptyList());

@@ -78,7 +78,6 @@ public class StreamingScalabilityAndLatency {
 		env.setParallelism(parallelism);
 		env.getConfig().enableObjectReuse();
 
-		env.setBufferTimeout(5L);
 		env.enableCheckpointing(1000, CheckpointingMode.AT_LEAST_ONCE);
 
 		env

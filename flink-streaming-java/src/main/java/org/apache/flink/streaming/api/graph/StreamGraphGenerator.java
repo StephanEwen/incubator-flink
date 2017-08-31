@@ -194,9 +194,6 @@ public class StreamGraphGenerator {
 			alreadyTransformed.put(transform, transformedIds);
 		}
 
-		if (transform.getBufferTimeout() > 0) {
-			streamGraph.setBufferTimeout(transform.getId(), transform.getBufferTimeout());
-		}
 		if (transform.getUid() != null) {
 			streamGraph.setTransformationUID(transform.getId(), transform.getUid());
 		}

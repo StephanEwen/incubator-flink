@@ -177,9 +177,12 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 	 * Returns the buffer timeout of the job.
 	 *
 	 * @return buffer timeout (in milliseconds)
+	 *
+	 * @deprecated The buffer timeout is not necessary and therefore not used anymore.
 	 */
+	@Deprecated
 	public long getBufferTimeout() {
-		return streamConfig.getBufferTimeout();
+		return 0;
 	}
 
 }

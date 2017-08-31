@@ -332,10 +332,11 @@ class DataStream[T](stream: JavaStream[T]) {
    * @param timeoutMillis
    * The maximum time between two output flushes.
    * @return The operator with buffer timeout set.
+   * @deprecated The buffer timeout is not necessary and therefore not used anymore.
    */
   def setBufferTimeout(timeoutMillis: Long): DataStream[T] = {
     stream match {
-      case ds: SingleOutputStreamOperator[T] => ds.setBufferTimeout(timeoutMillis)
+      case ds: SingleOutputStreamOperator[T] =>
       case _ =>
         throw new UnsupportedOperationException("Only supported for operators.")
     }

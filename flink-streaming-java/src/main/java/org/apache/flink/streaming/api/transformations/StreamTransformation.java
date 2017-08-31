@@ -145,8 +145,6 @@ public abstract class StreamTransformation<T> {
 
 	private String userProvidedNodeHash;
 
-	protected long bufferTimeout = -1;
-
 	private String slotSharingGroup;
 
 	/**
@@ -391,26 +389,6 @@ public abstract class StreamTransformation<T> {
 	public abstract void setChainingStrategy(ChainingStrategy strategy);
 
 	/**
-	 * Set the buffer timeout of this {@code StreamTransformation}. The timeout is used when
-	 * sending elements over the network. The timeout specifies how long a network buffer
-	 * should be kept waiting before sending. A higher timeout means that more elements will
-	 * be sent in one buffer, this increases throughput. The latency, however, is negatively
-	 * affected by a higher timeout.
-	 */
-	public void setBufferTimeout(long bufferTimeout) {
-		this.bufferTimeout = bufferTimeout;
-	}
-
-	/**
-	 * Returns the buffer timeout of this {@code StreamTransformation}.
-	 *
-	 * @see #setBufferTimeout(long)
-	 */
-	public long getBufferTimeout() {
-		return bufferTimeout;
-	}
-
-	/**
 	 * Returns all transitive predecessor {@code StreamTransformation}s of this {@code StreamTransformation}. This
 	 * is, for example, used when determining whether a feedback edge of an iteration
 	 * actually has the iteration head as a predecessor.
@@ -440,9 +418,6 @@ public abstract class StreamTransformation<T> {
 
 		StreamTransformation<?> that = (StreamTransformation<?>) o;
 
-		if (bufferTimeout != that.bufferTimeout) {
-			return false;
-		}
 		if (id != that.id) {
 			return false;
 		}
@@ -461,7 +436,6 @@ public abstract class StreamTransformation<T> {
 		result = 31 * result + name.hashCode();
 		result = 31 * result + (outputType != null ? outputType.hashCode() : 0);
 		result = 31 * result + parallelism;
-		result = 31 * result + (int) (bufferTimeout ^ (bufferTimeout >>> 32));
 		return result;
 	}
 }

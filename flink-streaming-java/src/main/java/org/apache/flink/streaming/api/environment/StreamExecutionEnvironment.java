@@ -109,9 +109,6 @@ public abstract class StreamExecutionEnvironment {
 	/** The time characteristic that is used if none other is set. */
 	private static final TimeCharacteristic DEFAULT_TIME_CHARACTERISTIC = TimeCharacteristic.ProcessingTime;
 
-	/** The default buffer timeout (max delay of records in the network stack). */
-	private static final long DEFAULT_NETWORK_BUFFER_TIMEOUT = 100L;
-
 	/**
 	 * The environment of the context (local by default, cluster if invoked through command line).
 	 */
@@ -129,8 +126,6 @@ public abstract class StreamExecutionEnvironment {
 	private final CheckpointConfig checkpointCfg = new CheckpointConfig();
 
 	protected final List<StreamTransformation<?>> transformations = new ArrayList<>();
-
-	private long bufferTimeout = DEFAULT_NETWORK_BUFFER_TIMEOUT;
 
 	protected boolean isChainingEnabled = true;
 
@@ -227,26 +222,19 @@ public abstract class StreamExecutionEnvironment {
 
 	/**
 	 * Sets the maximum time frequency (milliseconds) for the flushing of the
-	 * output buffers. By default the output buffers flush frequently to provide
-	 * low latency and to aid smooth developer experience. Setting the parameter
-	 * can result in three logical modes:
-	 *
-	 * <ul>
-	 *   <li>A positive integer triggers flushing periodically by that integer</li>
-	 *   <li>0 triggers flushing after every record thus minimizing latency</li>
-	 *   <li>-1 triggers flushing only when the output buffer is full thus maximizing
-	 *      throughput</li>
-	 * </ul>
+	 * output buffers. We always write data when the network is ready, which is similar
+	 * to the previous mode <tt>0</tt> that triggered flushing after every record.
 	 *
 	 * @param timeoutMillis
 	 * 		The maximum time between two output flushes.
+	 *
+	 * @deprecated The buffer timeout is not necessary and therefore not used anymore.
 	 */
+	@Deprecated
 	public StreamExecutionEnvironment setBufferTimeout(long timeoutMillis) {
 		if (timeoutMillis < -1) {
 			throw new IllegalArgumentException("Timeout of buffer must be non-negative or -1");
 		}
-
-		this.bufferTimeout = timeoutMillis;
 		return this;
 	}
 
@@ -255,10 +243,13 @@ public abstract class StreamExecutionEnvironment {
 	 * output buffers. For clarification on the extremal values see
 	 * {@link #setBufferTimeout(long)}.
 	 *
-	 * @return The timeout of the buffer.
+	 * @return The timeout of the buffer (always <tt>0</tt> now).
+	 *
+	 * @deprecated The buffer timeout is not necessary and therefore not used anymore.
 	 */
+	@Deprecated
 	public long getBufferTimeout() {
-		return this.bufferTimeout;
+		return 0;
 	}
 
 	/**

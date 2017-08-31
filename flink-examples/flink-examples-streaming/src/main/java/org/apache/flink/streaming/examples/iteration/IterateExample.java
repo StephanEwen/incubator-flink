@@ -61,10 +61,8 @@ public class IterateExample {
 
 		// set up input for the stream of integer pairs
 
-		// obtain execution environment and set setBufferTimeout to 1 to enable
-		// continuous flushing of the output buffers (lowest latency)
-		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment()
-				.setBufferTimeout(1);
+		// obtain execution environment
+		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
 		// make parameters available in the web interface
 		env.getConfig().setGlobalJobParameters(params);

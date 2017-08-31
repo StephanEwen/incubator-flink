@@ -34,7 +34,6 @@ object Tasks {
       try{
         writer.emit(new IntValue(42))
         writer.emit(new IntValue(1337))
-        writer.flush()
       }finally{
         writer.clearBuffers()
       }
@@ -62,7 +61,6 @@ object Tasks {
           writer.emit(record)
         }
 
-        writer.flush()
       } finally {
         writer.clearBuffers()
       }

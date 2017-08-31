@@ -100,6 +100,7 @@ class StreamExecutionEnvironment(javaEnv: JavaEnv) {
    *   <li>-1 triggers flushing only when the output buffer is full thus maximizing throughput</li>
    * </ul>
    */
+  @deprecated
   def setBufferTimeout(timeoutMillis: Long): StreamExecutionEnvironment = {
     javaEnv.setBufferTimeout(timeoutMillis)
     this
@@ -108,6 +109,7 @@ class StreamExecutionEnvironment(javaEnv: JavaEnv) {
   /**
    * Gets the default buffer timeout set for this environment
    */
+  @deprecated
   def getBufferTimeout = javaEnv.getBufferTimeout
 
   /**

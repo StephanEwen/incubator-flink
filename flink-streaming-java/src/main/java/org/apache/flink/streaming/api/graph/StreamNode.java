@@ -51,7 +51,6 @@ public class StreamNode implements Serializable {
 	private int maxParallelism;
 	private ResourceSpec minResources = ResourceSpec.DEFAULT;
 	private ResourceSpec preferredResources = ResourceSpec.DEFAULT;
-	private Long bufferTimeout = null;
 	private final String operatorName;
 	private String slotSharingGroup;
 	private KeySelector<?, ?> statePartitioner1;
@@ -179,14 +178,6 @@ public class StreamNode implements Serializable {
 	public void setResources(ResourceSpec minResources, ResourceSpec preferredResources) {
 		this.minResources = minResources;
 		this.preferredResources = preferredResources;
-	}
-
-	public Long getBufferTimeout() {
-		return bufferTimeout != null ? bufferTimeout : env.getBufferTimeout();
-	}
-
-	public void setBufferTimeout(Long bufferTimeout) {
-		this.bufferTimeout = bufferTimeout;
 	}
 
 	public StreamOperator<?> getOperator() {

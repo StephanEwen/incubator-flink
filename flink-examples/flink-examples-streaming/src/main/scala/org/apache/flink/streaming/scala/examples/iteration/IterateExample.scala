@@ -47,9 +47,8 @@ object IterateExample {
     // Checking input parameters
     val params = ParameterTool.fromArgs(args)
 
-    // obtain execution environment and set setBufferTimeout to 1 to enable
-    // continuous flushing of the output buffers (lowest latency)
-    val env = StreamExecutionEnvironment.getExecutionEnvironment.setBufferTimeout(1)
+    // obtain execution environment
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
 
     // make parameters available in the web interface
     env.getConfig.setGlobalJobParameters(params)

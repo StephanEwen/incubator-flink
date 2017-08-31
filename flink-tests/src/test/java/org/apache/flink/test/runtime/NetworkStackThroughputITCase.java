@@ -176,31 +176,26 @@ public class NetworkStackThroughputITCase extends TestLogger {
 		public void invoke() throws Exception {
 			RecordWriter<SpeedTestRecord> writer = new RecordWriter<>(getEnvironment().getOutputPartition(0));
 
-			try {
-				// Determine the amount of data to send per subtask
-				int dataVolumeGb = getTaskConfiguration().getInteger(NetworkStackThroughputITCase.DATA_VOLUME_GB_CONFIG_KEY, 1);
+			// Determine the amount of data to send per subtask
+			int dataVolumeGb = getTaskConfiguration().getInteger(NetworkStackThroughputITCase.DATA_VOLUME_GB_CONFIG_KEY, 1);
 
-				long dataMbPerSubtask = (dataVolumeGb * 1024) / getCurrentNumberOfSubtasks();
-				long numRecordsToEmit = (dataMbPerSubtask * 1024 * 1024) / SpeedTestRecord.RECORD_SIZE;
+			long dataMbPerSubtask = (dataVolumeGb * 1024) / getCurrentNumberOfSubtasks();
+			long numRecordsToEmit = (dataMbPerSubtask * 1024 * 1024) / SpeedTestRecord.RECORD_SIZE;
 
-				LOG.info(String.format("%d/%d: Producing %d records (each record: %d bytes, total: %.2f GB)",
-						getIndexInSubtaskGroup() + 1, getCurrentNumberOfSubtasks(), numRecordsToEmit,
-						SpeedTestRecord.RECORD_SIZE, dataMbPerSubtask / 1024.0));
+			LOG.info(String.format("%d/%d: Producing %d records (each record: %d bytes, total: %.2f GB)",
+					getIndexInSubtaskGroup() + 1, getCurrentNumberOfSubtasks(), numRecordsToEmit,
+					SpeedTestRecord.RECORD_SIZE, dataMbPerSubtask / 1024.0));
 
-				boolean isSlow = getTaskConfiguration().getBoolean(IS_SLOW_SENDER_CONFIG_KEY, false);
+			boolean isSlow = getTaskConfiguration().getBoolean(IS_SLOW_SENDER_CONFIG_KEY, false);
 
-				int numRecords = 0;
-				SpeedTestRecord record = new SpeedTestRecord();
-				for (long i = 0; i < numRecordsToEmit; i++) {
-					if (isSlow && (numRecords++ % IS_SLOW_EVERY_NUM_RECORDS) == 0) {
-						Thread.sleep(IS_SLOW_SLEEP_MS);
-					}
-
-					writer.emit(record);
+			int numRecords = 0;
+			SpeedTestRecord record = new SpeedTestRecord();
+			for (long i = 0; i < numRecordsToEmit; i++) {
+				if (isSlow && (numRecords++ % IS_SLOW_EVERY_NUM_RECORDS) == 0) {
+					Thread.sleep(IS_SLOW_SLEEP_MS);
 				}
-			}
-			finally {
-				writer.flush();
+
+				writer.emit(record);
 			}
 		}
 	}
@@ -229,7 +224,6 @@ public class NetworkStackThroughputITCase extends TestLogger {
 			}
 			finally {
 				reader.clearBuffers();
-				writer.flush();
 			}
 		}
 	}

@@ -133,7 +133,6 @@ public class StreamTaskTestHarness<OUT> {
 	 */
 	public void setupOutputForSingletonOperatorChain() {
 		streamConfig.setChainStart();
-		streamConfig.setBufferTimeout(0);
 		streamConfig.setTimeCharacteristic(TimeCharacteristic.EventTime);
 		streamConfig.setOutputSelectors(Collections.<OutputSelector<?>>emptyList());
 		streamConfig.setNumberOfOutputs(1);

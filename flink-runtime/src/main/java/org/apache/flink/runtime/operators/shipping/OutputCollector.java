@@ -80,13 +80,6 @@ public class OutputCollector<T> implements Collector<T> {
 
 	@Override
 	public void close() {
-		for (RecordWriter<?> writer : writers) {
-			try {
-				writer.flush();
-			} catch (IOException e) {
-				throw new RuntimeException(e.getMessage(), e);
-			}
-		}
 	}
 
 	/**

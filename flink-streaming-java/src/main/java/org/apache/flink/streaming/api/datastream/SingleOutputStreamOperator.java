@@ -234,9 +234,10 @@ public class SingleOutputStreamOperator<T> extends DataStream<T> {
 	 * @param timeoutMillis
 	 *            The maximum time between two output flushes.
 	 * @return The operator with buffer timeout set.
+	 * @deprecated The buffer timeout is not necessary and therefore not used anymore.
 	 */
+	@Deprecated
 	public SingleOutputStreamOperator<T> setBufferTimeout(long timeoutMillis) {
-		transformation.setBufferTimeout(timeoutMillis);
 		return this;
 	}
 

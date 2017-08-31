@@ -481,12 +481,6 @@ public class StreamGraph extends StreamingPlan {
 		node.setStateKeySerializer(keySerializer);
 	}
 
-	public void setBufferTimeout(Integer vertexID, long bufferTimeout) {
-		if (getStreamNode(vertexID) != null) {
-			getStreamNode(vertexID).setBufferTimeout(bufferTimeout);
-		}
-	}
-
 	public void setSerializers(Integer vertexID, TypeSerializer<?> in1, TypeSerializer<?> in2, TypeSerializer<?> out) {
 		StreamNode vertex = getStreamNode(vertexID);
 		vertex.setSerializerIn1(in1);

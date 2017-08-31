@@ -909,7 +909,6 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBase {
 		// set the number of restarts to one. The failing mapper will fail once, then it's only success exceptions.
 		env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
 		env.getConfig().disableSysoutLogging();
-		env.setBufferTimeout(0);
 
 		Properties props = new Properties();
 		props.putAll(standardProps);

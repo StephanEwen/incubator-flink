@@ -230,7 +230,6 @@ public class TaskCancelAsyncProducerConsumerITCase extends TestLogger {
 					while (true) {
 						current.setValue(current.getValue() + 1);
 						recordWriter.emit(current);
-						recordWriter.flush();
 					}
 				} catch (Exception e) {
 					ASYNC_PRODUCER_EXCEPTION = e;

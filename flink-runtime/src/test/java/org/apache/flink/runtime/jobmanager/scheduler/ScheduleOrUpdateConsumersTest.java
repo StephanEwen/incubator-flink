@@ -151,7 +151,6 @@ public class ScheduleOrUpdateConsumersTest {
 					for (int i = 0; i < numberOfTimesToSend; i++) {
 						writer.emit(subtaskIndex);
 					}
-					writer.flush();
 				}
 				finally {
 					writer.clearBuffers();

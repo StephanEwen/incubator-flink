@@ -289,9 +289,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 			LOG.debug("Closed operators for task {}", getName());
 
-			// make sure all buffered data is flushed
-			operatorChain.flushOutputs();
-
 			// make an attempt to dispose the operators such that failures in the dispose call
 			// still let the computation fail
 			tryDisposeAllOperators();
