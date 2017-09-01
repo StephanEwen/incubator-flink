@@ -46,9 +46,9 @@ public abstract class ResultSubpartition {
 		this.parent = parent;
 	}
 
-	protected void updateStatistics(Buffer buffer) {
-		totalNumberOfBuffers++;
-		totalNumberOfBytes += buffer.getWriterIndex();
+	protected void updateStatistics(int numberOfNewBuffers, int numberOfNewBytes) {
+		totalNumberOfBuffers += numberOfNewBuffers;
+		totalNumberOfBytes += numberOfNewBytes;
 	}
 
 	protected long getTotalNumberOfBuffers() {
@@ -70,23 +70,32 @@ public abstract class ResultSubpartition {
 		return parent.getFailureCause();
 	}
 
-	abstract public boolean add(Buffer buffer) throws IOException;
+	/**
+	 * Adds a buffer to the subpartition.
+	 *
+	 * @param buffer
+	 * 		the buffer to add (it is not an error to add the same buffer multiple times)
+	 * @param bytesWritten
+	 * 		number of bytes added by this buffer (to keep byte counting consistent for cases where a
+	 * 		single buffer is entered multiple times)
+	 */
+	public abstract boolean add(Buffer buffer, int bytesWritten) throws IOException;
 
-	abstract public void finish() throws IOException;
+	public abstract void finish() throws IOException;
 
-	abstract public void release() throws IOException;
+	public abstract void release() throws IOException;
 
-	abstract public ResultSubpartitionView createReadView(BufferAvailabilityListener availabilityListener) throws IOException;
+	public abstract ResultSubpartitionView createReadView(BufferAvailabilityListener availabilityListener) throws IOException;
 
 	abstract int releaseMemory() throws IOException;
 
-	abstract public boolean isReleased();
+	public abstract boolean isReleased();
 
 	/**
 	 * Makes a best effort to get the current size of the queue.
 	 * This method must not acquire locks or interfere with the task and network threads in
 	 * any way.
 	 */
-	abstract public int unsynchronizedGetNumberOfQueuedBuffers();
+	public abstract int unsynchronizedGetNumberOfQueuedBuffers();
 
 }

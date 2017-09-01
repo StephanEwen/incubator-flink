@@ -130,8 +130,9 @@ public class RecordWriter<T extends IOReadableWritable> {
 					// add to target sub-partition so the network stack can already read from it
 					// while we're completing the buffer (therefore, also retain it)
 					buffer.retain();
-					targetPartition.add(buffer, targetChannel);
-					numBytesOut.inc(buffer.getWriterIndex() - writerIndexBefore);
+					int bytesWritten = buffer.getWriterIndex() - writerIndexBefore;
+					targetPartition.add(buffer, targetChannel, bytesWritten);
+					numBytesOut.inc(bytesWritten);
 				}
 
 				// make room for a new buffer if this one is full
@@ -165,7 +166,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 					// retain the buffer so that it can be recycled by each channel of targetPartition
 					eventBuffer.retain();
-					targetPartition.add(eventBuffer, targetChannel);
+					targetPartition.add(eventBuffer, targetChannel, eventBuffer.getWriterIndex());
 				}
 			}
 		} finally {

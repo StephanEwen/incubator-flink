@@ -72,7 +72,6 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -159,7 +158,7 @@ public class RecordWriterTest {
 
 			// Verify that buffer have been requested, but only one has been written out.
 			verify(bufferProvider, times(2)).requestBufferBlocking();
-			verify(partitionWriter, times(1)).add(any(Buffer.class), anyInt());
+			verify(partitionWriter, times(1)).add(any(Buffer.class), anyInt(), anyInt());
 
 			// Verify that the written out buffer has only been recycled twice
 			// (once each by the partition writer and the recordWriter).
@@ -195,7 +194,7 @@ public class RecordWriterTest {
 
 					throw new RuntimeException("Expected test Exception");
 				}
-			}).when(partitionWriter).add(any(Buffer.class), anyInt());
+			}).when(partitionWriter).add(any(Buffer.class), anyInt(), anyInt());
 
 			RecordWriter<IntValue> recordWriter = new RecordWriter<>(partitionWriter);
 
@@ -212,7 +211,7 @@ public class RecordWriterTest {
 			}
 
 			// Verify expected methods have been called
-			verify(partitionWriter, times(1)).add(any(Buffer.class), anyInt());
+			verify(partitionWriter, times(1)).add(any(Buffer.class), anyInt(), anyInt());
 			verify(bufferPool, times(1)).requestBufferBlocking();
 
 			try {
@@ -226,7 +225,7 @@ public class RecordWriterTest {
 			}
 
 			// Verify expected methods have been called
-			verify(partitionWriter, times(2)).add(any(Buffer.class), anyInt());
+			verify(partitionWriter, times(2)).add(any(Buffer.class), anyInt(), anyInt());
 			verify(bufferPool, times(2)).requestBufferBlocking();
 
 			try {
@@ -241,7 +240,7 @@ public class RecordWriterTest {
 			}
 
 			// Verify expected methods have been called
-			verify(partitionWriter, times(3)).add(any(Buffer.class), anyInt());
+			verify(partitionWriter, times(3)).add(any(Buffer.class), anyInt(), anyInt());
 			verify(bufferPool, times(3)).requestBufferBlocking();
 
 			try {
@@ -256,7 +255,7 @@ public class RecordWriterTest {
 			}
 
 			// Verify expected methods have been called
-			verify(partitionWriter, times(4)).add(any(Buffer.class), anyInt());
+			verify(partitionWriter, times(4)).add(any(Buffer.class), anyInt(), anyInt());
 			verify(bufferPool, times(4)).requestBufferBlocking();
 		}
 		finally {
@@ -284,7 +283,7 @@ public class RecordWriterTest {
 
 		// Fill a buffer but not completely.
 		recordWriter.emit(new IntValue(0));
-		verify(partitionWriter, times(1)).add(any(Buffer.class), anyInt());
+		verify(partitionWriter, times(1)).add(any(Buffer.class), anyInt(), anyInt());
 
 		// Clear all buffers.
 		recordWriter.clearBuffers();
@@ -478,7 +477,7 @@ public class RecordWriterTest {
 				}
 				return null;
 			}
-		}).when(partitionWriter).add(any(Buffer.class), anyInt());
+		}).when(partitionWriter).add(any(Buffer.class), anyInt(), anyInt());
 
 		return partitionWriter;
 	}
@@ -528,7 +527,7 @@ public class RecordWriterTest {
 
 				return null;
 			}
-		}).when(partitionWriter).add(any(Buffer.class), anyInt());
+		}).when(partitionWriter).add(any(Buffer.class), anyInt(), anyInt());
 
 		return partitionWriter;
 	}

@@ -77,12 +77,13 @@ public class TestPartitionProducer implements Callable<Boolean> {
 				int targetChannelIndex = bufferOrEvent.getChannelIndex();
 
 				if (bufferOrEvent.isBuffer()) {
-					partition.add(bufferOrEvent.getBuffer(), targetChannelIndex);
+					Buffer buffer = bufferOrEvent.getBuffer();
+					partition.add(buffer, targetChannelIndex, buffer.getWriterIndex());
 				}
 				else if (bufferOrEvent.isEvent()) {
 					final Buffer buffer = EventSerializer.toBuffer(bufferOrEvent.getEvent());
 
-					partition.add(buffer, targetChannelIndex);
+					partition.add(buffer, targetChannelIndex, buffer.getWriterIndex());
 				}
 				else {
 					throw new IllegalStateException("BufferOrEvent instance w/o buffer nor event.");

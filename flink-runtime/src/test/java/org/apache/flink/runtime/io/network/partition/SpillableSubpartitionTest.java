@@ -183,9 +183,9 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		buffer.retain();
 		buffer.retain();
 
-		partition.add(buffer);
-		partition.add(buffer);
-		partition.add(buffer);
+		partition.add(buffer, buffer.getWriterIndex());
+		partition.add(buffer, 0);
+		partition.add(buffer, 0);
 
 		assertEquals(3, partition.releaseMemory());
 		// now the buffer may be freed, depending on the timing of the write operation
@@ -247,9 +247,9 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		buffer.retain();
 		buffer.retain();
 
-		partition.add(buffer);
-		partition.add(buffer);
-		partition.add(buffer);
+		partition.add(buffer, buffer.getWriterIndex());
+		partition.add(buffer, 0);
+		partition.add(buffer, 0);
 		partition.finish();
 
 		AwaitableBufferAvailablityListener listener = new AwaitableBufferAvailablityListener();

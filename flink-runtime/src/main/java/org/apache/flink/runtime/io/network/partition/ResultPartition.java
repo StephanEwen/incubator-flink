@@ -263,10 +263,18 @@ public class ResultPartition implements BufferPoolOwner {
 	/**
 	 * Adds a buffer to the subpartition with the given index.
 	 *
-	 * <p> For PIPELINED results, this will trigger the deployment of consuming tasks after the
+	 * <p>For PIPELINED results, this will trigger the deployment of consuming tasks after the
 	 * first buffer has been added.
+	 *
+	 * @param buffer
+	 * 		the buffer to add (it is not an error to add the same buffer multiple times)
+	 * @param subpartitionIndex
+	 * 		the sub-partition to add the buffer to
+	 * @param bytesWritten
+	 * 		number of bytes added by this buffer (to keep byte counting consistent for cases where a
+	 * 		single buffer is entered multiple times)
 	 */
-	public void add(Buffer buffer, int subpartitionIndex) throws IOException {
+	public void add(Buffer buffer, int subpartitionIndex, int bytesWritten) throws IOException {
 		boolean success = false;
 
 		try {
@@ -275,11 +283,11 @@ public class ResultPartition implements BufferPoolOwner {
 			final ResultSubpartition subpartition = subpartitions[subpartitionIndex];
 
 			synchronized (subpartition) {
-				success = subpartition.add(buffer);
+				success = subpartition.add(buffer, bytesWritten);
 
 				// Update statistics
 				totalNumberOfBuffers++;
-				totalNumberOfBytes += buffer.getWriterIndex();
+				totalNumberOfBytes += bytesWritten;
 			}
 		}
 		finally {
@@ -297,14 +305,18 @@ public class ResultPartition implements BufferPoolOwner {
 	 *
 	 * <p>The buffer is taken over and used for each of the channels. It will be recycled afterwards.
 	 *
-	 * @param buffer the buffer to write
+	 * @param buffer
+	 * 		the buffer to add (it is not an error to add the same buffer multiple times)
+	 * @param bytesWritten
+	 * 		number of bytes added by this buffer (to keep byte counting consistent for cases where a
+	 * 		single buffer is entered multiple times)
 	 */
-	public void addToAllChannels(Buffer buffer) throws IOException {
+	public void addToAllChannels(Buffer buffer, int bytesWritten) throws IOException {
 		try {
 			for (int targetChannel = 0; targetChannel < subpartitions.length; targetChannel++) {
-				// retain the buffer so that it can be recycled by each channel of targetPartition
+				// retain the buffer so that it can be recycled by each channel
 				buffer.retain();
-				add(buffer, targetChannel);
+				add(buffer, targetChannel, bytesWritten);
 			}
 		} finally {
 			// we do not need to further retain the buffer

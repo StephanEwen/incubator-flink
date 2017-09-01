@@ -46,7 +46,8 @@ public class ResultPartitionTest {
 			// Pipelined, send message => notify
 			ResultPartitionConsumableNotifier notifier = mock(ResultPartitionConsumableNotifier.class);
 			ResultPartition partition = createPartition(notifier, ResultPartitionType.PIPELINED, true);
-			partition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0);
+			partition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0,
+				TestBufferFactory.BUFFER_SIZE);
 			verify(notifier, times(1)).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class), any(TaskActions.class));
 		}
 
@@ -54,7 +55,8 @@ public class ResultPartitionTest {
 			// Pipelined, don't send message => don't notify
 			ResultPartitionConsumableNotifier notifier = mock(ResultPartitionConsumableNotifier.class);
 			ResultPartition partition = createPartition(notifier, ResultPartitionType.PIPELINED, false);
-			partition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0);
+			partition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0,
+				TestBufferFactory.BUFFER_SIZE);
 			verify(notifier, never()).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class), any(TaskActions.class));
 		}
 
@@ -62,7 +64,8 @@ public class ResultPartitionTest {
 			// Blocking, send message => don't notify
 			ResultPartitionConsumableNotifier notifier = mock(ResultPartitionConsumableNotifier.class);
 			ResultPartition partition = createPartition(notifier, ResultPartitionType.BLOCKING, true);
-			partition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0);
+			partition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0,
+				TestBufferFactory.BUFFER_SIZE);
 			verify(notifier, never()).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class), any(TaskActions.class));
 		}
 
@@ -70,7 +73,8 @@ public class ResultPartitionTest {
 			// Blocking, don't send message => don't notify
 			ResultPartitionConsumableNotifier notifier = mock(ResultPartitionConsumableNotifier.class);
 			ResultPartition partition = createPartition(notifier, ResultPartitionType.BLOCKING, false);
-			partition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0);
+			partition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0,
+				TestBufferFactory.BUFFER_SIZE);
 			verify(notifier, never()).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class), any(TaskActions.class));
 		}
 	}
@@ -99,7 +103,7 @@ public class ResultPartitionTest {
 			partition.finish();
 			reset(notifier);
 			// partition.add() should fail
-			partition.add(buffer, 0);
+			partition.add(buffer, 0, buffer.getWriterIndex());
 			Assert.fail("exception expected");
 		} catch (IllegalStateException e) {
 			// expected => ignored
@@ -124,7 +128,7 @@ public class ResultPartitionTest {
 	}
 
 	/**
-	 * Tests that buffers are properly recycled after {@link ResultPartition#addToAllChannels(Buffer)}.
+	 * Tests that buffers are properly recycled after {@link ResultPartition#addToAllChannels(Buffer, int)}.
 	 */
 	@Test
 	public void testWriteBufferToAllChannelsReferenceCounting() throws Exception {
@@ -143,7 +147,7 @@ public class ResultPartitionTest {
 			mock(IOManager.class),
 			false);
 
-		partition.addToAllChannels(buffer);
+		partition.addToAllChannels(buffer, buffer.getWriterIndex());
 
 		// Verify added to all queues, i.e. two buffers in total
 		assertEquals(2, partition.getTotalNumberOfBuffers());
@@ -166,7 +170,7 @@ public class ResultPartitionTest {
 			ResultPartition partition = createPartition(notifier, pipelined, true);
 			partition.release();
 			// partition.add() silently drops the buffer but recycles it
-			partition.add(buffer, 0);
+			partition.add(buffer, 0, buffer.getWriterIndex());
 		} finally {
 			if (!buffer.isRecycled()) {
 				Assert.fail("buffer not recycled");

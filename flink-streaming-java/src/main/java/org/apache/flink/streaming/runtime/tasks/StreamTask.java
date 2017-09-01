@@ -30,6 +30,7 @@ import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.StatefulTask;
@@ -600,7 +601,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 				for (ResultPartition output : getEnvironment().getAllOutputPartitions()) {
 					try {
-						output.addToAllChannels(EventSerializer.toBuffer(message));
+						Buffer buffer = EventSerializer.toBuffer(message);
+						output.addToAllChannels(buffer, buffer.getWriterIndex());
 					} catch (Exception e) {
 						exception = ExceptionUtils.firstOrSuppressed(
 							new Exception("Could not send cancel checkpoint marker to downstream tasks.", e),

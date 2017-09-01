@@ -75,12 +75,13 @@ public class TestSubpartitionProducer implements Callable<Boolean> {
 
 			while ((bufferOrEvent = source.getNextBufferOrEvent()) != null) {
 				if (bufferOrEvent.isBuffer()) {
-					subpartition.add(bufferOrEvent.getBuffer());
+					Buffer buffer = bufferOrEvent.getBuffer();
+					subpartition.add(buffer, buffer.getWriterIndex());
 				}
 				else if (bufferOrEvent.isEvent()) {
 					final Buffer buffer = EventSerializer.toBuffer(bufferOrEvent.getEvent());
 
-					subpartition.add(buffer);
+					subpartition.add(buffer, buffer.getWriterIndex());
 				}
 				else {
 					throw new IllegalStateException("BufferOrEvent instance w/o buffer nor event.");

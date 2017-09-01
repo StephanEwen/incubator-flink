@@ -31,6 +31,7 @@ import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.EndOfSuperstepEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.iterative.concurrent.BlockingBackChannel;
@@ -441,6 +442,7 @@ public class IterationHeadTask<X, Y, S extends Function, OT> extends AbstractIte
 			log.info(formatLogString("sending " + WorkerDoneEvent.class.getSimpleName() + " to sync"));
 		}
 
-		this.toSync.addToAllChannels(EventSerializer.toBuffer(event));
+		Buffer buffer = EventSerializer.toBuffer(event);
+		this.toSync.addToAllChannels(buffer, buffer.getWriterIndex());
 	}
 }

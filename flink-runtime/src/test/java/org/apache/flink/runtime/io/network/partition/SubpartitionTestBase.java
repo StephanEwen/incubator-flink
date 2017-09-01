@@ -47,7 +47,7 @@ public abstract class SubpartitionTestBase extends TestLogger {
 		try {
 			subpartition.finish();
 
-			assertFalse(subpartition.add(mock(Buffer.class)));
+			assertFalse(subpartition.add(mock(Buffer.class), 0));
 		} finally {
 			if (subpartition != null) {
 				subpartition.release();
@@ -62,7 +62,7 @@ public abstract class SubpartitionTestBase extends TestLogger {
 		try {
 			subpartition.release();
 
-			assertFalse(subpartition.add(mock(Buffer.class)));
+			assertFalse(subpartition.add(mock(Buffer.class), 0));
 		} finally {
 			if (subpartition != null) {
 				subpartition.release();
@@ -87,7 +87,7 @@ public abstract class SubpartitionTestBase extends TestLogger {
 	private void verifyViewReleasedAfterParentRelease(ResultSubpartition partition) throws Exception {
 		// Add a buffer
 		Buffer buffer = TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE);
-		partition.add(buffer);
+		partition.add(buffer, TestBufferFactory.BUFFER_SIZE);
 		partition.finish();
 
 		// Create the view

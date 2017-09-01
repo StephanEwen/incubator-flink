@@ -177,7 +177,7 @@ public class StreamMockEnvironment implements Environment {
 					addBufferToOutputList(recordDeserializer, delegate, buffer, outputList);
 					return null;
 				}
-			}).when(mockWriter).add(any(Buffer.class), anyInt());
+			}).when(mockWriter).add(any(Buffer.class), anyInt(), anyInt());
 
 			doAnswer(new Answer<Void>() {
 
@@ -187,7 +187,7 @@ public class StreamMockEnvironment implements Environment {
 					addBufferToOutputList(recordDeserializer, delegate, buffer, outputList);
 					return null;
 				}
-			}).when(mockWriter).addToAllChannels(any(Buffer.class));
+			}).when(mockWriter).addToAllChannels(any(Buffer.class), anyInt());
 
 			outputs.add(mockWriter);
 		}

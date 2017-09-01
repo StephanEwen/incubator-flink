@@ -101,7 +101,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		verify(listener, times(1)).notifyBuffersAvailable(eq(0L));
 
 		// Add data to the queue...
-		subpartition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE));
+		subpartition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), TestBufferFactory.BUFFER_SIZE);
 
 		// ...should have resulted in a notification
 		verify(listener, times(1)).notifyBuffersAvailable(eq(1L));
@@ -111,7 +111,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		assertNull(view.getNextBuffer());
 
 		// Add data to the queue...
-		subpartition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE));
+		subpartition.add(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), TestBufferFactory.BUFFER_SIZE);
 		verify(listener, times(2)).notifyBuffersAvailable(eq(1L));
 	}
 

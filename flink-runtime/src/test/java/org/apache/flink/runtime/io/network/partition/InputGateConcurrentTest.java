@@ -201,7 +201,7 @@ public class InputGateConcurrentTest {
 
 		@Override
 		void addBuffer(Buffer buffer) throws Exception {
-			partition.add(buffer);
+			partition.add(buffer, buffer.getWriterIndex());
 		}
 	}
 

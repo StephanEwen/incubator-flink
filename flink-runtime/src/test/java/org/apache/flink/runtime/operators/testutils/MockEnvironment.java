@@ -256,7 +256,7 @@ public class MockEnvironment implements Environment {
 						}
 					}
 				}
-			}).when(mockWriter).add(any(Buffer.class), anyInt());
+			}).when(mockWriter).add(any(Buffer.class), anyInt(), anyInt());
 
 			outputs.add(mockWriter);
 		}
