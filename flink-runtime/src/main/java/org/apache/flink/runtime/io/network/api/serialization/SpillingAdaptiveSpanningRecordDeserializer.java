@@ -97,7 +97,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			this.spanningWrapper.addNextChunkFromMemorySegment(segment, position, numBytes);
 		}
 		else {
-			this.nonSpanningWrapper.initializeFromMemorySegment(segment, position, numBytes);
+			this.nonSpanningWrapper.initializeFromMemorySegment(segment, position, position + numBytes);
 		}
 	}
 	
@@ -527,6 +527,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 					this.lengthBuffer.clear();
 					segmentPosition += toPut;
+					numBytesInSegment -= toPut;
 					
 					if (this.recordLength > THRESHOLD_FOR_SPILLING) {
 						this.spillingChannel = createSpillingChannel();
@@ -536,8 +537,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 			// copy as much as we need or can for this next spanning record
 			int needed = this.recordLength - this.accumulatedRecordBytes;
-			int available = numBytesInSegment - segmentPosition;
-			int toCopy = Math.min(needed, available);
+			int toCopy = Math.min(needed, numBytesInSegment);
 
 			if (spillingChannel != null) {
 				// spill to file
@@ -551,11 +551,11 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			
 			this.accumulatedRecordBytes += toCopy;
 			
-			if (toCopy < available) {
+			if (toCopy < numBytesInSegment) {
 				// there is more data in the segment
 				this.leftOverData = segment;
 				this.leftOverStart = segmentPosition + toCopy;
-				this.leftOverLimit = numBytesInSegment;
+				this.leftOverLimit = segmentPosition + numBytesInSegment;
 			}
 			
 			if (accumulatedRecordBytes == recordLength) {

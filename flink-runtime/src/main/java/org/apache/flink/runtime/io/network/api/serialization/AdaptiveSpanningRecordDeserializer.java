@@ -84,7 +84,7 @@ public class AdaptiveSpanningRecordDeserializer<T extends IOReadableWritable> im
 			this.spanningWrapper.addNextChunkFromMemorySegment(segment, position, numBytes);
 		}
 		else {
-			this.nonSpanningWrapper.initializeFromMemorySegment(segment, position, numBytes);
+			this.nonSpanningWrapper.initializeFromMemorySegment(segment, position, position + numBytes);
 		}
 	}
 
@@ -475,22 +475,22 @@ public class AdaptiveSpanningRecordDeserializer<T extends IOReadableWritable> im
 
 					this.lengthBuffer.clear();
 					segmentPosition += toPut;
+					numBytesInSegment -= toPut;
 				}
 			}
 
 			// copy as much as we need or can for this next spanning record
 			int needed = this.recordLength - this.recordLimit;
-			int available = numBytesInSegment - segmentPosition;
-			int toCopy = Math.min(needed, available);
+			int toCopy = Math.min(needed, numBytesInSegment);
 
 			segment.get(this.serializationBuffer, segmentPosition, toCopy);
 			this.recordLimit += toCopy;
 
-			if (toCopy < available) {
+			if (toCopy < numBytesInSegment) {
 				// there is more data in the segment
 				this.leftOverData = segment;
 				this.leftOverStart = segmentPosition + toCopy;
-				this.leftOverLimit = numBytesInSegment;
+				this.leftOverLimit = segmentPosition + numBytesInSegment;
 			}
 
 			// update read view
