@@ -31,6 +31,8 @@ import java.io.UTFDataFormatException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+import static org.apache.flink.util.Preconditions.checkState;
+
 /**
  * @param <T> The type of the record to be deserialized.
  */
@@ -60,8 +62,12 @@ public class AdaptiveSpanningRecordDeserializer<T extends IOReadableWritable> im
 		int readerIndex = buffer.getReaderIndex();
 		int numBytes = buffer.getWriterIndex() - readerIndex;
 
-		setNextMemorySegment(segment, readerIndex, numBytes);
-		buffer.setReaderIndex(readerIndex + numBytes); // we've consumed these bytes
+		if (numBytes > 0) {
+			setNextMemorySegment(segment, readerIndex, numBytes);
+			buffer.setReaderIndex(readerIndex + numBytes); // we've consumed these bytes
+		} else {
+			checkState(numBytes >= 0);
+		}
 	}
 
 	@Override

@@ -38,6 +38,8 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.util.Random;
 
+import static org.apache.flink.util.Preconditions.checkState;
+
 /**
  * @param <T> The type of the record to be deserialized.
  */
@@ -73,8 +75,12 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 		int readerIndex = buffer.getReaderIndex();
 		int numBytes = buffer.getWriterIndex() - readerIndex;
 
-		setNextMemorySegment(segment, readerIndex, numBytes);
-		buffer.setReaderIndex(readerIndex + numBytes); // we've consumed these bytes
+		if (numBytes > 0) {
+			setNextMemorySegment(segment, readerIndex, numBytes);
+			buffer.setReaderIndex(readerIndex + numBytes); // we've consumed these bytes
+		} else {
+			checkState(numBytes >= 0);
+		}
 	}
 
 	@Override
