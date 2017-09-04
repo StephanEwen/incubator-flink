@@ -169,6 +169,9 @@ abstract class NettyMessage {
 				finally {
 					if (serialized != null) {
 						ctx.write(serialized, promise);
+					} else {
+						// not forwarded to netty (already sent) -
+						promise.setSuccess();
 					}
 				}
 			}
@@ -306,6 +309,7 @@ abstract class NettyMessage {
 				int readerIndex = buffer.readerIndex();
 				int readableBytes = buffer.readableBytes();
 				if (!allowEmpty && readableBytes == 0) {
+					buffer.recycle(); // not forwarding buffer, therefore we need to recycle it!
 					return null;
 				}
 				ByteBuf readyToSend = buffer.slice(readerIndex, readableBytes);
