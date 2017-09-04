@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -48,6 +47,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * A simple and generic interface to serialize messages to Netty's buffer space.
@@ -249,13 +249,6 @@ abstract class NettyMessage {
 
 		final boolean isBuffer;
 
-		BufferResponse(NetworkBuffer buffer, int sequenceNumber, InputChannelID receiverId) {
-			this.buffer = checkNotNull(buffer);
-			this.sequenceNumber = sequenceNumber;
-			this.receiverId = receiverId;
-			this.isBuffer = buffer.isBuffer();
-		}
-
 		BufferResponse(ByteBuf buffer, boolean isBuffer, int sequenceNumber, InputChannelID receiverId) {
 			this.buffer = checkNotNull(buffer);
 			this.sequenceNumber = sequenceNumber;
@@ -281,30 +274,17 @@ abstract class NettyMessage {
 
 		@Override
 		ByteBuf write(ByteBufAllocator allocator) throws IOException {
-			// do not send buffers with no (readable) data
-			return write(allocator, false);
-		}
-
-		@VisibleForTesting
-		final ByteBuf write(ByteBufAllocator allocator, boolean allowEmpty) throws IOException {
 			int headerLength = 16 + 4 + 1 + 4;
 
 			ByteBuf headerBuf = null;
 			try {
+				int readableBytes = buffer.readableBytes();
+				checkState(readableBytes > 0);
+
 				if (buffer instanceof NetworkBuffer) {
 					// in order to forward the buffer to netty, it needs an allocator set
 					((NetworkBuffer) buffer).setAllocator(allocator);
 				}
-
-				// define the part of the buffer that is ready to send
-				int readerIndex = buffer.readerIndex();
-				int readableBytes = buffer.readableBytes();
-				if (!allowEmpty && readableBytes == 0) {
-					buffer.release(); // not forwarding buffer, therefore we need to recycle it!
-					return null;
-				}
-				ByteBuf readyToSend = buffer.slice(readerIndex, readableBytes);
-				buffer.readerIndex(readerIndex + readableBytes);
 
 				// only allocate header buffer - we will combine it with the data buffer below
 				headerBuf = allocateBuffer(allocator, ID, headerLength, readableBytes, false);
@@ -316,9 +296,9 @@ abstract class NettyMessage {
 
 				CompositeByteBuf composityBuf = allocator.compositeBuffer();
 				composityBuf.addComponent(headerBuf);
-				composityBuf.addComponent(readyToSend);
+				composityBuf.addComponent(buffer);
 				// update writer index since we have written data to the components:
-				composityBuf.writerIndex(headerBuf.writerIndex() + readyToSend.writerIndex());
+				composityBuf.writerIndex(headerBuf.writerIndex() + buffer.writerIndex());
 				return composityBuf;
 			}
 			catch (Throwable t) {

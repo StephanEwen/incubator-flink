@@ -61,7 +61,7 @@ public class NettyMessageSerializationTest {
 			}
 
 			NettyMessage.BufferResponse expected = new NettyMessage.BufferResponse(
-				buffer, random.nextInt(), new InputChannelID());
+				buffer, true, random.nextInt(), new InputChannelID());
 			NettyMessage.BufferResponse actual = encodeAndDecode(expected);
 
 			// Verify recycle has been called on buffer instance (LengthFieldBasedFrameDecoder creates a new one)

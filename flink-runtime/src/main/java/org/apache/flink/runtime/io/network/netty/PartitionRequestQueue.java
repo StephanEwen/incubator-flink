@@ -24,9 +24,9 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.ErrorResponse;
 import org.apache.flink.runtime.io.network.partition.ProducerFailedException;
-import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFuture;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFutureListener;
@@ -150,7 +150,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		// input channel logic. You can think of this class acting as the input
 		// gate and the consumed views as the local input channels.
 
-		BufferAndAvailability next = null;
+		SequenceNumberingViewReader.BufferAndAvailability next = null;
 		try {
 			if (channel.isWritable()) {
 				while (true) {
@@ -191,17 +191,32 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 							nonEmptyReader.add(reader);
 						}
 
-						BufferResponse msg = new BufferResponse(
-							(NetworkBuffer) next.buffer(),
-							reader.getSequenceNumber(),
-							reader.getReceiverId());
+						NetworkBuffer networkBuffer = next.buffer();
 
-						if (isEndOfPartitionEvent(next.buffer())) {
+						if (next.readableBytes() == 0) {
+							// skip empty buffers and try again (may return if there are no more buffers)
+							networkBuffer.recycle();
+							continue;
+						}
+
+						// note: this is always a separate buffer and non-spanning!
+						if (isEndOfPartitionEvent(networkBuffer)) {
 							reader.notifySubpartitionConsumed();
 							reader.releaseAllResources();
 
 							markAsReleased(reader.getReceiverId());
 						}
+
+						// wrap the actual buffer to send and pretend we have read this data
+						ByteBuf readyToSend = networkBuffer.slice(next.readerIndex(), next.readableBytes());
+						// advance the readerIndex so the next call knows which bytes to consume
+						networkBuffer.readerIndex(next.readerIndex() + next.readableBytes());
+
+						BufferResponse msg = new BufferResponse(
+							readyToSend,
+							networkBuffer.isBuffer(),
+							reader.getSequenceNumber(),
+							reader.getReceiverId());
 
 						// Write and flush and wait until this is done before
 						// trying to continue with the next buffer.
