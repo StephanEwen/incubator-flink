@@ -47,6 +47,8 @@ import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
 import java.util.List;
 
+import static org.apache.flink.util.Preconditions.checkNotNull;
+
 /**
  * A simple and generic interface to serialize messages to Netty's buffer space.
  */
@@ -239,50 +241,38 @@ abstract class NettyMessage {
 
 		private static final byte ID = 0;
 
-		final NetworkBuffer buffer;
+		final ByteBuf buffer;
 
-		InputChannelID receiverId;
+		final InputChannelID receiverId;
 
-		int sequenceNumber;
+		final int sequenceNumber;
 
-		// ---- Deserialization -----------------------------------------------
-
-		boolean isBuffer;
-
-		int size;
-
-		ByteBuf retainedSlice;
-
-		private BufferResponse() {
-			// When deserializing we first have to request a buffer from the respective buffer
-			// provider (at the handler) and copy the buffer from Netty's space to ours. Only
-			// retainedSlice is set in this case.
-			buffer = null;
-		}
+		final boolean isBuffer;
 
 		BufferResponse(NetworkBuffer buffer, int sequenceNumber, InputChannelID receiverId) {
-			this.buffer = buffer;
+			this.buffer = checkNotNull(buffer);
 			this.sequenceNumber = sequenceNumber;
 			this.receiverId = receiverId;
+			this.isBuffer = buffer.isBuffer();
+		}
+
+		BufferResponse(ByteBuf buffer, boolean isBuffer, int sequenceNumber, InputChannelID receiverId) {
+			this.buffer = checkNotNull(buffer);
+			this.sequenceNumber = sequenceNumber;
+			this.receiverId = receiverId;
+			this.isBuffer = isBuffer;
 		}
 
 		boolean isBuffer() {
 			return isBuffer;
 		}
 
-		int getSize() {
-			return size;
-		}
-
 		ByteBuf getNettyBuffer() {
-			return retainedSlice;
+			return buffer;
 		}
 
 		void releaseBuffer() {
-			if (retainedSlice != null) {
-				retainedSlice.release();
-				retainedSlice = null;
-			}
+			buffer.release();
 		}
 
 		// --------------------------------------------------------------------
@@ -297,19 +287,20 @@ abstract class NettyMessage {
 
 		@VisibleForTesting
 		final ByteBuf write(ByteBufAllocator allocator, boolean allowEmpty) throws IOException {
-			assert buffer != null; // see BufferResponse()
 			int headerLength = 16 + 4 + 1 + 4;
 
 			ByteBuf headerBuf = null;
 			try {
-				// in order to forward the buffer to netty, it needs an allocator set
-				buffer.setAllocator(allocator);
+				if (buffer instanceof NetworkBuffer) {
+					// in order to forward the buffer to netty, it needs an allocator set
+					((NetworkBuffer) buffer).setAllocator(allocator);
+				}
 
 				// define the part of the buffer that is ready to send
 				int readerIndex = buffer.readerIndex();
 				int readableBytes = buffer.readableBytes();
 				if (!allowEmpty && readableBytes == 0) {
-					buffer.recycle(); // not forwarding buffer, therefore we need to recycle it!
+					buffer.release(); // not forwarding buffer, therefore we need to recycle it!
 					return null;
 				}
 				ByteBuf readyToSend = buffer.slice(readerIndex, readableBytes);
@@ -320,7 +311,7 @@ abstract class NettyMessage {
 
 				receiverId.writeTo(headerBuf);
 				headerBuf.writeInt(sequenceNumber);
-				headerBuf.writeBoolean(buffer.isBuffer());
+				headerBuf.writeBoolean(isBuffer);
 				headerBuf.writeInt(readableBytes);
 
 				CompositeByteBuf composityBuf = allocator.compositeBuffer();
@@ -334,24 +325,20 @@ abstract class NettyMessage {
 				if (headerBuf != null) {
 					headerBuf.release();
 				}
-				buffer.recycle();
+				buffer.release();
 
 				throw new IOException(t);
 			}
 		}
 
 		static BufferResponse readFrom(ByteBuf buffer) {
-			BufferResponse result = new BufferResponse();
+			InputChannelID receiverId = InputChannelID.fromByteBuf(buffer);
+			int sequenceNumber = buffer.readInt();
+			boolean isBuffer = buffer.readBoolean();
+			int size = buffer.readInt();
 
-			result.receiverId = InputChannelID.fromByteBuf(buffer);
-			result.sequenceNumber = buffer.readInt();
-			result.isBuffer = buffer.readBoolean();
-			result.size = buffer.readInt();
-
-			result.retainedSlice = buffer.readSlice(result.size);
-			result.retainedSlice.retain();
-
-			return result;
+			ByteBuf retainedSlice = buffer.readSlice(size).retain();
+			return new BufferResponse(retainedSlice, isBuffer, sequenceNumber, receiverId);
 		}
 	}
 
