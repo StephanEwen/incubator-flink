@@ -43,6 +43,7 @@ import java.util.Queue;
 import java.util.Set;
 
 import static org.apache.flink.runtime.io.network.netty.NettyMessage.BufferResponse;
+import static org.apache.flink.util.Preconditions.checkArgument;
 
 /**
  * A nonEmptyReader of partition queues, which listens for channel writability changed
@@ -192,31 +193,45 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						}
 
 						NetworkBuffer networkBuffer = next.buffer();
+						int readableBytes = next.readableBytes();
 
-						if (next.readableBytes() == 0) {
+						if (readableBytes == 0) {
 							// skip empty buffers and try again (may return if there are no more buffers)
 							networkBuffer.recycle();
 							continue;
 						}
 
-						// note: this is always a separate buffer and non-spanning!
-						if (isEndOfPartitionEvent(networkBuffer)) {
-							reader.notifySubpartitionConsumed();
-							reader.releaseAllResources();
-
-							markAsReleased(reader.getReceiverId());
-						}
-
 						// wrap the actual buffer to send and pretend we have read this data
-						ByteBuf readyToSend = networkBuffer.slice(next.readerIndex(), next.readableBytes());
-						// advance the readerIndex so the next call knows which bytes to consume
-						networkBuffer.readerIndex(next.readerIndex() + next.readableBytes());
+						int readerIndex = next.readerIndex();
+						ByteBuf readyToSend = networkBuffer.slice(readerIndex, readableBytes);
+						final boolean endOfPartitionEvent;
+						if (networkBuffer.isBuffer()) {
+							// advance the readerIndex so the next call knows which bytes to consume
+							networkBuffer.setReaderIndex(readerIndex + readableBytes);
+
+							endOfPartitionEvent = false;
+						} else {
+							// DO NOT advance the reader index for events - they use exclusive
+							// NetworkBuffer instances shared by multiple queues!
+							// (see RecordWriter#broadcastEvent()
+							checkArgument(networkBuffer.getReaderIndex() == 0,
+								"Events should use NetworkBuffer instances exclusively and thus have readerIndex == 0.");
+
+							endOfPartitionEvent = isEndOfPartitionEvent(networkBuffer);
+						}
 
 						BufferResponse msg = new BufferResponse(
 							readyToSend,
 							networkBuffer.isBuffer(),
 							reader.getSequenceNumber(),
 							reader.getReceiverId());
+
+						if (endOfPartitionEvent) {
+							reader.notifySubpartitionConsumed();
+							reader.releaseAllResources();
+
+							markAsReleased(reader.getReceiverId());
+						}
 
 						// Write and flush and wait until this is done before
 						// trying to continue with the next buffer.

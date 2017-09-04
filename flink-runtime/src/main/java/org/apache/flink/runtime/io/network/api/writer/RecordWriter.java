@@ -165,6 +165,11 @@ public class RecordWriter<T extends IOReadableWritable> {
 					}
 
 					// retain the buffer so that it can be recycled by each channel of targetPartition
+					// BEWARE: using the same buffer (with the same indices) multiple times is
+					//         dangerous and very fragile! This only works because we assume that
+					//         events do not share NetworkBuffer instances with other events or
+					//         buffers and we adapted
+					// TODO: find a way to use duplicate() keeping our NetworkBuffer abstraction while sharing the reference counting
 					eventBuffer.retain();
 					targetPartition.add(eventBuffer, targetChannel, eventBuffer.getWriterIndex());
 				}
