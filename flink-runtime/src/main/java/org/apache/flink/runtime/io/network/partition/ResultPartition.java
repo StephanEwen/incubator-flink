@@ -434,6 +434,7 @@ public class ResultPartition implements BufferPoolOwner {
 		checkArgument(toRelease > 0);
 
 		for (ResultSubpartition subpartition : subpartitions) {
+			// TODO: since the RecordWriter may still hold on to the latest buffer, we may actually be one buffer short!
 			toRelease -= subpartition.releaseMemory();
 
 			// Only release as much memory as needed
