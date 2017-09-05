@@ -148,7 +148,7 @@ class SpillableSubpartition extends ResultSubpartition {
 			// below).
 			if (view == null) {
 				for (Buffer buffer : buffers) {
-					buffer.recycle();
+					buffer.recycleBuffer();
 				}
 				buffers.clear();
 

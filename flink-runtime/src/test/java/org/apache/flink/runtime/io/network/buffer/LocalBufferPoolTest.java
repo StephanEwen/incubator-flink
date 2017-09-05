@@ -107,7 +107,7 @@ public class LocalBufferPoolTest {
 		}
 
 		for (Buffer buffer : requests) {
-			buffer.recycle();
+			buffer.recycleBuffer();
 		}
 	}
 
@@ -141,7 +141,7 @@ public class LocalBufferPoolTest {
 
 		// Recycle should return buffers to memory segment pool
 		for (Buffer buffer : requests) {
-			buffer.recycle();
+			buffer.recycleBuffer();
 		}
 	}
 
@@ -165,12 +165,12 @@ public class LocalBufferPoolTest {
 		assertEquals(numBuffers, getNumRequestedFromMemorySegmentPool());
 
 		for (int i = 1; i < numBuffers / 2; i++) {
-			requests.remove(0).recycle();
+			requests.remove(0).recycleBuffer();
 			assertEquals(numBuffers - i, getNumRequestedFromMemorySegmentPool());
 		}
 
 		for (Buffer buffer : requests) {
-			buffer.recycle();
+			buffer.recycleBuffer();
 		}
 	}
 
@@ -187,7 +187,7 @@ public class LocalBufferPoolTest {
 
 		// Recycle all
 		for (Buffer buffer : requests) {
-			buffer.recycle();
+			buffer.recycleBuffer();
 		}
 
 		assertEquals(numBuffers, localBufferPool.getNumberOfAvailableMemorySegments());
@@ -213,7 +213,7 @@ public class LocalBufferPoolTest {
 		EventListener<Buffer> listener = spy(new EventListener<Buffer>() {
 			@Override
 			public void onEvent(Buffer buffer) {
-				buffer.recycle();
+				buffer.recycleBuffer();
 			}
 		});
 
@@ -226,7 +226,7 @@ public class LocalBufferPoolTest {
 
 		assertTrue(localBufferPool.addListener(listener));
 
-		available.recycle();
+		available.recycleBuffer();
 
 		verify(listener, times(1)).onEvent(Matchers.any(Buffer.class));
 	}
@@ -247,7 +247,7 @@ public class LocalBufferPoolTest {
 
 		localBufferPool.lazyDestroy();
 
-		available.recycle();
+		available.recycleBuffer();
 
 		verify(listener, times(1)).onEvent(null);
 	}
@@ -325,7 +325,7 @@ public class LocalBufferPoolTest {
 		List<Buffer> requestedBuffers = f.get(60, TimeUnit.SECONDS);
 
 		for (Buffer buffer : requestedBuffers) {
-			buffer.recycle();
+			buffer.recycleBuffer();
 		}
 	}
 
@@ -346,7 +346,7 @@ public class LocalBufferPoolTest {
 		assertEquals(0, localBufferPool.getNumberOfAvailableMemorySegments());
 		assertNull(localBufferPool.requestBuffer());
 		assertEquals(0, localBufferPool.getNumberOfAvailableMemorySegments());
-		buffer1.recycle();
+		buffer1.recycleBuffer();
 		assertEquals(1, localBufferPool.getNumberOfAvailableMemorySegments());
 
 		// check max number of buffers:
@@ -358,9 +358,9 @@ public class LocalBufferPoolTest {
 		assertEquals(0, localBufferPool.getNumberOfAvailableMemorySegments());
 		assertNull(localBufferPool.requestBuffer());
 		assertEquals(0, localBufferPool.getNumberOfAvailableMemorySegments());
-		buffer1.recycle();
+		buffer1.recycleBuffer();
 		assertEquals(1, localBufferPool.getNumberOfAvailableMemorySegments());
-		buffer2.recycle();
+		buffer2.recycleBuffer();
 		assertEquals(2, localBufferPool.getNumberOfAvailableMemorySegments());
 
 		// try to set too large buffer size:
@@ -372,9 +372,9 @@ public class LocalBufferPoolTest {
 		assertEquals(0, localBufferPool.getNumberOfAvailableMemorySegments());
 		assertNull(localBufferPool.requestBuffer());
 		assertEquals(0, localBufferPool.getNumberOfAvailableMemorySegments());
-		buffer1.recycle();
+		buffer1.recycleBuffer();
 		assertEquals(1, localBufferPool.getNumberOfAvailableMemorySegments());
-		buffer2.recycle();
+		buffer2.recycleBuffer();
 		assertEquals(2, localBufferPool.getNumberOfAvailableMemorySegments());
 
 		// decrease size again
@@ -383,7 +383,7 @@ public class LocalBufferPoolTest {
 		assertNotNull(buffer1 = localBufferPool.requestBuffer());
 		assertEquals(0, localBufferPool.getNumberOfAvailableMemorySegments());
 		assertNull(localBufferPool.requestBuffer());
-		buffer1.recycle();
+		buffer1.recycleBuffer();
 		assertEquals(1, localBufferPool.getNumberOfAvailableMemorySegments());
 	}
 
@@ -411,7 +411,7 @@ public class LocalBufferPoolTest {
 			try {
 				for (int i = 0; i < numBuffersToRequest; i++) {
 					Buffer buffer = bufferProvider.requestBufferBlocking();
-					buffer.recycle();
+					buffer.recycleBuffer();
 				}
 			}
 			catch (Throwable t) {

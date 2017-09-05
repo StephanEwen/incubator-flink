@@ -114,7 +114,7 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	}
 
 	@Override
-	public void recycle() {
+	public void recycleBuffer() {
 		release();
 	}
 
@@ -124,13 +124,18 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	}
 
 	@Override
-	public NetworkBuffer retain() {
+	public NetworkBuffer retainBuffer() {
 		return (NetworkBuffer) super.retain();
 	}
 
 	@Override
 	protected void deallocate() {
 		recycler.recycle(memorySegment);
+	}
+
+	@Override
+	public DuplicatedNetworkBuffer duplicate() {
+		return new DuplicatedNetworkBuffer(this);
 	}
 
 	@Override

@@ -129,7 +129,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 				if (buffer.getWriterIndex() > writerIndexBefore) {
 					// add to target sub-partition so the network stack can already read from it
 					// while we're completing the buffer (therefore, also retain it)
-					buffer.retain();
+					buffer.retainBuffer();
 					int bytesWritten = buffer.getWriterIndex() - writerIndexBefore;
 					targetPartition.add(buffer, targetChannel, bytesWritten);
 					numBytesOut.inc(bytesWritten);
@@ -138,7 +138,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 				// make room for a new buffer if this one is full
 				if (result.isFullBuffer()) {
 					serializer.clearCurrentBuffer();
-					buffer.recycle();
+					buffer.recycleBuffer();
 					buffer = null;
 				}
 			} while (!result.isFullRecord());
@@ -158,7 +158,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 					Buffer buffer = serializer.getCurrentBuffer();
 					if (buffer != null) {
 						serializer.clearCurrentBuffer();
-						buffer.recycle();
+						buffer.recycleBuffer();
 					} else if (serializer.hasData()) {
 						// sanity check
 						throw new IllegalStateException("No buffer, but serializer has buffered data.");
@@ -170,14 +170,14 @@ public class RecordWriter<T extends IOReadableWritable> {
 					//         events do not share NetworkBuffer instances with other events or
 					//         buffers and we adapted
 					// TODO: find a way to use duplicate() keeping our NetworkBuffer abstraction while sharing the reference counting
-					eventBuffer.retain();
+					eventBuffer.retainBuffer();
 					targetPartition.add(eventBuffer, targetChannel, eventBuffer.getWriterIndex());
 				}
 			}
 		} finally {
 			// we do not need to further retain the eventBuffer
 			// (it will be recycled after the last channel stops using it)
-			eventBuffer.recycle();
+			eventBuffer.recycleBuffer();
 		}
 	}
 
@@ -188,7 +188,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 					Buffer buffer = serializer.getCurrentBuffer();
 
 					if (buffer != null) {
-						buffer.recycle();
+						buffer.recycleBuffer();
 					}
 				}
 				finally {

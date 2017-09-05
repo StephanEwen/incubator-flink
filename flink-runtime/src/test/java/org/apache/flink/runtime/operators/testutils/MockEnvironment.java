@@ -250,9 +250,9 @@ public class MockEnvironment implements Environment {
 
 						return null;
 					} finally {
-						buffer.recycle();
+						buffer.recycleBuffer();
 						if (readableBuffer != null) {
-							readableBuffer.recycle();
+							readableBuffer.recycleBuffer();
 						}
 					}
 				}

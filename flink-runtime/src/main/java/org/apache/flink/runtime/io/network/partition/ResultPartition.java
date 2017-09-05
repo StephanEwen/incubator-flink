@@ -295,7 +295,7 @@ public class ResultPartition implements BufferPoolOwner {
 				notifyPipelinedConsumers();
 			}
 			else {
-				buffer.recycle();
+				buffer.recycleBuffer();
 			}
 		}
 	}
@@ -315,13 +315,13 @@ public class ResultPartition implements BufferPoolOwner {
 		try {
 			for (int targetChannel = 0; targetChannel < subpartitions.length; targetChannel++) {
 				// retain the buffer so that it can be recycled by each channel
-				buffer.retain();
+				buffer.retainBuffer();
 				add(buffer, targetChannel, bytesWritten);
 			}
 		} finally {
 			// we do not need to further retain the buffer
 			// (it will be recycled after the last channel stops using it)
-			buffer.recycle();
+			buffer.recycleBuffer();
 		}
 	}
 

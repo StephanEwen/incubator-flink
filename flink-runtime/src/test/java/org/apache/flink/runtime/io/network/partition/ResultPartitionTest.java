@@ -110,7 +110,7 @@ public class ResultPartitionTest {
 		} finally {
 			if (!buffer.isRecycled()) {
 				Assert.fail("buffer not recycled");
-				buffer.recycle();
+				buffer.recycleBuffer();
 			}
 			// should not have notified either
 			verify(notifier, never()).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class), any(TaskActions.class));
@@ -174,7 +174,7 @@ public class ResultPartitionTest {
 		} finally {
 			if (!buffer.isRecycled()) {
 				Assert.fail("buffer not recycled");
-				buffer.recycle();
+				buffer.recycleBuffer();
 			}
 			// should not have notified either
 			verify(notifier, never()).notifyPartitionConsumable(any(JobID.class), any(ResultPartitionID.class), any(TaskActions.class));

@@ -180,8 +180,8 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		SpillableSubpartition partition = createSubpartition();
 
 		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE);
-		buffer.retain();
-		buffer.retain();
+		buffer.retainBuffer();
+		buffer.retainBuffer();
 
 		partition.add(buffer, buffer.getWriterIndex());
 		partition.add(buffer, 0);
@@ -202,21 +202,21 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		assertNotNull(read);
 		assertNotSame(buffer, read);
 		assertFalse(read.isRecycled());
-		read.recycle();
+		read.recycleBuffer();
 		assertTrue(read.isRecycled());
 
 		read = reader.getNextBuffer();
 		assertNotNull(read);
 		assertNotSame(buffer, read);
 		assertFalse(read.isRecycled());
-		read.recycle();
+		read.recycleBuffer();
 		assertTrue(read.isRecycled());
 
 		read = reader.getNextBuffer();
 		assertNotNull(read);
 		assertNotSame(buffer, read);
 		assertFalse(read.isRecycled());
-		read.recycle();
+		read.recycleBuffer();
 		assertTrue(read.isRecycled());
 
 		// End of partition
@@ -224,7 +224,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		assertNotNull(read);
 		assertEquals(EndOfPartitionEvent.class, EventSerializer.fromBuffer(read, ClassLoader.getSystemClassLoader()).getClass());
 		assertFalse(read.isRecycled());
-		read.recycle();
+		read.recycleBuffer();
 		assertTrue(read.isRecycled());
 
 		// finally check that the buffer has been freed after a successful (or failed) write
@@ -244,8 +244,8 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		SpillableSubpartition partition = createSubpartition();
 
 		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE);
-		buffer.retain();
-		buffer.retain();
+		buffer.retainBuffer();
+		buffer.retainBuffer();
 
 		partition.add(buffer, buffer.getWriterIndex());
 		partition.add(buffer, 0);
@@ -261,7 +261,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 
 		Buffer read = reader.getNextBuffer();
 		assertSame(buffer, read);
-		read.recycle();
+		read.recycleBuffer();
 		assertEquals(2, listener.getNumNotifiedBuffers());
 		assertFalse(buffer.isRecycled());
 
@@ -274,7 +274,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 
 		read = reader.getNextBuffer();
 		assertSame(buffer, read);
-		read.recycle();
+		read.recycleBuffer();
 		// now the buffer may be freed, depending on the timing of the write operation
 		// -> let's do this check at the end of the test (to save some time)
 
@@ -282,7 +282,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		assertNotNull(read);
 		assertNotSame(buffer, read);
 		assertFalse(read.isRecycled());
-		read.recycle();
+		read.recycleBuffer();
 		assertTrue(read.isRecycled());
 
 		// End of partition
@@ -290,7 +290,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		assertNotNull(read);
 		assertEquals(EndOfPartitionEvent.class, EventSerializer.fromBuffer(read, ClassLoader.getSystemClassLoader()).getClass());
 		assertFalse(read.isRecycled());
-		read.recycle();
+		read.recycleBuffer();
 		assertTrue(read.isRecycled());
 
 		// finally check that the buffer has been freed after a successful (or failed) write

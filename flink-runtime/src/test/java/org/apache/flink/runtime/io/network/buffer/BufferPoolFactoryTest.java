@@ -130,14 +130,14 @@ public class BufferPoolFactoryTest {
 			assertNull(lbp2.requestBuffer());
 
 			// as soon as the excess buffer of lbp1 is recycled, it should be available for lbp2
-			buffers.remove(buffers.size() - 1).recycle();
+			buffers.remove(buffers.size() - 1).recycleBuffer();
 
 			Buffer buffer = lbp2.requestBuffer();
 			buffers.add(buffer);
 			assertNotNull(buffer);
 		} finally {
 			for (Buffer buffer : buffers) {
-				buffer.recycle();
+				buffer.recycleBuffer();
 			}
 			if (lbp1 != null) {
 				lbp1.lazyDestroy();

@@ -57,7 +57,7 @@ public class RemoteInputChannelTest {
 		final SingleInputGate inputGate = mock(SingleInputGate.class);
 		final RemoteInputChannel inputChannel = createRemoteInputChannel(inputGate);
 		final Buffer buffer = TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE);
-		buffer.retain(); // used twice
+		buffer.retainBuffer(); // used twice
 
 		// The test
 		inputChannel.onBuffer(buffer, 0);
@@ -107,7 +107,7 @@ public class RemoteInputChannelTest {
 							for (int j = 0; j < 128; j++) {
 								// this is the same buffer over and over again which will be
 								// recycled by the RemoteInputChannel
-								buffer.retain();
+								buffer.retainBuffer();
 								inputChannel.onBuffer(buffer, j);
 							}
 
@@ -144,7 +144,7 @@ public class RemoteInputChannelTest {
 		finally {
 			executor.shutdown();
 			assertFalse(buffer.isRecycled());
-			buffer.recycle();
+			buffer.recycleBuffer();
 			assertTrue(buffer.isRecycled());
 		}
 	}

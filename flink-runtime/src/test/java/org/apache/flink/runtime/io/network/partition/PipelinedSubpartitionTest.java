@@ -209,7 +209,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 
 				numberOfBuffers++;
 
-				buffer.recycle();
+				buffer.recycleBuffer();
 			}
 
 			@Override

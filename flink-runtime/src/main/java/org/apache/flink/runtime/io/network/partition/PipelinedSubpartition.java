@@ -125,7 +125,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 			// Release all available buffers
 			Buffer buffer;
 			while ((buffer = buffers.poll()) != null) {
-				buffer.recycle();
+				buffer.recycleBuffer();
 			}
 
 			// Get the view...

@@ -185,7 +185,7 @@ public class RemoteInputChannel extends InputChannel {
 			synchronized (receivedBuffers) {
 				Buffer buffer;
 				while ((buffer = receivedBuffers.poll()) != null) {
-					buffer.recycle();
+					buffer.recycleBuffer();
 				}
 			}
 
@@ -258,7 +258,7 @@ public class RemoteInputChannel extends InputChannel {
 			}
 		} finally {
 			if (!success) {
-				buffer.recycle();
+				buffer.recycleBuffer();
 			}
 		}
 	}

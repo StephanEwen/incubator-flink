@@ -47,7 +47,7 @@ public class AsynchronousBufferFileWriter extends AsynchronousFileIOChannel<Buff
 			addRequest(new BufferWriteRequest(this, buffer));
 		} catch (Throwable e) {
 			// if not added, we need to recycle here
-			buffer.recycle();
+			buffer.recycleBuffer();
 			throw e;
 		}
 
@@ -70,12 +70,12 @@ public class AsynchronousBufferFileWriter extends AsynchronousFileIOChannel<Buff
 
 		@Override
 		public void requestSuccessful(Buffer buffer) {
-			buffer.recycle();
+			buffer.recycleBuffer();
 		}
 
 		@Override
 		public void requestFailed(Buffer buffer, IOException e) {
-			buffer.recycle();
+			buffer.recycleBuffer();
 		}
 	}
 }

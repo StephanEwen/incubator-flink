@@ -67,9 +67,9 @@ public interface Buffer {
 	 * Releases this buffer once, i.e. reduces the reference count and recycles the buffer if the
 	 * reference count reaches <tt>0</tt>.
 	 *
-	 * @see #retain()
+	 * @see #retainBuffer()
 	 */
-	void recycle();
+	void recycleBuffer();
 
 	/**
 	 * Returns whether this buffer has been recycled or not.
@@ -83,9 +83,18 @@ public interface Buffer {
 	 *
 	 * @return <tt>this</tt> instance (for chained calls)
 	 *
-	 * @see #recycle()
+	 * @see #recycleBuffer()
 	 */
-	Buffer retain();
+	Buffer retainBuffer();
+
+	/**
+	 * Creates a buffer which shares the memory segment of this given buffer.
+	 *
+	 * <p>Modifying the content of a duplicate will affect the original buffer and vice versa while
+	 * reader and writer indices and markers are not shared. Reference counters are shared but the
+	 * duplicate is not {@link #retainBuffer() retained} automatically.
+	 */
+	Buffer duplicate();
 
 	/**
 	 * Returns the size of the buffer, i.e. the capacity of the underlying {@link MemorySegment}.
