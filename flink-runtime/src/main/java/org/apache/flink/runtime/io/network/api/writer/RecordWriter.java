@@ -150,6 +150,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
 		final Buffer eventBuffer = EventSerializer.toBuffer(event);
+		final int bytesWritten = eventBuffer.getWriterIndex();
 		try {
 			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
 				RecordSerializer<T> serializer = serializers[targetChannel];
@@ -171,7 +172,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 					//         buffers and we adapted
 					// TODO: find a way to use duplicate() keeping our NetworkBuffer abstraction while sharing the reference counting
 					eventBuffer.retainBuffer();
-					targetPartition.add(eventBuffer, targetChannel, eventBuffer.getWriterIndex());
+					targetPartition.add(eventBuffer, targetChannel, bytesWritten);
 				}
 			}
 		} finally {

@@ -119,9 +119,10 @@ class SpillableSubpartition extends ResultSubpartition {
 	@Override
 	public void finish() throws IOException {
 		Buffer buffer = EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE);
+		int bytesWritten = buffer.getWriterIndex();
 
 		synchronized (buffers) {
-			if (add(buffer, buffer.getWriterIndex())) {
+			if (add(buffer, bytesWritten)) {
 				isFinished = true;
 			}
 		}

@@ -71,8 +71,9 @@ public class InputGateFairnessTest {
 		for (int i = 0; i < numChannels; i++) {
 			PipelinedSubpartition partition = new PipelinedSubpartition(0, resultPartition);
 
+			int bytesWritten = mockBuffer.getWriterIndex();
 			for (int p = 0; p < buffersPerChannel; p++) {
-				partition.add(mockBuffer, mockBuffer.getWriterIndex());
+				partition.add(mockBuffer, bytesWritten);
 			}
 
 			partition.finish();
@@ -303,8 +304,9 @@ public class InputGateFairnessTest {
 
 		Collections.shuffle(poss);
 
+		int bytesWritten = buffer.getWriterIndex();
 		for (Integer i : poss) {
-			partitions[i].add(buffer, buffer.getWriterIndex());
+			partitions[i].add(buffer, bytesWritten);
 		}
 	}
 
