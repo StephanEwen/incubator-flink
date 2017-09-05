@@ -267,7 +267,9 @@ public class ResultPartition implements BufferPoolOwner {
 	 * first buffer has been added.
 	 *
 	 * @param buffer
-	 * 		the buffer to add (it is not an error to add the same buffer multiple times)
+	 * 		the buffer to add (it is not an error to add the same buffer multiple times but the
+	 * 		contents will only be sent once - use {@link Buffer#duplicate()} to send the same contents
+	 * 		multiple times!)
 	 * @param subpartitionIndex
 	 * 		the sub-partition to add the buffer to
 	 * @param bytesWritten
@@ -306,7 +308,9 @@ public class ResultPartition implements BufferPoolOwner {
 	 * <p>The buffer is taken over and used for each of the channels. It will be recycled afterwards.
 	 *
 	 * @param buffer
-	 * 		the buffer to add (it is not an error to add the same buffer multiple times)
+	 * 		the buffer to add (it is not an error to add the same buffer multiple times but the
+	 * 		contents will only be sent once to each channel - use {@link Buffer#duplicate()} to send
+	 * 		the same contents multiple times)
 	 * @param bytesWritten
 	 * 		number of bytes added by this buffer (to keep byte counting consistent for cases where a
 	 * 		single buffer is entered multiple times)

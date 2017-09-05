@@ -74,7 +74,9 @@ public abstract class ResultSubpartition {
 	 * Adds a buffer to the subpartition.
 	 *
 	 * @param buffer
-	 * 		the buffer to add (it is not an error to add the same buffer multiple times)
+	 * 		the buffer to add (it is not an error to add the same buffer multiple times but the
+	 * 		contents will only be sent once - use {@link Buffer#duplicate()} to send the same contents
+	 * 		multiple times!)
 	 * @param bytesWritten
 	 * 		number of bytes added by this buffer (to keep byte counting consistent for cases where a
 	 * 		single buffer is entered multiple times)

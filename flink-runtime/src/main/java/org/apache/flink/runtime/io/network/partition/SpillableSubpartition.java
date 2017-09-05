@@ -97,21 +97,28 @@ class SpillableSubpartition extends ResultSubpartition {
 			}
 
 			// The number of buffers are needed later when creating
-			// the read views. If you ever remove this line here,
-			// make sure to still count the number of buffers.
-			updateStatistics(1, bytesWritten);
+			// the read views. Be sure to call updateStatistics() or
+			// at least make sure to still count the number of buffers.
 
 			if (spillWriter == null) {
 
-				// TODO: only add the buffer if it is another instance!
-				buffers.add(buffer);
+				// Add the buffer (only if different to the head of the queue) and update the stats
+				if (buffer != buffers.peekLast()) {
+					buffers.add(buffer);
+					updateStatistics(1, bytesWritten);
+				} else {
+					buffer.recycleBuffer(); // not using this reference
+					// already notified by the previous add() operation of this buffer
+					updateStatistics(0, bytesWritten);
+				}
 
 				return true;
 			}
 		}
 
 		// Didn't return early => go to disk
-		spillBuffer(buffer);
+		SpillResult spillResult = spillBuffer(buffer, true);
+		updateStatistics(spillResult.spilledBuffers, bytesWritten);
 
 		return true;
 	}
@@ -126,15 +133,16 @@ class SpillableSubpartition extends ResultSubpartition {
 	 *
 	 * @param buffer
 	 * 		buffer to spill
+	 * @param skipEmpty
+	 * 		whether to skip spilling empty buffers
 	 *
-	 * @return number of read/spilled bytes
+	 * @return number of spilled buffers and bytes
 	 *
 	 * @throws IOException
 	 * 		if the writer encounters an I/O error.
 	 */
-	private int spillBuffer(Buffer buffer) throws IOException {
-		return spillBuffer(spillWriter, buffer);
-
+	private SpillResult spillBuffer(Buffer buffer, boolean skipEmpty) throws IOException {
+		return spillBuffer(spillWriter, buffer, skipEmpty);
 	}
 
 	/**
@@ -149,25 +157,32 @@ class SpillableSubpartition extends ResultSubpartition {
 	 * 		buffer writer to use
 	 * @param buffer
 	 * 		buffer to spill
+	 * @param skipEmpty
+	 * 		whether to skip spilling empty buffers
 	 *
-	 * @return number of read/spilled bytes
+	 * @return number of spilled buffers and bytes
 	 *
 	 * @throws IOException
 	 * 		if the writer encounters an I/O error.
 	 */
-	static int spillBuffer(BufferFileWriter spillWriter, Buffer buffer) throws IOException {
+	static SpillResult spillBuffer(BufferFileWriter spillWriter, Buffer buffer, boolean skipEmpty)
+		throws IOException {
 		// we consume bytes and thus need to create a duplicate with fixed (and independent) indices
 		Buffer duplicate = buffer.duplicate(); // takes a snapshot of the current indices
 		// now tell the original buffer that we consumed these bytes (we will below!)
 		buffer.setReaderIndex(duplicate.getWriterIndex());
 
-		// buffers with no remaining data have already been written or are useless anyway
+		// buffers with no remaining data have already been written but may also have been announced
 		int readableBytes = duplicate.readableBytes();
-		if (readableBytes > 0) {
+
+		if (!skipEmpty || readableBytes > 0) {
 			// duplicate (and thus also the original) will be recycled after the write operation
 			spillWriter.writeBlock(duplicate);
+			return new SpillResult(1, readableBytes);
+		} else {
+			buffer.recycleBuffer();
+			return new SpillResult(0, readableBytes);
 		}
-		return readableBytes;
 	}
 
 	@Override
@@ -278,7 +293,9 @@ class SpillableSubpartition extends ResultSubpartition {
 				// Spill all buffers
 				for (int i = 0; i < numberOfBuffers; i++) {
 					Buffer buffer = buffers.remove();
-					spilledBytes += spillBuffer(buffer);
+					// note: we always need to spill buffers from the queue, even if empty, since we
+					//       already announced them
+					spilledBytes += spillBuffer(buffer, false).spilledBytes;
 				}
 
 				LOG.debug("Spilling {} bytes for sub partition {} of {}.", spilledBytes, index, parent.getPartitionId());
@@ -310,4 +327,20 @@ class SpillableSubpartition extends ResultSubpartition {
 				spillWriter != null);
 	}
 
+	// ------------------------------------------------------------------------
+
+	/**
+	 * Result of the {@link #spillBuffer(BufferFileWriter, Buffer, boolean)} operation containing
+	 * the number of spilled buffers and the spilled bytes.
+	 */
+	static final class SpillResult {
+
+		public final int spilledBuffers;
+		public final int spilledBytes;
+
+		public SpillResult(int spilledBuffers, int spilledBytes) {
+			this.spilledBuffers = spilledBuffers;
+			this.spilledBytes = spilledBytes;
+		}
+	}
 }

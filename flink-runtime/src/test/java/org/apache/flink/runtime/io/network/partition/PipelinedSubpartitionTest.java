@@ -19,9 +19,15 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
+import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.io.network.buffer.DuplicatedNetworkBuffer;
+import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
 import org.apache.flink.runtime.io.network.util.TestConsumerCallback;
@@ -29,6 +35,7 @@ import org.apache.flink.runtime.io.network.util.TestPooledBufferProvider;
 import org.apache.flink.runtime.io.network.util.TestProducerSource;
 import org.apache.flink.runtime.io.network.util.TestSubpartitionConsumer;
 import org.apache.flink.runtime.io.network.util.TestSubpartitionProducer;
+
 import org.junit.AfterClass;
 import org.junit.Test;
 
@@ -36,6 +43,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import static junit.framework.TestCase.assertSame;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -232,5 +240,80 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		// Wait for producer and consumer to finish
 		producerResult.get();
 		consumerResult.get();
+	}
+
+	/**
+	 * Tests that a spilled partition is correctly read back in via a spilled
+	 * read view.
+	 */
+	@Test
+	public void testDoubleBufferAdd() throws Exception {
+		PipelinedSubpartition partition = createSubpartition();
+
+		Buffer buffer2 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
+		buffer2.setWriterIndex(10); // pretend some data has been written
+		Buffer buffer1 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
+		buffer1.setWriterIndex(10); // pretend some data has been written
+
+		partition.add(buffer1.retainBuffer(), buffer1.readableBytes());
+		partition.add(buffer2.retainBuffer(), buffer2.readableBytes());
+		buffer2.setWriterIndex(15); // pretend some additional data has been written
+		partition.add(buffer2.retainBuffer(), 5);
+
+		// a single buffer instance will only be added once
+		assertEquals(2, partition.getTotalNumberOfBuffers());
+
+		// spilled now
+		assertEquals(0, partition.releaseMemory());
+
+		partition.add(buffer2.retainBuffer(), 0);
+		// now the buffer may be freed, depending on the timing of the write operation
+		// -> let's do this check at the end of the test (to save some time)
+
+		// this empty buffer is not advertised and therefore not spilled either
+		assertEquals(2, partition.getTotalNumberOfBuffers());
+
+		// no new buffers to spill
+		assertEquals(0, partition.releaseMemory());
+
+		partition.finish();
+
+		BufferAvailabilityListener listener = mock(BufferAvailabilityListener.class);
+		PipelinedSubpartitionView reader = partition.createReadView(listener);
+
+		verify(listener, times(1)).notifyBuffersAvailable(eq(3L));
+
+		// first buffer
+		Buffer read = reader.getNextBuffer();
+		assertNotNull(read);
+		assertSame(buffer1, ((DuplicatedNetworkBuffer) read).unwrap());
+		assertFalse(read.isRecycled());
+		read.recycleBuffer();
+		assertFalse(read.isRecycled());
+
+		// second buffer
+		read = reader.getNextBuffer();
+		assertNotNull(read);
+		assertSame(buffer2, ((DuplicatedNetworkBuffer) read).unwrap());
+		assertFalse(read.isRecycled());
+		read.recycleBuffer();
+		assertFalse(read.isRecycled());
+
+		// End of partition
+		read = reader.getNextBuffer();
+		assertNotNull(read);
+		assertEquals(EndOfPartitionEvent.class, EventSerializer.fromBuffer(read, ClassLoader.getSystemClassLoader()).getClass());
+		assertFalse(read.isRecycled());
+		read.recycleBuffer();
+		assertTrue(read.isRecycled());
+
+		// we retained the buffers once too many for our use - after releasing them, they should be
+		// recycled immediately since by reading from disk we made sure we already passed a
+		// successful write
+		buffer1.recycleBuffer();
+		assertTrue(buffer1.isRecycled());
+
+		buffer2.recycleBuffer();
+		assertTrue(buffer2.isRecycled());
 	}
 }

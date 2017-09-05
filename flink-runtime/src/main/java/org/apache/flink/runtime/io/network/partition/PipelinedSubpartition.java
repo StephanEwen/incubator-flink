@@ -70,11 +70,16 @@ class PipelinedSubpartition extends ResultSubpartition {
 				return false;
 			}
 
-			// Add the buffer and update the stats
-			// TODO: only add the buffer if it is another instance!
-			buffers.add(buffer);
-			reader = readView;
-			updateStatistics(1, bytesWritten);
+			// Add the buffer (only if different to the head of the queue) and update the stats
+			if (buffer != buffers.peekLast()) {
+				buffers.add(buffer);
+				reader = readView;
+				updateStatistics(1, bytesWritten);
+			} else {
+				buffer.recycleBuffer(); // not using this reference
+				reader = null; // already notified by the previous add() operation of this buffer
+				updateStatistics(0, bytesWritten);
+			}
 		}
 
 		// Notify the listener outside of the synchronized block

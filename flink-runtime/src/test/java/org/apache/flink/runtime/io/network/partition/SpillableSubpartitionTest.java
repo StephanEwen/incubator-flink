@@ -36,6 +36,7 @@ import org.junit.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
+import java.nio.ByteBuffer;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -180,45 +181,63 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 	 * read view.
 	 */
 	@Test
-	public void testConsumeSpilledPartition() throws Exception {
+	public void testDoubleBufferAdd() throws Exception {
 		SpillableSubpartition partition = createSubpartition();
 
-		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE);
-		buffer.retainBuffer();
-		buffer.retainBuffer();
+		Buffer buffer1 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
+		buffer1.setWriterIndex(10); // pretend some data has been written
+		Buffer buffer2 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
+		buffer2.setWriterIndex(10); // pretend some data has been written
 
-		partition.add(buffer, buffer.getWriterIndex());
-		partition.add(buffer, 0);
-		partition.add(buffer, 0);
+		partition.add(buffer1.retainBuffer(), buffer1.readableBytes());
+		partition.add(buffer2.retainBuffer(), buffer2.readableBytes());
+		buffer2.setWriterIndex(15); // pretend some additional data has been written
+		partition.add(buffer2.retainBuffer(), 5);
 
-		assertEquals(3, partition.releaseMemory());
+		ByteBuffer buffer1Data = buffer1.getNioBufferReadable();
+		ByteBuffer buffer2Data = buffer2.getNioBufferReadable();
+
+		// a single buffer instance will only be added once
+		assertEquals(2, partition.getTotalNumberOfBuffers());
+
+		// spilled now
+		assertEquals(2, partition.releaseMemory());
+
+		partition.add(buffer2.retainBuffer(), 0);
 		// now the buffer may be freed, depending on the timing of the write operation
 		// -> let's do this check at the end of the test (to save some time)
+
+		// this empty buffer is not advertised and therefore not spilled either
+		assertEquals(2, partition.getTotalNumberOfBuffers());
+
+		// no new buffers to spill
+		assertEquals(0, partition.releaseMemory());
 
 		partition.finish();
 
 		BufferAvailabilityListener listener = mock(BufferAvailabilityListener.class);
 		SpilledSubpartitionView reader = (SpilledSubpartitionView) partition.createReadView(listener);
 
-		verify(listener, times(1)).notifyBuffersAvailable(eq(4L));
+		verify(listener, times(1)).notifyBuffersAvailable(eq(3L));
 
+		// first buffer
 		Buffer read = reader.getNextBuffer();
 		assertNotNull(read);
-		assertNotSame(buffer, read);
+		assertNotSame(buffer1, read);
+		assertTrue(read.isBuffer());
+		assertEquals(buffer1.getWriterIndex(), read.getWriterIndex()); // same size
+		assertEquals(buffer1Data, read.getNioBufferReadable()); // same data
 		assertFalse(read.isRecycled());
 		read.recycleBuffer();
 		assertTrue(read.isRecycled());
 
+		// second buffer
 		read = reader.getNextBuffer();
 		assertNotNull(read);
-		assertNotSame(buffer, read);
-		assertFalse(read.isRecycled());
-		read.recycleBuffer();
-		assertTrue(read.isRecycled());
-
-		read = reader.getNextBuffer();
-		assertNotNull(read);
-		assertNotSame(buffer, read);
+		assertNotSame(buffer2, read);
+		assertTrue(read.isBuffer());
+		assertEquals(buffer2.getWriterIndex(), read.getWriterIndex()); // same size
+		assertEquals(buffer2Data, read.getNioBufferReadable()); // same data
 		assertFalse(read.isRecycled());
 		read.recycleBuffer();
 		assertTrue(read.isRecycled());
@@ -231,12 +250,150 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		read.recycleBuffer();
 		assertTrue(read.isRecycled());
 
-		// finally check that the buffer has been freed after a successful (or failed) write
-		final long deadline = System.currentTimeMillis() + 30_000L; // 30 secs
-		while (!buffer.isRecycled() && System.currentTimeMillis() < deadline) {
-			Thread.sleep(1);
-		}
+		// we retained the buffers once too many for our use - after releasing them, they should be
+		// recycled immediately since by reading from disk we made sure we already passed a
+		// successful write
+		buffer1.recycleBuffer();
+		assertTrue(buffer1.isRecycled());
+
+		buffer2.recycleBuffer();
+		assertTrue(buffer2.isRecycled());
+	}
+
+	/**
+	 * Tests that a spilled partition is correctly read back in via a spilled
+	 * read view.
+	 */
+	@Test
+	public void testEmptyBufferSpilling() throws Exception {
+		SpillableSubpartition partition = createSubpartition();
+
+		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE); // empty
+
+		partition.add(buffer.retainBuffer(), buffer.readableBytes());
+		partition.add(buffer.retainBuffer(), 0);
+
+		// a single buffer instance will only be added once
+		assertEquals(1, partition.getTotalNumberOfBuffers());
+
+		// spilled now
+		assertEquals(1, partition.releaseMemory());
+
+		partition.add(buffer.retainBuffer(), 0);
+		// now the buffer may be freed, depending on the timing of the write operation
+		// -> let's do this check at the end of the test (to save some time)
+
+		// this empty buffer is not advertised and therefore not spilled either
+		assertEquals(1, partition.getTotalNumberOfBuffers());
+
+		// no new buffers to spill
+		assertEquals(0, partition.releaseMemory());
+
+		partition.finish();
+
+		BufferAvailabilityListener listener = mock(BufferAvailabilityListener.class);
+		SpilledSubpartitionView reader = (SpilledSubpartitionView) partition.createReadView(listener);
+
+		verify(listener, times(1)).notifyBuffersAvailable(eq(2L));
+
+		// first buffer
+		Buffer read = reader.getNextBuffer();
+		assertNotNull(read);
+		assertNotSame(buffer, read);
+		assertTrue(read.isBuffer());
+		assertEquals(0, read.getWriterIndex()); // empty buffer
+		assertFalse(read.isRecycled());
+		read.recycleBuffer();
+		assertTrue(read.isRecycled());
+
+		// End of partition
+		read = reader.getNextBuffer();
+		assertNotNull(read);
+		assertEquals(EndOfPartitionEvent.class, EventSerializer.fromBuffer(read, ClassLoader.getSystemClassLoader()).getClass());
+		assertFalse(read.isRecycled());
+		read.recycleBuffer();
+		assertTrue(read.isRecycled());
+
+		// we retained the buffer once too many for our use - after releasing it, it should be
+		// recycled immediately since by reading from disk we made sure we already passed a
+		// successful write
+		buffer.recycleBuffer();
 		assertTrue(buffer.isRecycled());
+	}
+
+	/**
+	 * Tests that a spilled partition is correctly read back in via a spilled
+	 * read view.
+	 */
+	@Test
+	public void testConsumeSpilledPartition() throws Exception {
+		SpillableSubpartition partition = createSubpartition();
+
+		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE); // empty
+		ByteBuffer bufferData = buffer.getNioBufferReadable();
+		Buffer buffer2 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
+		buffer2.setWriterIndex(10); // pretend some data has been written
+		ByteBuffer buffer2Data = buffer2.getNioBufferReadable();
+
+		partition.add(buffer.retainBuffer(), buffer.readableBytes());
+		partition.add(buffer.retainBuffer(), 0);
+
+		// a single buffer instance will only be added once
+		assertEquals(1, partition.getTotalNumberOfBuffers());
+
+		assertEquals(1, partition.releaseMemory());
+
+		// will be spilled immediately
+		partition.add(buffer2.retainBuffer(), buffer2.readableBytes());
+		assertEquals(2, partition.getTotalNumberOfBuffers());
+		// no new buffers to spill
+		assertEquals(0, partition.releaseMemory());
+
+		partition.finish();
+
+		BufferAvailabilityListener listener = mock(BufferAvailabilityListener.class);
+		SpilledSubpartitionView reader = (SpilledSubpartitionView) partition.createReadView(listener);
+
+		verify(listener, times(1)).notifyBuffersAvailable(eq(3L));
+
+		// first buffer
+		Buffer read = reader.getNextBuffer();
+		assertNotNull(read);
+		assertNotSame(buffer, read);
+		assertEquals(buffer.getWriterIndex(), read.getWriterIndex()); // same size
+		assertEquals(bufferData, read.getNioBufferReadable()); // same data
+		assertTrue(read.isBuffer());
+		assertFalse(read.isRecycled());
+		read.recycleBuffer();
+		assertTrue(read.isRecycled());
+
+		// second buffer (2nd add() of the first one did not add it again)
+		read = reader.getNextBuffer();
+		assertNotNull(read);
+		assertNotSame(buffer2, read);
+		assertEquals(buffer2.getWriterIndex(), read.getWriterIndex()); // same size
+		assertEquals(buffer2Data, read.getNioBufferReadable()); // same data
+		assertTrue(read.isBuffer());
+		assertFalse(read.isRecycled());
+		read.recycleBuffer();
+		assertTrue(read.isRecycled());
+
+		// End of partition
+		read = reader.getNextBuffer();
+		assertNotNull(read);
+		assertEquals(EndOfPartitionEvent.class, EventSerializer.fromBuffer(read, ClassLoader.getSystemClassLoader()).getClass());
+		assertFalse(read.isRecycled());
+		read.recycleBuffer();
+		assertTrue(read.isRecycled());
+
+		// we retained the buffers once too many for our use - after releasing them, they should be
+		// recycled immediately since by reading from disk we made sure we already passed a
+		// successful write
+		buffer.recycleBuffer();
+		assertTrue(buffer.isRecycled());
+
+		buffer2.recycleBuffer();
+		assertTrue(buffer2.isRecycled());
 	}
 
 	/**
@@ -247,14 +404,17 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 	public void testConsumeSpillablePartitionSpilledDuringConsume() throws Exception {
 		SpillableSubpartition partition = createSubpartition();
 
-		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE);
-		buffer.retainBuffer();
-		buffer.retainBuffer();
+		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE); // empty
+		Buffer buffer2 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
+		buffer2.setWriterIndex(10); // pretend some data has been written
+		ByteBuffer buffer2Data = buffer2.getNioBufferReadable();
 
-		partition.add(buffer, buffer.getWriterIndex());
-		partition.add(buffer, 0);
-		partition.add(buffer, 0);
+		partition.add(buffer.retainBuffer(), buffer.readableBytes());
+		partition.add(buffer.duplicate(), 0);
+		partition.add(buffer2.retainBuffer(), buffer2.readableBytes());
 		partition.finish();
+
+		assertEquals(4, partition.getTotalNumberOfBuffers());
 
 		AwaitableBufferAvailablityListener listener = new AwaitableBufferAvailablityListener();
 		SpillableSubpartitionView reader = (SpillableSubpartitionView) partition.createReadView(listener);
@@ -272,21 +432,26 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 
 		// Spill now
 		assertEquals(2, partition.releaseMemory());
+		// buffer2 may now be released after releasing once more (retained for use below)
 		assertFalse(buffer.isRecycled()); // still one in the reader!
 
 		listener.awaitNotifications(4, 30_000);
 		assertEquals(4, listener.getNumNotifiedBuffers());
 
+		// one buffer was already cached in the object and not spilled!
 		read = reader.getNextBuffer();
 		assertThat(read, is(instanceOf(DuplicatedNetworkBuffer.class)));
 		assertSame(buffer, ((DuplicatedNetworkBuffer) read).unwrap());
 		read.recycleBuffer();
-		// now the buffer may be freed, depending on the timing of the write operation
-		// -> let's do this check at the end of the test (to save some time)
 
+		assertTrue(buffer.isRecycled()); // buffer is not spilled and this recycled immediately
+
+		// second buffer after being read back from disk
 		read = reader.getNextBuffer();
 		assertNotNull(read);
-		assertNotSame(buffer, read);
+		assertNotSame(buffer2, read);
+		assertEquals(buffer2.getWriterIndex(), read.getWriterIndex()); // same size
+		assertEquals(buffer2Data, read.getNioBufferReadable()); // same data
 		assertFalse(read.isRecycled());
 		read.recycleBuffer();
 		assertTrue(read.isRecycled());
@@ -299,12 +464,10 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		read.recycleBuffer();
 		assertTrue(read.isRecycled());
 
-		// finally check that the buffer has been freed after a successful (or failed) write
-		final long deadline = System.currentTimeMillis() + 30_000L; // 30 secs
-		while (!buffer.isRecycled() && System.currentTimeMillis() < deadline) {
-			Thread.sleep(1);
-		}
-		assertTrue(buffer.isRecycled());
+		// we retained buffer2 once too many for our use - after releasing it, it should be recycled
+		// immediately since by reading from disk we made sure we already passed a successful write
+		buffer2.recycleBuffer();
+		assertTrue(buffer2.isRecycled());
 	}
 
 	private static class AwaitableBufferAvailablityListener implements BufferAvailabilityListener {
