@@ -279,7 +279,7 @@ abstract class NettyMessage {
 			ByteBuf headerBuf = null;
 			try {
 				int readableBytes = buffer.readableBytes();
-				checkState(readableBytes > 0);
+				checkState(readableBytes > 0, "Buffer to send is empty");
 
 				if (buffer instanceof Buffer) {
 					// in order to forward the buffer to netty, it needs an allocator set

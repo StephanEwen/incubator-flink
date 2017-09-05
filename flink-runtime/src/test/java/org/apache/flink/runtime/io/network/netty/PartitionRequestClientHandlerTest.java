@@ -32,6 +32,7 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
 import org.apache.flink.runtime.util.event.EventListener;
+import org.apache.flink.util.TestLogger;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.UnpooledByteBufAllocator;
@@ -39,7 +40,11 @@ import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import org.apache.flink.shaded.netty4.io.netty.channel.embedded.EmbeddedChannel;
 
+import org.hamcrest.Matchers;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.internal.matchers.ThrowableMessageMatcher;
+import org.junit.rules.ExpectedException;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
@@ -48,15 +53,16 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class PartitionRequestClientHandlerTest {
+public class PartitionRequestClientHandlerTest extends TestLogger {
+
+	@Rule
+	public final ExpectedException exception = ExpectedException.none();
 
 	/**
 	 * Tests a fix for FLINK-1627.
@@ -84,7 +90,7 @@ public class PartitionRequestClientHandlerTest {
 
 		final BufferResponse receivedBuffer = createBufferResponse(
 			TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE), 0,
-			inputChannel.getInputChannelId(), false);
+			inputChannel.getInputChannelId());
 
 		final PartitionRequestClientHandler client = new PartitionRequestClientHandler();
 		client.addInputChannel(inputChannel);
@@ -93,9 +99,7 @@ public class PartitionRequestClientHandlerTest {
 	}
 
 	/**
-	 * Tests a fix for FLINK-1761.
-	 *
-	 * <p> FLINK-1761 discovered an IndexOutOfBoundsException, when receiving buffers of size 0.
+	 * Verifies that empty buffers are not sent (anymore).
 	 */
 	@Test
 	public void testReceiveEmptyBuffer() throws Exception {
@@ -110,17 +114,14 @@ public class PartitionRequestClientHandlerTest {
 		// An empty buffer of size 0
 		final Buffer emptyBuffer = TestBufferFactory.createBuffer(0);
 
-		final BufferResponse receivedBuffer = createBufferResponse(
-			emptyBuffer, 0, inputChannel.getInputChannelId(), true);
+		exception.expectCause(
+			Matchers.allOf(
+				Matchers.isA(IllegalStateException.class),
+				ThrowableMessageMatcher
+					.hasMessage(Matchers.containsString("Buffer to send is empty"))
+			));
 
-		final PartitionRequestClientHandler client = new PartitionRequestClientHandler();
-		client.addInputChannel(inputChannel);
-
-		// Read the empty buffer
-		client.channelRead(mock(ChannelHandlerContext.class), receivedBuffer);
-
-		// This should not throw an exception
-		verify(inputChannel, never()).onError(any(Throwable.class));
+		createBufferResponse(emptyBuffer, 0, inputChannel.getInputChannelId());
 	}
 
 	/**
@@ -204,7 +205,7 @@ public class PartitionRequestClientHandlerTest {
 
 		handler.addInputChannel(inputChannel);
 
-		BufferResponse msg = createBufferResponse(createBuffer(true), 0, channelId, false);
+		BufferResponse msg = createBufferResponse(createBuffer(true), 0, channelId);
 
 		// Write 1st buffer msg. No buffer is available, therefore the buffer
 		// should be staged and auto read should be set to false.
@@ -215,10 +216,10 @@ public class PartitionRequestClientHandlerTest {
 		assertFalse(channel.config().isAutoRead());
 
 		// Write more buffers... all staged.
-		msg = createBufferResponse(createBuffer(true), 1, channelId, false);
+		msg = createBufferResponse(createBuffer(true), 1, channelId);
 		channel.writeInbound(msg);
 
-		msg = createBufferResponse(createBuffer(true), 2, channelId, false);
+		msg = createBufferResponse(createBuffer(true), 2, channelId);
 		channel.writeInbound(msg);
 
 		// Notify about buffer => handle 1st msg
@@ -258,11 +259,7 @@ public class PartitionRequestClientHandlerTest {
 	private BufferResponse createBufferResponse(
 			Buffer buffer,
 			int sequenceNumber,
-			InputChannelID receivingChannelId,
-			boolean allowEmpty) throws IOException {
-
-		// TODO: fix tests trying to create an empty BufferResponse
-		assumeTrue(!allowEmpty);
+			InputChannelID receivingChannelId) throws IOException {
 
 		// Mock buffer to serialize
 
