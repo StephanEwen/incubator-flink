@@ -25,6 +25,7 @@ import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -110,11 +111,63 @@ class SpillableSubpartition extends ResultSubpartition {
 		}
 
 		// Didn't return early => go to disk
-		// TODO: can we overwrite the previous buffer file if it is the same buffer?
-		// TODO: we need to retain the reader and writer indices!
-		spillWriter.writeBlock(buffer);
+		spillBuffer(buffer);
 
 		return true;
+	}
+
+	/**
+	 * Spills the given buffer to disk.
+	 *
+	 * <p>Also takes care of defining a (fixed) area of the buffer to spill/consume similar to
+	 * {@link SpillableSubpartitionView#getNextBuffer()} and {@link PipelinedSubpartition#pollBuffer()}
+	 * as the buffer's contents may still be changed in parallel, e.g. by the {@link
+	 * org.apache.flink.runtime.io.network.api.writer.RecordWriter} adding contents to the buffer.
+	 *
+	 * @param buffer
+	 * 		buffer to spill
+	 *
+	 * @return number of read/spilled bytes
+	 *
+	 * @throws IOException
+	 * 		if the writer encounters an I/O error.
+	 */
+	private int spillBuffer(Buffer buffer) throws IOException {
+		return spillBuffer(spillWriter, buffer);
+
+	}
+
+	/**
+	 * Spills the given buffer to disk.
+	 *
+	 * <p>Also takes care of defining a (fixed) area of the buffer to spill/consume similar to
+	 * {@link SpillableSubpartitionView#getNextBuffer()} and {@link PipelinedSubpartition#pollBuffer()}
+	 * as the buffer's contents may still be changed in parallel, e.g. by the {@link
+	 * org.apache.flink.runtime.io.network.api.writer.RecordWriter} adding contents to the buffer.
+	 *
+	 * @param spillWriter
+	 * 		buffer writer to use
+	 * @param buffer
+	 * 		buffer to spill
+	 *
+	 * @return number of read/spilled bytes
+	 *
+	 * @throws IOException
+	 * 		if the writer encounters an I/O error.
+	 */
+	static int spillBuffer(BufferFileWriter spillWriter, Buffer buffer) throws IOException {
+		// we consume bytes and thus need to create a duplicate with fixed (and independent) indices
+		Buffer duplicate = buffer.duplicate(); // takes a snapshot of the current indices
+		// now tell the original buffer that we consumed these bytes (we will below!)
+		buffer.setReaderIndex(duplicate.getWriterIndex());
+
+		// buffers with no remaining data have already been written or are useless anyway
+		int readableBytes = duplicate.readableBytes();
+		if (readableBytes > 0) {
+			// duplicate (and thus also the original) will be recycled after the write operation
+			spillWriter.writeBlock(duplicate);
+		}
+		return readableBytes;
 	}
 
 	@Override
@@ -225,9 +278,7 @@ class SpillableSubpartition extends ResultSubpartition {
 				// Spill all buffers
 				for (int i = 0; i < numberOfBuffers; i++) {
 					Buffer buffer = buffers.remove();
-					spilledBytes += buffer.readableBytes();
-					// TODO: we need to retain the reader and writer indices!
-					spillWriter.writeBlock(buffer);
+					spilledBytes += spillBuffer(buffer);
 				}
 
 				LOG.debug("Spilling {} bytes for sub partition {} of {}.", spilledBytes, index, parent.getPartitionId());

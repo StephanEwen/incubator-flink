@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.apache.flink.runtime.io.network.partition.SpillableSubpartition.spillBuffer;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 class SpillableSubpartitionView implements ResultSubpartitionView {
@@ -107,9 +108,7 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 				int numBuffers = buffers.size();
 				for (int i = 0; i < numBuffers; i++) {
 					Buffer buffer = buffers.remove();
-					spilledBytes += buffer.readableBytes();
-					// TODO: we need to retain the reader and writer indices!
-					spillWriter.writeBlock(buffer);
+					spilledBytes += spillBuffer(spillWriter, buffer);
 				}
 
 				spilledView = new SpilledSubpartitionView(

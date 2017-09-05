@@ -42,7 +42,6 @@ public class AsynchronousBufferFileWriter extends AsynchronousFileIOChannel<Buff
 	 */
 	@Override
 	public void writeBlock(Buffer buffer) throws IOException {
-		// TODO: we need to retain the reader and writer indices!
 		try {
 			// if successfully added, the buffer will be recycled after the write operation
 			addRequest(new BufferWriteRequest(this, buffer));
