@@ -27,6 +27,7 @@ import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.io.network.buffer.DuplicatedNetworkBuffer;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 
@@ -41,12 +42,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import static org.hamcrest.core.Is.is;
+import static org.hamcrest.core.IsInstanceOf.instanceOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -260,7 +264,8 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		assertFalse(buffer.isRecycled());
 
 		Buffer read = reader.getNextBuffer();
-		assertSame(buffer, read);
+		assertThat(read, is(instanceOf(DuplicatedNetworkBuffer.class)));
+		assertSame(buffer, ((DuplicatedNetworkBuffer) read).unwrap());
 		read.recycleBuffer();
 		assertEquals(2, listener.getNumNotifiedBuffers());
 		assertFalse(buffer.isRecycled());
@@ -273,7 +278,8 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		assertEquals(4, listener.getNumNotifiedBuffers());
 
 		read = reader.getNextBuffer();
-		assertSame(buffer, read);
+		assertThat(read, is(instanceOf(DuplicatedNetworkBuffer.class)));
+		assertSame(buffer, ((DuplicatedNetworkBuffer) read).unwrap());
 		read.recycleBuffer();
 		// now the buffer may be freed, depending on the timing of the write operation
 		// -> let's do this check at the end of the test (to save some time)

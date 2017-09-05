@@ -21,7 +21,7 @@ package org.apache.flink.runtime.io.network.netty;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
-import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
@@ -281,9 +281,11 @@ abstract class NettyMessage {
 				int readableBytes = buffer.readableBytes();
 				checkState(readableBytes > 0);
 
-				if (buffer instanceof NetworkBuffer) {
+				if (buffer instanceof Buffer) {
 					// in order to forward the buffer to netty, it needs an allocator set
-					((NetworkBuffer) buffer).setAllocator(allocator);
+					// (may already be present but we're using only one instance and therefore it
+					// always remains the same)
+					((Buffer) buffer).setAllocator(allocator);
 				}
 
 				// only allocate header buffer - we will combine it with the data buffer below
@@ -298,7 +300,7 @@ abstract class NettyMessage {
 				composityBuf.addComponent(headerBuf);
 				composityBuf.addComponent(buffer);
 				// update writer index since we have written data to the components:
-				composityBuf.writerIndex(headerBuf.writerIndex() + buffer.writerIndex());
+				composityBuf.writerIndex(headerBuf.writerIndex() + readableBytes);
 				return composityBuf;
 			}
 			catch (Throwable t) {

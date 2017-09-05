@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 
 import java.nio.ByteBuffer;
 
@@ -140,6 +141,12 @@ public interface Buffer {
 	void setWriterIndex(int writerIndex);
 
 	/**
+	 * Returns the number of readable bytes (same as <tt>{@link #getWriterIndex()} -
+	 * {@link #getReaderIndex()}</tt>).
+	 */
+	int readableBytes();
+
+	/**
 	 * Gets a new {@link ByteBuffer} instance wrapping this buffer's readable bytes, i.e. between
 	 * {@link #getReaderIndex()} and {@link #getWriterIndex()}.
 	 *
@@ -162,4 +169,11 @@ public interface Buffer {
 	 * @see #getNioBufferReadable()
 	 */
 	ByteBuffer getNioBuffer(int index, int length) throws IndexOutOfBoundsException;
+
+	/**
+	 * Sets the buffer allocator for use in netty.
+	 *
+	 * @param allocator netty buffer allocator
+	 */
+	void setAllocator(ByteBufAllocator allocator);
 }

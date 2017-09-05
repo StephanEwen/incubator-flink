@@ -31,7 +31,6 @@ import java.io.UTFDataFormatException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
@@ -65,17 +64,8 @@ public class AdaptiveSpanningRecordDeserializer<T extends IOReadableWritable> im
 
 		if (numBytes > 0) {
 			setNextMemorySegment(segment, readerIndex, numBytes);
-
-			if (buffer.isBuffer()) {
-				// advance the readerIndex so the next call knows which bytes to consume
-				buffer.setReaderIndex(readerIndex + numBytes);
-			} else {
-				// DO NOT advance the reader index for events - they use exclusive
-				// NetworkBuffer instances shared by multiple queues!
-				// (see RecordWriter#broadcastEvent()
-				checkArgument(buffer.getReaderIndex() == 0,
-					"Events should use NetworkBuffer instances exclusively and thus have readerIndex == 0.");
-			}
+			// advance the readerIndex so the next call knows which bytes to consume
+			buffer.setReaderIndex(readerIndex + numBytes);
 		} else {
 			checkState(numBytes >= 0);
 		}

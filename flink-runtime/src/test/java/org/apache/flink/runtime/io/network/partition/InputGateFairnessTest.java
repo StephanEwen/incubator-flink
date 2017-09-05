@@ -73,12 +73,13 @@ public class InputGateFairnessTest {
 
 			int bytesWritten = mockBuffer.getWriterIndex();
 			for (int p = 0; p < buffersPerChannel; p++) {
-				partition.add(mockBuffer, bytesWritten);
+				partition.add(mockBuffer.duplicate().retainBuffer(), bytesWritten);
 			}
 
 			partition.finish();
 			sources[i] = partition;
 		}
+		mockBuffer.recycleBuffer();
 
 		// ----- create reading side -----
 
@@ -152,7 +153,7 @@ public class InputGateFairnessTest {
 		}
 
 		// seed one initial buffer
-		sources[12].add(mockBuffer, mockBuffer.getWriterIndex());
+		sources[12].add(mockBuffer.duplicate().retainBuffer(), mockBuffer.getWriterIndex());
 
 		// read all the buffers and the EOF event
 		for (int i = 0; i < numChannels * buffersPerChannel; i++) {
@@ -174,6 +175,7 @@ public class InputGateFairnessTest {
 				fillRandom(sources, 3, mockBuffer);
 			}
 		}
+		mockBuffer.recycleBuffer();
 
 		// there is still more in the queues
 	}
@@ -207,7 +209,7 @@ public class InputGateFairnessTest {
 			channels[i] = channel;
 			
 			for (int p = 0; p < buffersPerChannel; p++) {
-				channel.onBuffer(mockBuffer, p);
+				channel.onBuffer(mockBuffer.duplicate().retainBuffer(), p);
 			}
 			channel.onBuffer(EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE), buffersPerChannel);
 
@@ -216,7 +218,11 @@ public class InputGateFairnessTest {
 
 		// read all the buffers and the EOF event
 		for (int i = numChannels * (buffersPerChannel + 1); i > 0; --i) {
-			assertNotNull(gate.getNextBufferOrEvent());
+			BufferOrEvent bufferOrEvent = gate.getNextBufferOrEvent();
+			assertNotNull(bufferOrEvent);
+			if (bufferOrEvent.isBuffer()) {
+				bufferOrEvent.getBuffer().recycleBuffer();
+			}
 
 			int min = Integer.MAX_VALUE;
 			int max = 0;
@@ -231,6 +237,9 @@ public class InputGateFairnessTest {
 		}
 
 		assertNull(gate.getNextBufferOrEvent());
+
+		mockBuffer.recycleBuffer();
+		assertTrue(mockBuffer.isRecycled());
 	}
 
 	@Test
@@ -264,12 +273,16 @@ public class InputGateFairnessTest {
 			gate.setInputChannel(new IntermediateResultPartitionID(), channel);
 		}
 
-		channels[11].onBuffer(mockBuffer, 0);
+		channels[11].onBuffer(mockBuffer.duplicate().retainBuffer(), 0);
 		channelSequenceNums[11]++;
 
 		// read all the buffers and the EOF event
 		for (int i = 0; i < numChannels * buffersPerChannel; i++) {
-			assertNotNull(gate.getNextBufferOrEvent());
+			BufferOrEvent bufferOrEvent = gate.getNextBufferOrEvent();
+			assertNotNull(bufferOrEvent);
+			if (bufferOrEvent.isBuffer()) {
+				bufferOrEvent.getBuffer().recycleBuffer();
+			}
 
 			int min = Integer.MAX_VALUE;
 			int max = 0;
@@ -287,6 +300,10 @@ public class InputGateFairnessTest {
 				fillRandom(channels, channelSequenceNums, 3, mockBuffer);
 			}
 		}
+
+		gate.releaseAllResources();
+		mockBuffer.recycleBuffer();
+		assertTrue(mockBuffer.isRecycled());
 	}
 
 	// ------------------------------------------------------------------------
@@ -306,7 +323,7 @@ public class InputGateFairnessTest {
 
 		int bytesWritten = buffer.getWriterIndex();
 		for (Integer i : poss) {
-			partitions[i].add(buffer, bytesWritten);
+			partitions[i].add(buffer.duplicate().retainBuffer(), bytesWritten);
 		}
 	}
 
@@ -327,7 +344,7 @@ public class InputGateFairnessTest {
 		Collections.shuffle(poss);
 
 		for (int i : poss) {
-			partitions[i].onBuffer(buffer, sequenceNumbers[i]++);
+			partitions[i].onBuffer(buffer.duplicate().retainBuffer(), sequenceNumbers[i]++);
 		}
 	}
 	

@@ -29,12 +29,16 @@ public interface ResultSubpartitionView {
 
 	/**
 	 * Returns the next {@link Buffer} instance of this queue iterator.
-	 * <p>
-	 * If there is currently no instance available, it will return <code>null</code>.
+	 *
+	 * <p>If there is currently no instance available, it will return <code>null</code>.
 	 * This might happen for example when a pipelined queue producer is slower
 	 * than the consumer or a spilled queue needs to read in more data.
-	 * <p>
-	 * <strong>Important</strong>: The consumer has to make sure that each
+	 *
+	 * <p>If there is an instance, a duplicate of the original buffer with independent reader and
+	 * writer indices will be returned. Since the writer index of the duplicate will never be
+	 * changed, this creates an immutable view of which bytes should be forwarded.
+	 *
+	 * <p><strong>Important</strong>: The consumer has to make sure that each
 	 * buffer instance will eventually be recycled with {@link Buffer#recycleBuffer()}
 	 * after it has been consumed.
 	 */

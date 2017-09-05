@@ -107,7 +107,8 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 				int numBuffers = buffers.size();
 				for (int i = 0; i < numBuffers; i++) {
 					Buffer buffer = buffers.remove();
-					spilledBytes += buffer.getWriterIndex();
+					spilledBytes += buffer.readableBytes();
+					// TODO: we need to retain the reader and writer indices!
 					spillWriter.writeBlock(buffer);
 				}
 
@@ -141,7 +142,17 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 					listener.notifyBuffersAvailable(1);
 				}
 
-				return current;
+				if (current != null) {
+					// create a duplicate and advance the readerIndex at the original buffer so that
+					// from here on, the buffers may advance indices independently
+					Buffer duplicate = current.duplicate();
+					// we've "consumed" all readable bytes, i.e. those are forwarded into the stack and
+					// should not be forwarded again
+					current.setReaderIndex(duplicate.getWriterIndex());
+					return duplicate;
+				} else {
+					return null;
+				}
 			}
 		} // else: spilled
 

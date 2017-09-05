@@ -490,11 +490,8 @@ public class SingleInputGate implements InputGate {
 			return new BufferOrEvent(buffer, currentChannel.getChannelIndex(), moreAvailable);
 		}
 		else {
-			// DO NOT advance the reader index for events - they use exclusive NetworkBuffer
-			// instances shared by multiple queues! (see RecordWriter#broadcastEvent()
 			checkArgument(buffer.getReaderIndex() == 0,
-				"Events should use NetworkBuffer instances exclusively and thus have readerIndex == 0.");
-
+				"Events should use Buffer instances exclusively and thus have readerIndex == 0.");
 			final AbstractEvent event = EventSerializer.fromBuffer(buffer, getClass().getClassLoader());
 
 			if (event.getClass() == EndOfPartitionEvent.class) {

@@ -314,9 +314,10 @@ public class ResultPartition implements BufferPoolOwner {
 	public void addToAllChannels(Buffer buffer, int bytesWritten) throws IOException {
 		try {
 			for (int targetChannel = 0; targetChannel < subpartitions.length; targetChannel++) {
-				// retain the buffer so that it can be recycled by each channel
-				buffer.retainBuffer();
-				add(buffer, targetChannel, bytesWritten);
+				// Create a duplicate with shared contents but independent reader/writer indices
+				// because we read the same contents multiple times. Also retain the buffer so
+				// that it can be recycled by each channel of targetPartition.
+				add(buffer.duplicate().retainBuffer(), targetChannel, bytesWritten);
 			}
 		} finally {
 			// we do not need to further retain the buffer

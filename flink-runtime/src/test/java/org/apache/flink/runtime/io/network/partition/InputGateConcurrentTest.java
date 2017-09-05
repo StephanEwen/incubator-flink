@@ -251,7 +251,7 @@ public class InputGateConcurrentTest {
 				final Source next = sources[nextChannel];
 
 				for (int k = chunk; k > 0; --k) {
-					next.addBuffer(buffer);
+					next.addBuffer(buffer.duplicate().retainBuffer());
 				}
 
 				i -= chunk;
@@ -263,6 +263,7 @@ public class InputGateConcurrentTest {
 				}
 
 			}
+			buffer.recycleBuffer();
 		}
 	}
 

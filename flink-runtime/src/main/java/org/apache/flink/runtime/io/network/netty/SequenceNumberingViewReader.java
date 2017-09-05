@@ -19,18 +19,16 @@
 package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartitionView;
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Simple wrapper for the partition readerQueue iterator, which increments a
@@ -88,21 +86,18 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener {
 	}
 
 	public BufferAndAvailability getNextBuffer() throws IOException, InterruptedException {
-		NetworkBuffer next = (NetworkBuffer) subpartitionView.getNextBuffer();
+		Buffer next = subpartitionView.getNextBuffer();
 		if (next != null) {
 			long remaining = numBuffersAvailable.decrementAndGet();
 
-			// define the part of the buffer that is ready to send
-			int readerIndex = next.readerIndex();
-			int readableBytes = next.readableBytes();
-			if (readableBytes > 0) {
+			if (next.readableBytes() > 0) {
 				// we got a new instance of a previously sent buffer with no new data
 				// -> this should not be sent and therefore, we do not increase the sequenceNumber
 				sequenceNumber++;
 			}
 
 			if (remaining >= 0) {
-				return new BufferAndAvailability(next, readerIndex, readableBytes, remaining > 0);
+				return new BufferAndAvailability(next, remaining > 0);
 			} else {
 				throw new IllegalStateException("no buffer available");
 			}
@@ -143,42 +138,5 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener {
 			", numBuffersAvailable=" + numBuffersAvailable.get() +
 			", sequenceNumber=" + sequenceNumber +
 			'}';
-	}
-
-	// ------------------------------------------------------------------------
-
-	/**
-	 * A combination of a {@link Buffer} and a flag indicating availability of further buffers.
-	 */
-	public static final class BufferAndAvailability {
-
-		private final NetworkBuffer buffer;
-		private final int readerIndex;
-		private final int readableBytes;
-		private final boolean moreAvailable;
-
-		public BufferAndAvailability(
-				NetworkBuffer buffer, int readerIndex, int readableBytes, boolean moreAvailable) {
-			this.buffer = checkNotNull(buffer);
-			this.readerIndex = readerIndex;
-			this.readableBytes = readableBytes;
-			this.moreAvailable = moreAvailable;
-		}
-
-		public NetworkBuffer buffer() {
-			return buffer;
-		}
-
-		public int readerIndex() {
-			return readerIndex;
-		}
-
-		public int readableBytes() {
-			return readableBytes;
-		}
-
-		public boolean moreAvailable() {
-			return moreAvailable;
-		}
 	}
 }

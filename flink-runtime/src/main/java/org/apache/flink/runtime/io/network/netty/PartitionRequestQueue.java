@@ -21,9 +21,9 @@ package org.apache.flink.runtime.io.network.netty;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.ErrorResponse;
 import org.apache.flink.runtime.io.network.partition.ProducerFailedException;
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
@@ -151,7 +151,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		// input channel logic. You can think of this class acting as the input
 		// gate and the consumed views as the local input channels.
 
-		SequenceNumberingViewReader.BufferAndAvailability next = null;
+		BufferAndAvailability next = null;
 		try {
 			if (channel.isWritable()) {
 				while (true) {
@@ -192,36 +192,28 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 							nonEmptyReader.add(reader);
 						}
 
-						NetworkBuffer networkBuffer = next.buffer();
-						int readableBytes = next.readableBytes();
-
-						if (readableBytes == 0) {
+						// note: Although this buffer shares content with the one the RecordWriter
+						//       may still write to, the current thread is the only one accessing
+						//       any other metadata such as the reader and writer indices.
+						Buffer networkBuffer = next.buffer();
+						if (networkBuffer.readableBytes() == 0) {
 							// skip empty buffers and try again (may return if there are no more buffers)
 							networkBuffer.recycleBuffer();
 							continue;
 						}
 
-						// wrap the actual buffer to send and pretend we have read this data
-						int readerIndex = next.readerIndex();
-						ByteBuf readyToSend = networkBuffer.slice(readerIndex, readableBytes);
 						final boolean endOfPartitionEvent;
 						if (networkBuffer.isBuffer()) {
-							// advance the readerIndex so the next call knows which bytes to consume
-							networkBuffer.setReaderIndex(readerIndex + readableBytes);
-
 							endOfPartitionEvent = false;
 						} else {
-							// DO NOT advance the reader index for events - they use exclusive
-							// NetworkBuffer instances shared by multiple queues!
-							// (see RecordWriter#broadcastEvent()
 							checkArgument(networkBuffer.getReaderIndex() == 0,
-								"Events should use NetworkBuffer instances exclusively and thus have readerIndex == 0.");
+								"Events should use Buffer instances exclusively and thus have readerIndex == 0.");
 
 							endOfPartitionEvent = isEndOfPartitionEvent(networkBuffer);
 						}
 
 						BufferResponse msg = new BufferResponse(
-							readyToSend,
+							(ByteBuf) networkBuffer,
 							networkBuffer.isBuffer(),
 							reader.getSequenceNumber(),
 							reader.getReceiverId());

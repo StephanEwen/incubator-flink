@@ -18,9 +18,12 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -39,13 +42,11 @@ class InputChannelTestUtils {
 	 * Creates a simple Buffer that is not recycled (never will be) of the given size.
 	 */
 	public static Buffer createMockBuffer(int size) {
-		final Buffer mockBuffer = mock(Buffer.class);
-		when(mockBuffer.isBuffer()).thenReturn(true);
-		when(mockBuffer.getSize()).thenReturn(size);
-		when(mockBuffer.getWriterIndex()).thenReturn(size);
-		when(mockBuffer.isRecycled()).thenReturn(false);
-
-		return mockBuffer;
+		MemorySegment segment = mock(MemorySegment.class);
+		when(segment.size()).thenReturn(size);
+		NetworkBuffer buffer = new NetworkBuffer(segment, mock(BufferRecycler.class), true);
+		buffer.setWriterIndex(size);
+		return buffer;
 	}
 
 	/**

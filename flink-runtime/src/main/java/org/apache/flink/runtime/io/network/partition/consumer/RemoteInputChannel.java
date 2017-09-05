@@ -144,7 +144,7 @@ public class RemoteInputChannel extends InputChannel {
 			remaining = receivedBuffers.size();
 		}
 
-		numBytesIn.inc(next.getWriterIndex());
+		numBytesIn.inc(next.readableBytes());
 		return new BufferAndAvailability(next, remaining > 0);
 	}
 

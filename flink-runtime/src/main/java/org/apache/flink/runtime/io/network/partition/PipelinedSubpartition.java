@@ -146,7 +146,18 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	Buffer pollBuffer() {
 		synchronized (buffers) {
-			return buffers.pollFirst();
+			Buffer buffer = buffers.pollFirst(); // may still be written to from the RecordWriter
+			if (buffer != null) {
+				// create a duplicate and advance the readerIndex at the original buffer so that from
+				// here on, the buffers may advance indices independently
+				Buffer duplicate = buffer.duplicate();
+				// we've "consumed" all readable bytes, i.e. those are forwarded into the stack and
+				// should not be forwarded again
+				buffer.setReaderIndex(duplicate.getWriterIndex());
+				return duplicate;
+			} else {
+				return null;
+			}
 		}
 	}
 

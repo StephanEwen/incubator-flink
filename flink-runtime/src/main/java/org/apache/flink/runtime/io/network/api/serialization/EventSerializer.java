@@ -40,8 +40,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import org.apache.flink.util.Preconditions;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
-
 /**
  * Utility class to serialize and deserialize task events.
  */
@@ -284,11 +282,20 @@ public class EventSerializer {
 		return buffer;
 	}
 
+	/**
+	 * Deserializes an event from the given buffer.
+	 *
+	 * <p><strong>BEWARE:</strong> Although we do only read from the available bytes,
+	 * {@link #fromSerializedEvent(ByteBuffer, ClassLoader)} assumes that the whole buffer
+	 * represents a single event and does not update buffer positions accordingly. Therefore, we
+	 * cannot update the reader index of the given <tt>buffer</tt>.
+	 *
+	 * @param buffer      buffer to read from
+	 * @param classLoader class loader to use (for custom user events tagged with <tt>OTHER_EVENT</tt>)
+	 * @return deserialized event
+	 * @throws IOException if the deserialization fails
+	 */
 	public static AbstractEvent fromBuffer(Buffer buffer, ClassLoader classLoader) throws IOException {
-		// DO NOT advance the reader index for events - they use exclusive NetworkBuffer instances
-		// shared by multiple queues! (see RecordWriter#broadcastEvent()
-		checkArgument(buffer.getReaderIndex() == 0,
-			"Events should use NetworkBuffer instances exclusively and thus have readerIndex == 0.");
 		return fromSerializedEvent(buffer.getNioBufferReadable(), classLoader);
 	}
 

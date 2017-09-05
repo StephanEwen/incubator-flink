@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.DuplicatedByteBuf;
 
 import java.nio.ByteBuffer;
@@ -27,7 +28,7 @@ import java.nio.ByteBuffer;
  * Minimal {@link DuplicatedByteBuf} implementation wrapping a {@link NetworkBuffer}, similar to
  * <tt>io.netty.buffer.DuplicatedAbstractByteBuf</tt>.
  */
-final class DuplicatedNetworkBuffer extends DuplicatedByteBuf implements Buffer{
+public final class DuplicatedNetworkBuffer extends DuplicatedByteBuf implements Buffer{
 
 	/**
 	 * Creates a buffer which shares the memory segment of the given buffer.
@@ -118,6 +119,11 @@ final class DuplicatedNetworkBuffer extends DuplicatedByteBuf implements Buffer{
 	@Override
 	public ByteBuffer getNioBuffer(int index, int length) throws IndexOutOfBoundsException {
 		return nioBuffer(index, length);
+	}
+
+	@Override
+	public void setAllocator(ByteBufAllocator allocator) {
+		unwrap().setAllocator(allocator);
 	}
 
 	@Override

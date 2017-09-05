@@ -1457,7 +1457,7 @@ public class BarrierBufferTest {
 		long expectedBuffered = 0;
 		for (BufferOrEvent boe : sequence) {
 			if (boe.isBuffer()) {
-				expectedBuffered += BufferSpiller.HEADER_SIZE + boe.getBuffer().getWriterIndex();
+				expectedBuffered += BufferSpiller.HEADER_SIZE + boe.getBuffer().readableBytes();
 			}
 		}
 

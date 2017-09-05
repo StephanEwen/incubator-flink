@@ -212,7 +212,7 @@ public class BufferFileWriterReaderTest {
 	static int verifyBufferFilledWithAscendingNumbers(Buffer buffer, int currentNumber) {
 		MemorySegment segment = buffer.getMemorySegment();
 
-		int size = buffer.getWriterIndex();
+		int size = buffer.readableBytes();
 
 		for (int i = 0; i < size; i += 4) {
 			if (segment.getInt(i) != currentNumber++) {

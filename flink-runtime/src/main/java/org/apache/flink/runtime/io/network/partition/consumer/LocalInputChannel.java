@@ -22,6 +22,7 @@ import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.DuplicatedNetworkBuffer;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.ProducerFailedException;
@@ -190,14 +191,16 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 				throw new IllegalStateException("Consumed partition has no buffers available. " +
 					"Number of received buffer notifications is " + numBuffersAvailable + ".");
 			}
+		} else {
+			// note: we should have received a (shared-content, indices-independent) duplicate when
+			//       this buffer was polled from the partition queue
+			checkState(next instanceof DuplicatedNetworkBuffer);
 		}
 
 		long remaining = numBuffersAvailable.decrementAndGet();
 
 		if (remaining >= 0) {
-			// note: reader index of the original buffer is increased during de-serialization
-			// TODO: wrap buffer so that the number of bytes read is consistent? (for now, the deserializer reads whatever it has then, not what we got here)
-			numBytesIn.inc(next.getWriterIndex() - next.getReaderIndex());
+			numBytesIn.inc(next.readableBytes());
 			return new BufferAndAvailability(next, remaining > 0);
 		} else if (subpartitionView.isReleased()) {
 			throw new ProducerFailedException(subpartitionView.getFailureCause());

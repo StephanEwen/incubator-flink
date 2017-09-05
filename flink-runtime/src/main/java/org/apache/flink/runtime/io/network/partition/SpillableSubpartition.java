@@ -111,6 +111,7 @@ class SpillableSubpartition extends ResultSubpartition {
 
 		// Didn't return early => go to disk
 		// TODO: can we overwrite the previous buffer file if it is the same buffer?
+		// TODO: we need to retain the reader and writer indices!
 		spillWriter.writeBlock(buffer);
 
 		return true;
@@ -224,7 +225,8 @@ class SpillableSubpartition extends ResultSubpartition {
 				// Spill all buffers
 				for (int i = 0; i < numberOfBuffers; i++) {
 					Buffer buffer = buffers.remove();
-					spilledBytes += buffer.getWriterIndex();
+					spilledBytes += buffer.readableBytes();
+					// TODO: we need to retain the reader and writer indices!
 					spillWriter.writeBlock(buffer);
 				}
 
