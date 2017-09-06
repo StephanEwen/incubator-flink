@@ -28,6 +28,7 @@ import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -45,7 +46,7 @@ class InputChannelTestUtils {
 		MemorySegment segment = mock(MemorySegment.class);
 		when(segment.size()).thenReturn(size);
 		NetworkBuffer buffer = new NetworkBuffer(segment, mock(BufferRecycler.class), true);
-		buffer.setWriterIndex(size);
+		assertTrue(buffer.setWriterIndex(0, size));
 		return buffer;
 	}
 

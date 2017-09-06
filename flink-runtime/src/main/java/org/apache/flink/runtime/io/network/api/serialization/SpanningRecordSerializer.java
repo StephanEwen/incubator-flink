@@ -18,20 +18,20 @@
 
 package org.apache.flink.runtime.io.network.api.serialization;
 
+import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.util.DataOutputSerializer;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-import org.apache.flink.core.io.IOReadableWritable;
-import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
-import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.util.DataOutputSerializer;
-
 /**
  * Record serializer which serializes the complete record to an intermediate
  * data serialization buffer and copies this buffer to target buffers
- * one-by-one using {@link #setNextBuffer(Buffer)}.
+ * one-by-one using {@link #setNextBuffer(SynchronizedWriteBuffer)}.
  *
  * @param <T>
  */
@@ -49,8 +49,8 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 	/** Intermediate buffer for length serialization */
 	private final ByteBuffer lengthBuffer;
 
-	/** Current target {@link Buffer} of the serializer */
-	private Buffer targetBuffer;
+	/** Current target {@link SynchronizedWriteBuffer buffer} of the serializer */
+	private SynchronizedWriteBuffer targetBuffer;
 
 	/** Position in current {@link MemorySegment} of target buffer */
 	private int position;
@@ -98,27 +98,29 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		this.dataBuffer = this.serializationBuffer.wrapAsByteBuffer();
 
 		// Copy from intermediate buffers to current target memory segment
-		copyToTargetBufferFrom(this.lengthBuffer);
-		copyToTargetBufferFrom(this.dataBuffer);
+		boolean copySuccessful =
+			copyToTargetBufferFrom(this.lengthBuffer) &&
+			copyToTargetBufferFrom(this.dataBuffer);
 
-		return getSerializationResult();
+		return getSerializationResult(copySuccessful);
 	}
 
 	@Override
-	public SerializationResult setNextBuffer(Buffer buffer) throws IOException {
+	public SerializationResult setNextBuffer(SynchronizedWriteBuffer buffer) throws IOException {
 		this.targetBuffer = buffer;
-		this.position = 0;
+		this.position = buffer.getWriterIndex();
 		this.limit = buffer.getSize();
 
+		boolean copySuccessful = true;
 		if (this.lengthBuffer.hasRemaining()) {
-			copyToTargetBufferFrom(this.lengthBuffer);
+			copySuccessful = copyToTargetBufferFrom(this.lengthBuffer);
 		}
 
-		if (this.dataBuffer.hasRemaining()) {
-			copyToTargetBufferFrom(this.dataBuffer);
+		if (copySuccessful && this.dataBuffer.hasRemaining()) {
+			copySuccessful = copyToTargetBufferFrom(this.dataBuffer);
 		}
 
-		SerializationResult result = getSerializationResult();
+		SerializationResult result = getSerializationResult(copySuccessful);
 		
 		// make sure we don't hold onto the large buffers for too long
 		if (result.isFullRecord()) {
@@ -132,13 +134,15 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 
 	/**
 	 * Copies as many bytes as possible from the given {@link ByteBuffer} to the {@link MemorySegment} of the target
-	 * {@link Buffer} and advances the current position by the number of written bytes.
+	 * {@link SynchronizedWriteBuffer buffer} and advances the current position by the number of written bytes.
 	 *
 	 * @param source the {@link ByteBuffer} to copy data from
+	 *
+	 * @return whether the write operation was completed (<tt>true</tt>) or not (<tt>false</tt>)
 	 */
-	private void copyToTargetBufferFrom(ByteBuffer source) {
+	private boolean copyToTargetBufferFrom(ByteBuffer source) {
 		if (this.targetBuffer == null) {
-			return;
+			return false;
 		}
 
 		int needed = source.remaining();
@@ -147,13 +151,20 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 
 		this.targetBuffer.getMemorySegment().put(this.position, source, toCopy);
 
-		this.position += toCopy;
-		this.targetBuffer.setWriterIndex(this.position);
+		int newPosition = this.position + toCopy;
+		if (this.targetBuffer.setWriterIndex(this.position, newPosition)) {
+			this.position = newPosition;
+			return true;
+		} else {
+			// rewind the source buffer!
+			source.position(source.position() - toCopy);
+			return false;
+		}
 	}
 
-	private SerializationResult getSerializationResult() {
+	private SerializationResult getSerializationResult(boolean copySuccessful) {
 		if (!this.dataBuffer.hasRemaining() && !this.lengthBuffer.hasRemaining()) {
-			return (this.position < this.limit)
+			return (this.position < this.limit && copySuccessful)
 					? SerializationResult.FULL_RECORD
 					: SerializationResult.FULL_RECORD_MEMORY_SEGMENT_FULL;
 		}
@@ -162,7 +173,7 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 	}
 
 	@Override
-	public Buffer getCurrentBuffer() {
+	public SynchronizedWriteBuffer getCurrentBuffer() {
 		return targetBuffer;
 	}
 

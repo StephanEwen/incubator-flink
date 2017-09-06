@@ -25,6 +25,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.BufferPoolOwner;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
@@ -276,7 +277,7 @@ public class ResultPartition implements BufferPoolOwner {
 	 * 		number of bytes added by this buffer (to keep byte counting consistent for cases where a
 	 * 		single buffer is entered multiple times)
 	 */
-	public void add(Buffer buffer, int subpartitionIndex, int bytesWritten) throws IOException {
+	public void add(SynchronizedWriteBuffer buffer, int subpartitionIndex, int bytesWritten) throws IOException {
 		boolean success = false;
 
 		try {

@@ -46,6 +46,7 @@ import static org.apache.flink.runtime.io.network.netty.NettyTestUtil.connect;
 import static org.apache.flink.runtime.io.network.netty.NettyTestUtil.initServerAndClient;
 import static org.apache.flink.runtime.io.network.netty.NettyTestUtil.shutdown;
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -188,7 +189,8 @@ public class CancelPartitionRequestTest {
 		@Override
 		public Buffer getNextBuffer() throws IOException, InterruptedException {
 			Buffer buffer = bufferProvider.requestBufferBlocking();
-			buffer.setWriterIndex(buffer.getSize()); // fake some data (empty buffers will not be sent!)
+			// fake some data (empty buffers will not be sent!)
+			assertTrue(buffer.setWriterIndex(0, buffer.getSize()));
 			return buffer;
 		}
 

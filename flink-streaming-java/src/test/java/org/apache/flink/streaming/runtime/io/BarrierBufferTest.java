@@ -1408,7 +1408,7 @@ public class BarrierBufferTest {
 		memory.put(0, bytes);
 
 		Buffer buf = new NetworkBuffer(memory, FreeingBufferRecycler.INSTANCE);
-		buf.setWriterIndex(size);
+		assertTrue(buf.setWriterIndex(0, size));
 
 		// retain an additional time so it does not get disposed after being read by the input gate
 		buf.retainBuffer();

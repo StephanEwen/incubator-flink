@@ -33,6 +33,7 @@ import java.nio.ByteOrder;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -61,6 +62,13 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	 * size of the backing {@link MemorySegment} (inclusive).
 	 */
 	private int currentSize;
+
+	/**
+	 * Synchronized writer index which is only updated via {@link #setWriterIndex(int,
+	 * int)} and reflects the current write position until {@link #sealAndDuplicate()}
+	 * is called.
+	 */
+	final AtomicInteger synchronizedWriterIndex = new AtomicInteger();
 
 	/**
 	 * Creates a new buffer instance backed by the given <tt>memorySegment</tt> with <tt>0</tt> for
@@ -135,6 +143,30 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 
 	@Override
 	public DuplicatedNetworkBuffer duplicate() {
+		return new DuplicatedNetworkBuffer(this);
+	}
+
+	@Override
+	public boolean setWriterIndex(int previousIdx, int newIdx) {
+		if (previousIdx >= 0 && synchronizedWriterIndex.compareAndSet(previousIdx, newIdx)) {
+			writerIndex(newIdx);
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	@Override
+	public DuplicatedNetworkBuffer sealAndDuplicate() {
+		// after this, any call to setSynchronizedWriterIndex() will return false and not update
+		// the writer index
+		int sealedWriterIndex = synchronizedWriterIndex.getAndSet(-1);
+		if (sealedWriterIndex >= 0) {
+			// called for the first time
+			writerIndex(sealedWriterIndex); // makes the non-volatile writerIndex visible
+			capacity(sealedWriterIndex); // just to make sure (best-effort due to visibility)
+		}
+
 		return new DuplicatedNetworkBuffer(this);
 	}
 
@@ -215,11 +247,6 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	@Override
 	public int getWriterIndex() {
 		return writerIndex();
-	}
-
-	@Override
-	public void setWriterIndex(int writerIndex) {
-		writerIndex(writerIndex);
 	}
 
 	@Override

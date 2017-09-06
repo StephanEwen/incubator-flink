@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.partition;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +42,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 	// ------------------------------------------------------------------------
 
 	/** All buffers of this subpartition. Access to the buffers is synchronized on this object. */
-	private final ArrayDeque<Buffer> buffers = new ArrayDeque<>();
+	private final ArrayDeque<SynchronizedWriteBuffer> buffers = new ArrayDeque<>();
 
 	/** The read view to consume this subpartition. */
 	private PipelinedSubpartitionView readView;
@@ -59,7 +60,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	@Override
-	public boolean add(Buffer buffer, int bytesWritten) throws IOException {
+	public boolean add(SynchronizedWriteBuffer buffer, int bytesWritten) throws IOException {
 		checkNotNull(buffer);
 
 		// view reference accessible outside the lock, but assigned inside the locked scope
@@ -128,7 +129,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 			}
 
 			// Release all available buffers
-			Buffer buffer;
+			SynchronizedWriteBuffer buffer;
 			while ((buffer = buffers.poll()) != null) {
 				buffer.recycleBuffer();
 			}
@@ -151,14 +152,14 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	Buffer pollBuffer() {
 		synchronized (buffers) {
-			Buffer buffer = buffers.pollFirst(); // may still be written to from the RecordWriter
+			SynchronizedWriteBuffer buffer = buffers.pollFirst(); // may still be written to from the RecordWriter
 			if (buffer != null) {
-				// create a duplicate and advance the readerIndex at the original buffer so that from
-				// here on, the buffers may advance indices independently
-				Buffer duplicate = buffer.duplicate();
+				// stop the writer from continuing to write to the buffer and continue with an
+				// independent duplicate here
+				Buffer duplicate = buffer.sealAndDuplicate();
 				// we've "consumed" all readable bytes, i.e. those are forwarded into the stack and
-				// should not be forwarded again
-				buffer.setReaderIndex(duplicate.getWriterIndex());
+				// should not be forwarded again (only this thread modifies the reader index)
+				((Buffer) buffer).setReaderIndex(duplicate.getWriterIndex());
 				return duplicate;
 			} else {
 				return null;

@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.partition;
 import org.apache.flink.runtime.io.disk.iomanager.BufferFileWriter;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +41,7 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 	private final SpillableSubpartition parent;
 
 	/** All buffers of this subpartition. Access to the buffers is synchronized on this object. */
-	private final ArrayDeque<Buffer> buffers;
+	private final ArrayDeque<SynchronizedWriteBuffer> buffers;
 
 	/** IO manager if we need to spill (for spilled case). */
 	private final IOManager ioManager;
@@ -64,13 +65,13 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 	 * The next buffer to hand out. Everytime this is set to a non-null value,
 	 * a listener notification happens.
 	 */
-	private Buffer nextBuffer;
+	private SynchronizedWriteBuffer nextBuffer;
 
 	private volatile SpilledSubpartitionView spilledView;
 
 	SpillableSubpartitionView(
 		SpillableSubpartition parent,
-		ArrayDeque<Buffer> buffers,
+		ArrayDeque<SynchronizedWriteBuffer> buffers,
 		IOManager ioManager,
 		int memorySegmentSize,
 		BufferAvailabilityListener listener) {
@@ -108,7 +109,7 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 
 				int numBuffers = buffers.size();
 				for (int i = 0; i < numBuffers; i++) {
-					Buffer buffer = buffers.remove();
+					SynchronizedWriteBuffer buffer = buffers.remove();
 					spilledBytes += spillBuffer(spillWriter, buffer, false).spilledBytes;
 				}
 
@@ -135,7 +136,7 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 			if (isReleased.get()) {
 				return null;
 			} else if (nextBuffer != null) {
-				Buffer current = nextBuffer;
+				SynchronizedWriteBuffer current = nextBuffer;
 				nextBuffer = buffers.poll();
 
 				if (nextBuffer != null) {
@@ -143,12 +144,12 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 				}
 
 				if (current != null) {
-					// create a duplicate and advance the readerIndex at the original buffer so that
-					// from here on, the buffers may advance indices independently
-					Buffer duplicate = current.duplicate();
+					// stop the writer from continuing to write to the buffer and continue with an
+					// independent duplicate here
+					Buffer duplicate = current.sealAndDuplicate();
 					// we've "consumed" all readable bytes, i.e. those are forwarded into the stack and
-					// should not be forwarded again
-					current.setReaderIndex(duplicate.getWriterIndex());
+					// should not be forwarded again (only this thread modifies the reader index)
+					((Buffer) current).setReaderIndex(duplicate.getWriterIndex());
 					return duplicate;
 				} else {
 					return null;

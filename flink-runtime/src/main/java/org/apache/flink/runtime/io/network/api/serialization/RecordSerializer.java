@@ -16,14 +16,13 @@
  * limitations under the License.
  */
 
-
 package org.apache.flink.runtime.io.network.api.serialization;
 
-import java.io.IOException;
-
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
-import org.apache.flink.runtime.io.network.buffer.Buffer;
+
+import java.io.IOException;
 
 /**
  * Interface for turning records into sequences of memory segments.
@@ -84,25 +83,25 @@ public interface RecordSerializer<T extends IOReadableWritable> {
 	 *         whether this buffer is full
 	 * @throws IOException
 	 */
-	SerializationResult setNextBuffer(Buffer buffer) throws IOException;
+	SerializationResult setNextBuffer(SynchronizedWriteBuffer buffer) throws IOException;
 
 	/**
 	 * Retrieves the current target buffer and sets its size to the actual
 	 * number of written bytes.
 	 *
 	 * After calling this method, a new target buffer is required to continue
-	 * writing (see {@link #setNextBuffer(Buffer)}).
+	 * writing (see {@link #setNextBuffer(SynchronizedWriteBuffer)}).
 	 *
 	 * @return the target buffer that was used
 	 */
-	Buffer getCurrentBuffer();
+	SynchronizedWriteBuffer getCurrentBuffer();
 
 	/**
 	 * Resets the target buffer to <tt>null</tt>.
 	 *
 	 * <p><strong>NOTE:</strong> After calling this method, <strong>a new target
 	 * buffer is required to continue writing</strong> (see
-	 * {@link #setNextBuffer(Buffer)}).</p>
+	 * {@link #setNextBuffer(SynchronizedWriteBuffer)}).</p>
 	 */
 	void clearCurrentBuffer();
 
@@ -112,7 +111,7 @@ public interface RecordSerializer<T extends IOReadableWritable> {
 	 *
 	 * <p><strong>NOTE:</strong> After calling this method, a <strong>new record
 	 * and a new target buffer is required to start writing again</strong>
-	 * (see {@link #setNextBuffer(Buffer)}). If you want to continue
+	 * (see {@link #setNextBuffer(SynchronizedWriteBuffer)}). If you want to continue
 	 * with the current record, use {@link #clearCurrentBuffer()} instead.</p>
 	 */
 	void clear();

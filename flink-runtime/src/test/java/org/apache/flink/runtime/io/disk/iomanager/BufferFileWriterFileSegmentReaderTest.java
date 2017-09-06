@@ -149,7 +149,7 @@ public class BufferFileWriterFileSegmentReaderTest {
 			fileSegment.getFileChannel().read(buffer, fileSegment.getPosition());
 
 			NetworkBuffer buffer1 = new NetworkBuffer(MemorySegmentFactory.wrap(buffer.array()), BUFFER_RECYCLER);
-			buffer1.setWriterIndex(fileSegment.getLength());
+			assertTrue(buffer1.setWriterIndex(0, fileSegment.getLength()));
 			currentNumber = verifyBufferFilledWithAscendingNumbers(buffer1, currentNumber);
 		}
 

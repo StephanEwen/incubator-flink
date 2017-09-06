@@ -38,6 +38,8 @@ import java.nio.channels.FileChannel;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.apache.flink.util.Preconditions.checkState;
+
 /**
  * The buffer spiller takes the buffers and events from a data stream and adds them to a spill file.
  * After a number of elements have been spilled, the spiller can "roll over": It presents the spilled
@@ -382,7 +384,8 @@ public class BufferSpiller {
 				}
 
 				Buffer buf = new NetworkBuffer(seg, FreeingBufferRecycler.INSTANCE);
-				buf.setWriterIndex(length);
+				boolean success = buf.setWriterIndex(0, length);
+				checkState(success, "Updating the buffer's writer index failed.");
 
 				return new BufferOrEvent(buf, channel);
 			}

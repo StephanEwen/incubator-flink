@@ -25,6 +25,7 @@ import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,7 +65,7 @@ class SpillableSubpartition extends ResultSubpartition {
 	private static final Logger LOG = LoggerFactory.getLogger(SpillableSubpartition.class);
 
 	/** Buffers are kept in this queue as long as we weren't ask to release any. */
-	private final ArrayDeque<Buffer> buffers = new ArrayDeque<>();
+	private final ArrayDeque<SynchronizedWriteBuffer> buffers = new ArrayDeque<>();
 
 	/** The I/O manager used for spilling buffers to disk. */
 	private final IOManager ioManager;
@@ -88,7 +89,7 @@ class SpillableSubpartition extends ResultSubpartition {
 	}
 
 	@Override
-	public boolean add(Buffer buffer, int bytesWritten) throws IOException {
+	public boolean add(SynchronizedWriteBuffer buffer, int bytesWritten) throws IOException {
 		checkNotNull(buffer);
 
 		synchronized (buffers) {
@@ -141,7 +142,8 @@ class SpillableSubpartition extends ResultSubpartition {
 	 * @throws IOException
 	 * 		if the writer encounters an I/O error.
 	 */
-	private SpillResult spillBuffer(Buffer buffer, boolean skipEmpty) throws IOException {
+	private SpillResult spillBuffer(SynchronizedWriteBuffer buffer, boolean skipEmpty)
+			throws IOException {
 		return spillBuffer(spillWriter, buffer, skipEmpty);
 	}
 
@@ -165,12 +167,17 @@ class SpillableSubpartition extends ResultSubpartition {
 	 * @throws IOException
 	 * 		if the writer encounters an I/O error.
 	 */
-	static SpillResult spillBuffer(BufferFileWriter spillWriter, Buffer buffer, boolean skipEmpty)
-		throws IOException {
-		// we consume bytes and thus need to create a duplicate with fixed (and independent) indices
-		Buffer duplicate = buffer.duplicate(); // takes a snapshot of the current indices
-		// now tell the original buffer that we consumed these bytes (we will below!)
-		buffer.setReaderIndex(duplicate.getWriterIndex());
+	static SpillResult spillBuffer(
+			BufferFileWriter spillWriter, SynchronizedWriteBuffer buffer, boolean skipEmpty)
+			throws IOException {
+		// stop the writer from continuing to write to the buffer and continue with an independent
+		// duplicate here
+		Buffer duplicate = buffer.sealAndDuplicate();
+		// we've "consumed" all readable bytes, i.e. those are forwarded into the stack and
+		// should not be forwarded again. Note that only this thread modifies the reader index when
+		// spilling and we will always spill once started, also in the SpillableSubpartitionView
+		// working together with this class.
+		((Buffer) buffer).setReaderIndex(duplicate.getWriterIndex());
 
 		// buffers with no remaining data have already been written but may also have been announced
 		int readableBytes = duplicate.readableBytes();
@@ -217,7 +224,7 @@ class SpillableSubpartition extends ResultSubpartition {
 			// one is available, the view is responsible is to clean up (see
 			// below).
 			if (view == null) {
-				for (Buffer buffer : buffers) {
+				for (SynchronizedWriteBuffer buffer : buffers) {
 					buffer.recycleBuffer();
 				}
 				buffers.clear();
@@ -292,7 +299,7 @@ class SpillableSubpartition extends ResultSubpartition {
 
 				// Spill all buffers
 				for (int i = 0; i < numberOfBuffers; i++) {
-					Buffer buffer = buffers.remove();
+					SynchronizedWriteBuffer buffer = buffers.remove();
 					// note: we always need to spill buffers from the queue, even if empty, since we
 					//       already announced them
 					spilledBytes += spillBuffer(buffer, false).spilledBytes;
@@ -330,7 +337,7 @@ class SpillableSubpartition extends ResultSubpartition {
 	// ------------------------------------------------------------------------
 
 	/**
-	 * Result of the {@link #spillBuffer(BufferFileWriter, Buffer, boolean)} operation containing
+	 * Result of the {@link #spillBuffer(BufferFileWriter, SynchronizedWriteBuffer, boolean)} operation containing
 	 * the number of spilled buffers and the spilled bytes.
 	 */
 	static final class SpillResult {

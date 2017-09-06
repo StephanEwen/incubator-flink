@@ -248,7 +248,7 @@ public class PartitionRequestClientHandlerTest extends TestLogger {
 			for (int i = 0; i < 1024; i++) {
 				segment.put(i, (byte) i);
 			}
-			buffer.setWriterIndex(1024);
+			assertTrue(buffer.setWriterIndex(0, 1024));
 		}
 		return buffer;
 	}

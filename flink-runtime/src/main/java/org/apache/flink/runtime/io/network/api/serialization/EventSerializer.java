@@ -40,6 +40,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import org.apache.flink.util.Preconditions;
 
+import static org.apache.flink.util.Preconditions.checkState;
+
 /**
  * Utility class to serialize and deserialize task events.
  */
@@ -277,7 +279,8 @@ public class EventSerializer {
 		MemorySegment data = MemorySegmentFactory.wrap(serializedEvent.array());
 		
 		final Buffer buffer = new NetworkBuffer(data, FreeingBufferRecycler.INSTANCE, false);
-		buffer.setWriterIndex(serializedEvent.remaining());
+		boolean success = buffer.setWriterIndex(0, serializedEvent.remaining());
+		checkState(success, "Updating the buffer's writer index failed.");
 
 		return buffer;
 	}

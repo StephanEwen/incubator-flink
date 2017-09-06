@@ -184,14 +184,16 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 	public void testDoubleBufferAdd() throws Exception {
 		SpillableSubpartition partition = createSubpartition();
 
-		Buffer buffer1 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
-		buffer1.setWriterIndex(10); // pretend some data has been written
 		Buffer buffer2 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
-		buffer2.setWriterIndex(10); // pretend some data has been written
+		// pretend some data has been written
+		assertTrue(buffer2.setWriterIndex(0, 10));
+		Buffer buffer1 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
+		// pretend some data has been written
+		assertTrue(buffer1.setWriterIndex(0, 10));
 
 		partition.add(buffer1.retainBuffer(), buffer1.readableBytes());
 		partition.add(buffer2.retainBuffer(), buffer2.readableBytes());
-		buffer2.setWriterIndex(15); // pretend some additional data has been written
+		assertTrue(buffer2.setWriterIndex(10, 15)); // more data
 		partition.add(buffer2.retainBuffer(), 5);
 
 		ByteBuffer buffer1Data = buffer1.getNioBufferReadable();
@@ -332,7 +334,8 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE); // empty
 		ByteBuffer bufferData = buffer.getNioBufferReadable();
 		Buffer buffer2 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
-		buffer2.setWriterIndex(10); // pretend some data has been written
+		// pretend some data has been written
+		assertTrue(buffer2.setWriterIndex(0, 10));
 		ByteBuffer buffer2Data = buffer2.getNioBufferReadable();
 
 		partition.add(buffer.retainBuffer(), buffer.readableBytes());
@@ -406,7 +409,8 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 
 		Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(4096), FreeingBufferRecycler.INSTANCE); // empty
 		Buffer buffer2 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
-		buffer2.setWriterIndex(10); // pretend some data has been written
+		// pretend some data has been written
+		assertTrue(buffer2.setWriterIndex(0, 10));
 		ByteBuffer buffer2Data = buffer2.getNioBufferReadable();
 
 		partition.add(buffer.retainBuffer(), buffer.readableBytes());

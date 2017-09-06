@@ -376,7 +376,7 @@ public class BufferSpillerTest {
 		}
 
 		Buffer buf = new NetworkBuffer(seg, FreeingBufferRecycler.INSTANCE);
-		buf.setWriterIndex(size);
+		assertTrue(buf.setWriterIndex(0, size));
 		return new BufferOrEvent(buf, channelIndex);
 	}
 

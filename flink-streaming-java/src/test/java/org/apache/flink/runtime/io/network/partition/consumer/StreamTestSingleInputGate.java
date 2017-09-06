@@ -113,8 +113,7 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 						delegate.setInstance(inputElement);
 						recordSerializer.addRecord(delegate);
 
-						// Call getCurrentBuffer to ensure size is set
-						return new BufferAndAvailability(recordSerializer.getCurrentBuffer(), false);
+						return new BufferAndAvailability(buffer, false);
 					} else if (input != null && input.isEvent()) {
 						AbstractEvent event = input.getEvent();
 						return new BufferAndAvailability(EventSerializer.toBuffer(event), false);

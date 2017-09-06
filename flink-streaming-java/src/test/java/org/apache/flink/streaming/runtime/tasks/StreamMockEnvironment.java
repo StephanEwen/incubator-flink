@@ -42,6 +42,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
@@ -173,7 +174,7 @@ public class StreamMockEnvironment implements Environment {
 
 				@Override
 				public Void answer(InvocationOnMock invocationOnMock) throws Throwable {
-					Buffer buffer = (Buffer) invocationOnMock.getArguments()[0];
+					SynchronizedWriteBuffer buffer = (SynchronizedWriteBuffer) invocationOnMock.getArguments()[0];
 					addBufferToOutputList(recordDeserializer, delegate, buffer, outputList);
 					return null;
 				}
@@ -183,7 +184,7 @@ public class StreamMockEnvironment implements Environment {
 
 				@Override
 				public Void answer(InvocationOnMock invocationOnMock) throws Throwable {
-					Buffer buffer = (Buffer) invocationOnMock.getArguments()[0];
+					SynchronizedWriteBuffer buffer = (SynchronizedWriteBuffer) invocationOnMock.getArguments()[0];
 					addBufferToOutputList(recordDeserializer, delegate, buffer, outputList);
 					return null;
 				}
@@ -209,11 +210,13 @@ public class StreamMockEnvironment implements Environment {
 	 * @throws java.io.IOException
 	 */
 	private <T> void addBufferToOutputList(
-		RecordDeserializer<DeserializationDelegate<T>> recordDeserializer,
-		NonReusingDeserializationDelegate<T> delegate, Buffer buffer,
-		final Queue<Object> outputList) throws java.io.IOException {
-		if (buffer.isBuffer()) {
-			recordDeserializer.setNextBuffer(buffer);
+			RecordDeserializer<DeserializationDelegate<T>> recordDeserializer,
+			NonReusingDeserializationDelegate<T> delegate, SynchronizedWriteBuffer buffer,
+			final Queue<Object> outputList) throws java.io.IOException {
+
+		Buffer sealedBuffer = buffer.sealAndDuplicate();
+		if (sealedBuffer.isBuffer()) {
+			recordDeserializer.setNextBuffer(sealedBuffer);
 
 			while (recordDeserializer.hasUnfinishedData()) {
 				RecordDeserializer.DeserializationResult result =
@@ -230,7 +233,7 @@ public class StreamMockEnvironment implements Environment {
 			}
 		} else {
 			// is event
-			AbstractEvent event = EventSerializer.fromBuffer(buffer, getClass().getClassLoader());
+			AbstractEvent event = EventSerializer.fromBuffer(sealedBuffer, getClass().getClassLoader());
 			outputList.add(event);
 		}
 	}

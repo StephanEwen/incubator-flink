@@ -48,6 +48,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.apache.flink.util.Preconditions.checkState;
+
 class PartitionRequestClientHandler extends ChannelInboundHandlerAdapter {
 
 	private static final Logger LOG = LoggerFactory.getLogger(PartitionRequestClientHandler.class);
@@ -321,7 +323,8 @@ class PartitionRequestClientHandler extends ChannelInboundHandlerAdapter {
 
 				MemorySegment memSeg = MemorySegmentFactory.wrap(byteArray);
 				Buffer buffer = new NetworkBuffer(memSeg, FreeingBufferRecycler.INSTANCE, false);
-				buffer.setWriterIndex(receivedSize);
+				boolean success = buffer.setWriterIndex(0, receivedSize);
+				checkState(success, "Updating the buffer's writer index failed.");
 
 				inputChannel.onBuffer(buffer, bufferOrEvent.sequenceNumber);
 

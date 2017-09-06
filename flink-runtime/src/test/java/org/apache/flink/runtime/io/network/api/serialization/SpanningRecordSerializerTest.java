@@ -59,6 +59,7 @@ public class SpanningRecordSerializerTest {
 			serializer.clear();
 			Assert.assertFalse(serializer.hasData());
 
+			buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 			serializer.setNextBuffer(buffer);
 
 			serializer.addRecord(randomIntRecord);
@@ -80,8 +81,11 @@ public class SpanningRecordSerializerTest {
 		final SpanningRecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<SerializationTestType>();
 		final Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(SEGMENT_SIZE), mock(BufferRecycler.class));
 
+		RecordSerializer.SerializationResult result;
+
 		try {
-			Assert.assertEquals(RecordSerializer.SerializationResult.FULL_RECORD, serializer.setNextBuffer(buffer));
+			result = serializer.setNextBuffer(buffer);
+			Assert.assertEquals(RecordSerializer.SerializationResult.FULL_RECORD, result);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -115,7 +119,7 @@ public class SpanningRecordSerializerTest {
 				}
 			};
 
-			RecordSerializer.SerializationResult result = serializer.addRecord(emptyRecord);
+			result = serializer.addRecord(emptyRecord);
 			Assert.assertEquals(RecordSerializer.SerializationResult.FULL_RECORD, result);
 
 			result = serializer.addRecord(emptyRecord);
@@ -124,6 +128,7 @@ public class SpanningRecordSerializerTest {
 			result = serializer.addRecord(emptyRecord);
 			Assert.assertEquals(RecordSerializer.SerializationResult.PARTIAL_RECORD_MEMORY_SEGMENT_FULL, result);
 
+			buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 			result = serializer.setNextBuffer(buffer);
 			Assert.assertEquals(RecordSerializer.SerializationResult.FULL_RECORD, result);
 		}
@@ -219,6 +224,7 @@ public class SpanningRecordSerializerTest {
 				Assert.assertEquals(RecordSerializer.SerializationResult.FULL_RECORD, result);
 			} else if (numBytes == segmentSize) {
 				Assert.assertEquals(RecordSerializer.SerializationResult.FULL_RECORD_MEMORY_SEGMENT_FULL, result);
+				buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 				serializer.setNextBuffer(buffer);
 				numBytes = 0;
 			} else {
@@ -226,6 +232,7 @@ public class SpanningRecordSerializerTest {
 
 				while (result.isFullBuffer()) {
 					numBytes -= segmentSize;
+					buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 					result = serializer.setNextBuffer(buffer);
 				}
 			}

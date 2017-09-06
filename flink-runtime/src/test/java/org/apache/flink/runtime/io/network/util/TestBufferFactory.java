@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.junit.Assert.assertTrue;
 
 public class TestBufferFactory {
 
@@ -102,7 +103,7 @@ public class TestBufferFactory {
 
 		NetworkBuffer buffer =
 			new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(bufferSize), RECYCLER);
-		buffer.setWriterIndex(dataSize);
+		assertTrue(buffer.setWriterIndex(0, dataSize));
 		return buffer;
 	}
 }

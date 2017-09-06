@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * A base class for readers and writers that accept read or write requests for whole blocks.
@@ -420,7 +421,8 @@ final class BufferReadRequest implements ReadRequest {
 			checkArgument(buffer.getWriterIndex() == 0, "Buffer not empty");
 
 			fileChannel.read(buffer.getNioBuffer(0, size));
-			buffer.setWriterIndex(size);
+			boolean success = buffer.setWriterIndex(0, size);
+			checkState(success, "Updating the buffer's writer index failed.");
 
 			if (!isBuffer) {
 				buffer.tagAsEvent();

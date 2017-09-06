@@ -165,8 +165,10 @@ public class SpanningRecordSerializationTest {
 					}
 				}
 
+				buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 				while (serializer.setNextBuffer(buffer).isFullBuffer()) {
 					deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, segmentSize);
+					buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 				}
 
 

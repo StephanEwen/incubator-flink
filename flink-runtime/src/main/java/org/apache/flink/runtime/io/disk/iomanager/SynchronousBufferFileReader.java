@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * A synchronous {@link BufferFileReader} implementation.
@@ -62,7 +63,8 @@ public class SynchronousBufferFileReader extends SynchronousFileIOChannel implem
 			checkArgument(buffer.getWriterIndex() == 0, "Buffer not empty");
 
 			fileChannel.read(buffer.getNioBuffer(0, size));
-			buffer.setWriterIndex(size);
+			boolean success = buffer.setWriterIndex(0, size);
+			checkState(success, "Updating the buffer's writer index failed.");
 
 			if (!isBuffer) {
 				buffer.tagAsEvent();

@@ -26,7 +26,7 @@ import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.util.XORShiftRandom;
@@ -109,7 +109,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		RecordSerializer<T> serializer = serializers[targetChannel];
 
 		synchronized (serializer) {
-			NetworkBuffer buffer = (NetworkBuffer) serializer.getCurrentBuffer();
+			SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();
 			int writerIndexBefore = (buffer == null) ? 0 : buffer.getWriterIndex();
 
 			SerializationResult result = serializer.addRecord(record);
@@ -120,17 +120,17 @@ public class RecordWriter<T extends IOReadableWritable> {
 					// a serializer without a current target buffer should return this result:
 					checkState(result == SerializationResult.PARTIAL_RECORD_MEMORY_SEGMENT_FULL);
 
-					buffer = (NetworkBuffer) targetPartition.getBufferProvider().requestBufferBlocking();
+					buffer = targetPartition.getBufferProvider().requestBufferBlocking();
 					writerIndexBefore = 0;
 					result = serializer.setNextBuffer(buffer);
 				}
 
 				// written anything?
-				if (buffer.getWriterIndex() > writerIndexBefore) {
+				int bytesWritten = buffer.getWriterIndex() - writerIndexBefore;
+				if (bytesWritten > 0) {
 					// add to target sub-partition so the network stack can already read from it
 					// while we're completing the buffer (therefore, also retain it)
 					buffer.retainBuffer();
-					int bytesWritten = buffer.getWriterIndex() - writerIndexBefore;
 					targetPartition.add(buffer, targetChannel, bytesWritten);
 					numBytesOut.inc(bytesWritten);
 				}
@@ -156,7 +156,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 				RecordSerializer<T> serializer = serializers[targetChannel];
 
 				synchronized (serializer) {
-					Buffer buffer = serializer.getCurrentBuffer();
+					SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();
 					if (buffer != null) {
 						serializer.clearCurrentBuffer();
 						buffer.recycleBuffer();
@@ -183,7 +183,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		for (RecordSerializer<?> serializer : serializers) {
 			synchronized (serializer) {
 				try {
-					Buffer buffer = serializer.getCurrentBuffer();
+					SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();
 
 					if (buffer != null) {
 						buffer.recycleBuffer();

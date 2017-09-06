@@ -107,8 +107,15 @@ public final class DuplicatedNetworkBuffer extends DuplicatedByteBuf implements 
 	}
 
 	@Override
-	public void setWriterIndex(int writerIndex) {
-		writerIndex(writerIndex);
+	public boolean setWriterIndex(int previousIdx, int newIdx) {
+		throw new UnsupportedOperationException("Writer index should only be updated at the original buffer.");
+	}
+
+	@Override
+	public Buffer sealAndDuplicate() {
+		DuplicatedNetworkBuffer duplicatedBuffer = unwrap().sealAndDuplicate();
+		duplicatedBuffer.setIndex(readerIndex(), writerIndex());
+		return duplicatedBuffer	;
 	}
 
 	@Override

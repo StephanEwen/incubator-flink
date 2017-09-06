@@ -39,6 +39,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.IteratorWrappingTestSingleInputGate;
@@ -219,18 +220,12 @@ public class MockEnvironment implements Environment {
 
 				@Override
 				public Void answer(InvocationOnMock invocationOnMock) throws Throwable {
-					NetworkBuffer buffer = (NetworkBuffer) invocationOnMock.getArguments()[0];
-					NetworkBuffer readableBuffer = null;
+					SynchronizedWriteBuffer buffer = (SynchronizedWriteBuffer) invocationOnMock.getArguments()[0];
 					try {
 
 						// define the part of the buffer that is ready to send (each part is sent only
 						// once although the buffer may be in the queue multiple times!)
-						readableBuffer = new NetworkBuffer(
-							MemorySegmentFactory.allocateUnpooledSegment(buffer.readableBytes()),
-							mock(BufferRecycler.class));
-						buffer.readBytes(readableBuffer, buffer.readableBytes());
-
-						deserializer.setNextBuffer(readableBuffer);
+						deserializer.setNextBuffer(buffer.sealAndDuplicate());
 
 						while (deserializer.hasUnfinishedData()) {
 							RecordDeserializer.DeserializationResult result =
@@ -251,9 +246,6 @@ public class MockEnvironment implements Environment {
 						return null;
 					} finally {
 						buffer.recycleBuffer();
-						if (readableBuffer != null) {
-							readableBuffer.recycleBuffer();
-						}
 					}
 				}
 			}).when(mockWriter).add(any(Buffer.class), anyInt(), anyInt());

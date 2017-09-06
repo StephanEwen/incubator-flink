@@ -251,13 +251,15 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		PipelinedSubpartition partition = createSubpartition();
 
 		Buffer buffer2 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
-		buffer2.setWriterIndex(10); // pretend some data has been written
+		// pretend some data has been written
+		assertTrue(buffer2.setWriterIndex(0, 10));
 		Buffer buffer1 = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(32), FreeingBufferRecycler.INSTANCE);
-		buffer1.setWriterIndex(10); // pretend some data has been written
+		// pretend some data has been written
+		assertTrue(buffer1.setWriterIndex(0, 10));
 
 		partition.add(buffer1.retainBuffer(), buffer1.readableBytes());
 		partition.add(buffer2.retainBuffer(), buffer2.readableBytes());
-		buffer2.setWriterIndex(15); // pretend some additional data has been written
+		assertTrue(buffer2.setWriterIndex(10, 15)); // more data
 		partition.add(buffer2.retainBuffer(), 5);
 
 		// a single buffer instance will only be added once

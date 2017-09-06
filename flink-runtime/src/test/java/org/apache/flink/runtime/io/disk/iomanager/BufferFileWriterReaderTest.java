@@ -204,7 +204,7 @@ public class BufferFileWriterReaderTest {
 		for (int i = 0; i < size; i += 4) {
 			segment.putInt(i, currentNumber++);
 		}
-		buffer.setWriterIndex(size);
+		assertTrue(buffer.setWriterIndex(0, size));
 
 		return currentNumber;
 	}

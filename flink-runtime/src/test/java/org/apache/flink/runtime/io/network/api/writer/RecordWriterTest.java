@@ -36,6 +36,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
@@ -189,7 +190,7 @@ public class RecordWriterTest {
 			doAnswer(new Answer<Void>() {
 				@Override
 				public Void answer(InvocationOnMock invocation) throws Throwable {
-					Buffer buffer = (Buffer) invocation.getArguments()[0];
+					SynchronizedWriteBuffer buffer = (SynchronizedWriteBuffer) invocation.getArguments()[0];
 					buffer.recycleBuffer();
 
 					throw new RuntimeException("Expected test Exception");
@@ -464,13 +465,14 @@ public class RecordWriterTest {
 		doAnswer(new Answer<Void>() {
 			@Override
 			public Void answer(InvocationOnMock invocationOnMock) throws Throwable {
-				Buffer buffer = (Buffer) invocationOnMock.getArguments()[0];
-				if (buffer.isBuffer()) {
+				SynchronizedWriteBuffer buffer = (SynchronizedWriteBuffer) invocationOnMock.getArguments()[0];
+				Buffer sealedBuffer = buffer.sealAndDuplicate();
+				if (sealedBuffer.isBuffer()) {
 					Integer targetChannel = (Integer) invocationOnMock.getArguments()[1];
-					queues[targetChannel].add(new BufferOrEvent(buffer, targetChannel));
+					queues[targetChannel].add(new BufferOrEvent(sealedBuffer, targetChannel));
 				} else {
 					// is event:
-					AbstractEvent event = EventSerializer.fromBuffer(buffer, getClass().getClassLoader());
+					AbstractEvent event = EventSerializer.fromBuffer(sealedBuffer, getClass().getClassLoader());
 					buffer.recycleBuffer(); // the buffer is not needed anymore
 					Integer targetChannel = (Integer) invocationOnMock.getArguments()[1];
 					queues[targetChannel].add(new BufferOrEvent(event, targetChannel));
@@ -523,7 +525,7 @@ public class RecordWriterTest {
 		doAnswer(new Answer<Void>() {
 			@Override
 			public Void answer(InvocationOnMock invocation) throws Throwable {
-				((Buffer) invocation.getArguments()[0]).recycleBuffer();
+				((SynchronizedWriteBuffer) invocation.getArguments()[0]).sealAndDuplicate().recycleBuffer();
 
 				return null;
 			}

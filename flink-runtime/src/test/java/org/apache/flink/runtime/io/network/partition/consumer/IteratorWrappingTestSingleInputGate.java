@@ -78,8 +78,7 @@ public class IteratorWrappingTestSingleInputGate<T extends IOReadableWritable> e
 
 					hasData = inputIterator.next(reuse) != null;
 
-					// Call getCurrentBuffer to ensure size is set
-					return new InputChannel.BufferAndAvailability(serializer.getCurrentBuffer(), true);
+					return new InputChannel.BufferAndAvailability(buffer, true);
 				} else {
 					when(inputChannel.getInputChannel().isReleased()).thenReturn(true);
 

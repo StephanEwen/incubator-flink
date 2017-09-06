@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 
 import java.io.IOException;
 
@@ -75,13 +75,13 @@ public abstract class ResultSubpartition {
 	 *
 	 * @param buffer
 	 * 		the buffer to add (it is not an error to add the same buffer multiple times but the
-	 * 		contents will only be sent once - use {@link Buffer#duplicate()} to send the same contents
-	 * 		multiple times!)
+	 * 		contents will only be sent once - use {@link org.apache.flink.runtime.io.network.buffer.Buffer#duplicate()}
+	 * 		to send the same contents multiple times!)
 	 * @param bytesWritten
 	 * 		number of bytes added by this buffer (to keep byte counting consistent for cases where a
 	 * 		single buffer is entered multiple times)
 	 */
-	public abstract boolean add(Buffer buffer, int bytesWritten) throws IOException;
+	public abstract boolean add(SynchronizedWriteBuffer buffer, int bytesWritten) throws IOException;
 
 	public abstract void finish() throws IOException;
 

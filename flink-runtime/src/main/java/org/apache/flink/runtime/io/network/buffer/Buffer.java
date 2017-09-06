@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemorySegment;
+
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 
 import java.nio.ByteBuffer;
@@ -41,9 +42,9 @@ import java.nio.ByteBuffer;
  * <p>Our non-Netty usages of this <tt>Buffer</tt> class either rely on the underlying {@link
  * #getMemorySegment()} directly, or on {@link ByteBuffer} wrappers of this buffer which do not
  * modify either index, so the indices need to be updated manually via {@link #setReaderIndex(int)}
- * and {@link #setWriterIndex(int)}.
+ * and {@link #setWriterIndex(int, int)}.
  */
-public interface Buffer {
+public interface Buffer extends SynchronizedWriteBuffer {
 
 	/**
 	 * Returns whether this buffer represents a buffer or an event.
@@ -58,37 +59,6 @@ public interface Buffer {
 	void tagAsEvent();
 
 	/**
-	 * Returns the underlying memory segment.
-	 *
-	 * @return the memory segment backing this buffer
-	 */
-	MemorySegment getMemorySegment();
-
-	/**
-	 * Releases this buffer once, i.e. reduces the reference count and recycles the buffer if the
-	 * reference count reaches <tt>0</tt>.
-	 *
-	 * @see #retainBuffer()
-	 */
-	void recycleBuffer();
-
-	/**
-	 * Returns whether this buffer has been recycled or not.
-	 *
-	 * @return <tt>true</tt> if already recycled, <tt>false</tt> otherwise
-	 */
-	boolean isRecycled();
-
-	/**
-	 * Retains this buffer for further use, increasing the reference counter by <tt>1</tt>.
-	 *
-	 * @return <tt>this</tt> instance (for chained calls)
-	 *
-	 * @see #recycleBuffer()
-	 */
-	Buffer retainBuffer();
-
-	/**
 	 * Creates a buffer which shares the memory segment of this given buffer.
 	 *
 	 * <p>Modifying the content of a duplicate will affect the original buffer and vice versa while
@@ -96,13 +66,6 @@ public interface Buffer {
 	 * duplicate is not {@link #retainBuffer() retained} automatically.
 	 */
 	Buffer duplicate();
-
-	/**
-	 * Returns the size of the buffer, i.e. the capacity of the underlying {@link MemorySegment}.
-	 *
-	 * @return size of the buffer
-	 */
-	int getSize();
 
 	/**
 	 * Returns the <tt>reader index</tt> of this buffer.
@@ -121,24 +84,6 @@ public interface Buffer {
 	 * 		if the index is less than <tt>0</tt> or greater than {@link #getWriterIndex()}
 	 */
 	void setReaderIndex(int readerIndex) throws IndexOutOfBoundsException;
-
-	/**
-	 * Returns the <tt>writer index</tt> of this buffer.
-	 *
-	 * <p>This is where writable bytes start in the backing memory segment.
-	 *
-	 * @return writer index (from 0 (inclusive) to the size of the backing {@link MemorySegment}
-	 * (inclusive))
-	 */
-	int getWriterIndex();
-
-	/**
-	 * Sets the <tt>writer index</tt> of this buffer.
-	 *
-	 * @throws IndexOutOfBoundsException
-	 * 		if the index is less than {@link #getReaderIndex()} or greater than {@link #getSize()}
-	 */
-	void setWriterIndex(int writerIndex);
 
 	/**
 	 * Returns the number of readable bytes (same as <tt>{@link #getWriterIndex()} -

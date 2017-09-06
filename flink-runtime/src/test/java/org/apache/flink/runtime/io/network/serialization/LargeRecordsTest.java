@@ -29,6 +29,7 @@ import org.apache.flink.runtime.io.network.api.serialization.types.Serialization
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+import org.apache.flink.runtime.io.network.buffer.SynchronizedWriteBuffer;
 import org.apache.flink.runtime.io.network.serialization.types.LargeObjectType;
 import org.junit.Test;
 
@@ -99,8 +100,10 @@ public class LargeRecordsTest {
 					}
 
 					// move buffers as long as necessary (for long records)
+					buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 					while (serializer.setNextBuffer(buffer).isFullBuffer()) {
 						deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, SEGMENT_SIZE);
+						buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 					}
 					
 					// deserialize records, as many as there are in the last buffer
@@ -118,7 +121,7 @@ public class LargeRecordsTest {
 			}
 			
 			// move the last (incomplete buffer)
-			Buffer last = serializer.getCurrentBuffer();
+			SynchronizedWriteBuffer last = serializer.getCurrentBuffer();
 			deserializer.setNextMemorySegment(last.getMemorySegment(), 0, last.getWriterIndex());
 			serializer.clear();
 			
@@ -199,8 +202,10 @@ public class LargeRecordsTest {
 					}
 
 					// move buffers as long as necessary (for long records)
+					buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 					while (serializer.setNextBuffer(buffer).isFullBuffer()) {
 						deserializer.setNextMemorySegment(serializer.getCurrentBuffer().getMemorySegment(), 0, SEGMENT_SIZE);
+						buffer.setWriterIndex(buffer.getWriterIndex(), 0); // re-use the same buffer
 					}
 					
 					// deserialize records, as many as there are in the last buffer
@@ -218,7 +223,7 @@ public class LargeRecordsTest {
 			}
 			
 			// move the last (incomplete buffer)
-			Buffer last = serializer.getCurrentBuffer();
+			SynchronizedWriteBuffer last = serializer.getCurrentBuffer();
 			deserializer.setNextMemorySegment(last.getMemorySegment(), 0, last.getWriterIndex());
 			serializer.clear();
 			
