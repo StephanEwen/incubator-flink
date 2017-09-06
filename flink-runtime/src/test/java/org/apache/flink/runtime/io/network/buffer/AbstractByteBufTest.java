@@ -1593,8 +1593,9 @@ public abstract class AbstractByteBufTest {
         // Make sure the buffer content is shared.
         buffer.setByte(readerIndex, (byte) (buffer.getByte(readerIndex) + 1));
         assertEquals(buffer.getByte(readerIndex), duplicate.getByte(duplicate.readerIndex()));
-        duplicate.setByte(duplicate.readerIndex(), (byte) (duplicate.getByte(duplicate.readerIndex()) + 1));
-        assertEquals(buffer.getByte(readerIndex), duplicate.getByte(duplicate.readerIndex()));
+        // our duplicate is read-only
+//        duplicate.setByte(duplicate.readerIndex(), (byte) (duplicate.getByte(duplicate.readerIndex()) + 1));
+//        assertEquals(buffer.getByte(readerIndex), duplicate.getByte(duplicate.readerIndex()));
     }
 
     @Test

@@ -19,14 +19,20 @@
 package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemorySegment;
+
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.DuplicatedByteBuf;
 
+import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.ReadOnlyBufferException;
+import java.nio.channels.ScatteringByteChannel;
 
 /**
- * Minimal {@link DuplicatedByteBuf} implementation wrapping a {@link NetworkBuffer}, similar to
- * <tt>io.netty.buffer.DuplicatedAbstractByteBuf</tt>.
+ * Minimal read-only {@link DuplicatedByteBuf} implementation wrapping a {@link NetworkBuffer},
+ * similar to <tt>io.netty.buffer.DuplicatedAbstractByteBuf</tt> and
+ * <tt>io.netty.buffer.ReadOnlyByteBuf</tt>.
  */
 public final class DuplicatedNetworkBuffer extends DuplicatedByteBuf implements Buffer{
 
@@ -39,7 +45,7 @@ public final class DuplicatedNetworkBuffer extends DuplicatedByteBuf implements 
 	 *
 	 * @param buffer the buffer to duplicate
 	 */
-	public DuplicatedNetworkBuffer(NetworkBuffer buffer) {
+	DuplicatedNetworkBuffer(NetworkBuffer buffer) {
 		super(buffer);
 	}
 
@@ -129,6 +135,16 @@ public final class DuplicatedNetworkBuffer extends DuplicatedByteBuf implements 
 	}
 
 	@Override
+	public boolean isWritable() {
+		return false;
+	}
+
+	@Override
+	public boolean isWritable(int numBytes) {
+		return false;
+	}
+
+	@Override
 	public void setAllocator(ByteBufAllocator allocator) {
 		unwrap().setAllocator(allocator);
 	}
@@ -158,28 +174,111 @@ public final class DuplicatedNetworkBuffer extends DuplicatedByteBuf implements 
 		return unwrap()._getLong(index);
 	}
 
+	// ------------------------------------------------------------------------
+
+	@Override
+	public ByteBuf capacity(int newCapacity) {
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public ByteBuf setBytes(int index, ByteBuf src, int srcIndex, int length) {
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public ByteBuf setBytes(int index, byte[] src, int srcIndex, int length) {
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public ByteBuf setBytes(int index, ByteBuffer src) {
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public int setBytes(int index, InputStream in, int length) {
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public int setBytes(int index, ScatteringByteChannel in, int length) {
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public ByteBuf setByte(int index, int value) {
+		throw new ReadOnlyBufferException();
+	}
+
 	@Override
 	protected void _setByte(int index, int value) {
-		unwrap()._setByte(index, value);
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public ByteBuf setShort(int index, int value) {
+		throw new ReadOnlyBufferException();
 	}
 
 	@Override
 	protected void _setShort(int index, int value) {
-		unwrap()._setShort(index, value);
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public ByteBuf setMedium(int index, int value) {
+		throw new ReadOnlyBufferException();
 	}
 
 	@Override
 	protected void _setMedium(int index, int value) {
-		unwrap()._setMedium(index, value);
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public ByteBuf setInt(int index, int value) {
+		throw new ReadOnlyBufferException();
 	}
 
 	@Override
 	protected void _setInt(int index, int value) {
-		unwrap()._setInt(index, value);
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public ByteBuf setLong(int index, long value) {
+		throw new ReadOnlyBufferException();
 	}
 
 	@Override
 	protected void _setLong(int index, long value) {
-		unwrap()._setLong(index, value);
+		throw new ReadOnlyBufferException();
 	}
+
+	@Override
+	public byte[] array() {
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public int arrayOffset() {
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public boolean hasMemoryAddress() {
+		return false;
+	}
+
+	@Override
+	public long memoryAddress() {
+		throw new ReadOnlyBufferException();
+	}
+
+	@Override
+	public ByteBuf discardReadBytes() {
+		throw new ReadOnlyBufferException();
+	}
+
 }
