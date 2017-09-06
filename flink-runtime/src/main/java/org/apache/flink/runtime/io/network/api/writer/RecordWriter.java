@@ -130,8 +130,13 @@ public class RecordWriter<T extends IOReadableWritable> {
 				if (bytesWritten > 0) {
 					// add to target sub-partition so the network stack can already read from it
 					// while we're completing the buffer (therefore, also retain it)
-					buffer.retainBuffer();
-					targetPartition.add(buffer, targetChannel, bytesWritten);
+					if (writerIndexBefore == 0) {
+						// only add the first time
+						buffer.retainBuffer();
+						targetPartition.add(buffer, targetChannel, bytesWritten);
+					} else {
+						// TODO: update bytesWritten stats in the targetPartition
+					}
 					numBytesOut.inc(bytesWritten);
 				}
 
