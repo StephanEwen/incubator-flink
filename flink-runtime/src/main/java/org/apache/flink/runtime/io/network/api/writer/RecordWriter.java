@@ -108,49 +108,47 @@ public class RecordWriter<T extends IOReadableWritable> {
 	private void sendToTarget(T record, int targetChannel) throws IOException, InterruptedException {
 		RecordSerializer<T> serializer = serializers[targetChannel];
 
-		synchronized (serializer) {
-			SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();
-			int writerIndexBefore = (buffer == null) ? 0 : buffer.getWriterIndex();
+		SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();
+		int writerIndexBefore = (buffer == null) ? 0 : buffer.getWriterIndex();
 
-			SerializationResult result = serializer.addRecord(record);
+		SerializationResult result = serializer.addRecord(record);
 
-			// serialize any copy into network buffers until the whole record has been written
-			do {
-				if (buffer == null) {
-					// a serializer without a current target buffer should return this result:
-					checkState(result == SerializationResult.PARTIAL_RECORD_MEMORY_SEGMENT_FULL);
+		// serialize any copy into network buffers until the whole record has been written
+		do {
+			if (buffer == null) {
+				// a serializer without a current target buffer should return this result:
+				checkState(result == SerializationResult.PARTIAL_RECORD_MEMORY_SEGMENT_FULL);
 
-					buffer = targetPartition.getBufferProvider().requestBufferBlocking();
-					writerIndexBefore = 0;
-					result = serializer.setNextBuffer(buffer);
+				buffer = targetPartition.getBufferProvider().requestBufferBlocking();
+				writerIndexBefore = 0;
+				result = serializer.setNextBuffer(buffer);
+			}
+
+			// written anything?
+			int bytesWritten = buffer.getWriterIndex() - writerIndexBefore;
+			if (bytesWritten > 0) {
+				// add to target sub-partition so the network stack can already read from it
+				// while we're completing the buffer (therefore, also retain it)
+				if (writerIndexBefore == 0) {
+					// only add the first time
+					buffer.retainBuffer();
+					targetPartition.add(buffer, targetChannel, bytesWritten);
+				} else {
+					// TODO: update bytesWritten stats in the targetPartition
 				}
+				numBytesOut.inc(bytesWritten);
+			}
 
-				// written anything?
-				int bytesWritten = buffer.getWriterIndex() - writerIndexBefore;
-				if (bytesWritten > 0) {
-					// add to target sub-partition so the network stack can already read from it
-					// while we're completing the buffer (therefore, also retain it)
-					if (writerIndexBefore == 0) {
-						// only add the first time
-						buffer.retainBuffer();
-						targetPartition.add(buffer, targetChannel, bytesWritten);
-					} else {
-						// TODO: update bytesWritten stats in the targetPartition
-					}
-					numBytesOut.inc(bytesWritten);
-				}
+			// make room for a new buffer if this one is full
+			if (result.isFullBuffer()) {
+				serializer.clearCurrentBuffer();
+				buffer.recycleBuffer();
+				buffer = null;
+			}
+		} while (!result.isFullRecord());
 
-				// make room for a new buffer if this one is full
-				if (result.isFullBuffer()) {
-					serializer.clearCurrentBuffer();
-					buffer.recycleBuffer();
-					buffer = null;
-				}
-			} while (!result.isFullRecord());
-
-			// NOTE: cleanup of the target buffers in cases of failures is handled some layers above
-			//       which (need to) call #clearBuffers() to also reset the serializers!
-		}
+		// NOTE: cleanup of the target buffers in cases of failures is handled some layers above
+		//       which (need to) call #clearBuffers() to also reset the serializers!
 	}
 
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
@@ -160,22 +158,20 @@ public class RecordWriter<T extends IOReadableWritable> {
 			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
 				RecordSerializer<T> serializer = serializers[targetChannel];
 
-				synchronized (serializer) {
-					SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();
-					if (buffer != null) {
-						serializer.clearCurrentBuffer();
-						buffer.recycleBuffer();
-					} else if (serializer.hasData()) {
-						// sanity check
-						throw new IllegalStateException("No buffer, but serializer has buffered data.");
-					}
-
-					// Create a duplicate with shared contents but independent reader/writer indices
-					// because we read the same contents multiple times. Also retain the buffer so
-					// that it can be recycled by each channel of targetPartition.
-					targetPartition.add(eventBuffer.duplicate().retainBuffer(), targetChannel,
-						bytesWritten);
+				SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();
+				if (buffer != null) {
+					serializer.clearCurrentBuffer();
+					buffer.recycleBuffer();
+				} else if (serializer.hasData()) {
+					// sanity check
+					throw new IllegalStateException("No buffer, but serializer has buffered data.");
 				}
+
+				// Create a duplicate with shared contents but independent reader/writer indices
+				// because we read the same contents multiple times. Also retain the buffer so
+				// that it can be recycled by each channel of targetPartition.
+				targetPartition.add(eventBuffer.duplicate().retainBuffer(), targetChannel,
+					bytesWritten);
 			}
 		} finally {
 			// we do not need to further retain the eventBuffer
@@ -186,17 +182,15 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	public void clearBuffers() {
 		for (RecordSerializer<?> serializer : serializers) {
-			synchronized (serializer) {
-				try {
-					SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();
+			try {
+				SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();
 
-					if (buffer != null) {
-						buffer.recycleBuffer();
-					}
+				if (buffer != null) {
+					buffer.recycleBuffer();
 				}
-				finally {
-					serializer.clear();
-				}
+			}
+			finally {
+				serializer.clear();
 			}
 		}
 	}
