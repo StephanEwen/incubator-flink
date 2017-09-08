@@ -22,6 +22,7 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.net.SSLUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,6 +75,14 @@ public class NettyConfig {
 			.key("taskmanager.network.netty.transport")
 			.defaultValue("nio")
 			.withDeprecatedKeys("taskmanager.net.transport");
+
+	public static final ConfigOption<Integer> LOW_WATERMARK = ConfigOptions
+			.key("taskmanager.network.netty.watermark.low")
+			.defaultValue(TaskManagerOptions.MEMORY_SEGMENT_SIZE.defaultValue() + 1);
+
+	public static final ConfigOption<Integer> HIGH_WATERMARK = ConfigOptions
+			.key("taskmanager.network.netty.watermark.high")
+			.defaultValue(2 * TaskManagerOptions.MEMORY_SEGMENT_SIZE.defaultValue());
 
 	// ------------------------------------------------------------------------
 
@@ -137,6 +146,10 @@ public class NettyConfig {
 	// ------------------------------------------------------------------------
 	// Getters
 	// ------------------------------------------------------------------------
+
+	public Configuration getConfig() {
+		return config;
+	}
 
 	public int getServerConnectBacklog() {
 		return config.getInteger(CONNECT_BACKLOG);
