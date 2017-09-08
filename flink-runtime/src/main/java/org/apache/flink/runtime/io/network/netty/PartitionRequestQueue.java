@@ -225,6 +225,12 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 							markAsReleased(reader.getReceiverId());
 						}
 
+						bufferSize += networkBuffer.readableBytes();
+						if (++bufferCount == 1_000_000) {
+							LOG.error("Last 1.000.000 buffers average size: " + bufferSize / bufferCount);
+							bufferCount = 0;
+							bufferSize = 0;
+						}
 						// Write and flush and wait until this is done before
 						// trying to continue with the next buffer.
 						channel.writeAndFlush(msg).addListener(writeListener);
@@ -241,6 +247,9 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 			throw new IOException(t.getMessage(), t);
 		}
 	}
+
+	long bufferCount = 0;
+	long bufferSize = 0;
 
 	private boolean isEndOfPartitionEvent(Buffer buffer) throws IOException {
 		return EventSerializer.isEvent(buffer, EndOfPartitionEvent.class,
