@@ -105,7 +105,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		sendToTarget(record, RNG.nextInt(numChannels));
 	}
 
-	private void sendToTarget(T record, int targetChannel) throws IOException, InterruptedException {
+	public void sendToTarget(T record, int targetChannel) throws IOException, InterruptedException {
 		RecordSerializer<T> serializer = serializers[targetChannel];
 
 		SynchronizedWriteBuffer buffer = serializer.getCurrentBuffer();

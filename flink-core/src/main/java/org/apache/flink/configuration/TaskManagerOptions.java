@@ -158,7 +158,7 @@ public class TaskManagerOptions {
 	 */
 	public static final ConfigOption<Integer> NETWORK_EXTRA_BUFFERS_PER_GATE =
 			key("taskmanager.network.memory.floating-buffers-per-gate")
-			.defaultValue(8);
+			.defaultValue(16);
 
 	/**
 	 * Minimum backoff for partition requests of input channels.
