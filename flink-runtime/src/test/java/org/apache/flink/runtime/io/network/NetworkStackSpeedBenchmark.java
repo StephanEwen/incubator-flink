@@ -261,6 +261,9 @@ public class NetworkStackSpeedBenchmark extends TestLogger {
 						sumLatency += latencyNanos;
 						numSamples++;
 					}
+
+					Thread.sleep(1);
+
 				}
 			}
 			catch (InterruptedException e) {
