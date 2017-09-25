@@ -91,6 +91,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		}
 		
 		if (shouldTrigger) {
+			System.err.println("!!! FIRE !!!");
 			ctx.pipeline().fireUserEventTriggered(reader);
 		}
 	}
@@ -226,6 +227,8 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 						markAsReleased(reader.getReceiverId());
 					}
+
+					System.err.println("Buffer " + bufferCount + " Size = " + networkBuffer.readableBytes());
 
 					bufferSize += networkBuffer.readableBytes();
 					if (++bufferCount == 5_000) {

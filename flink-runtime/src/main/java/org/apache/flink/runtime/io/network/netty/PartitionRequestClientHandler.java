@@ -413,6 +413,7 @@ class PartitionRequestClientHandler extends ChannelInboundHandlerAdapter {
 					stagedBufferResponse = null;
 
 					if (stagedMessages.isEmpty()) {
+						System.err.println(" -------------  resume read");
 						ctx.channel().config().setAutoRead(true);
 						ctx.channel().read();
 					}
@@ -467,6 +468,7 @@ class PartitionRequestClientHandler extends ChannelInboundHandlerAdapter {
 				stagedBufferResponse = null;
 
 				if (stagedMessages.isEmpty()) {
+					System.err.println(" -------------  resume read");
 					ctx.channel().config().setAutoRead(true);
 					ctx.channel().read();
 				}
@@ -492,6 +494,7 @@ class PartitionRequestClientHandler extends ChannelInboundHandlerAdapter {
 		@Override
 		public void run() {
 			try {
+				System.err.println(">>>>> staged messages length = " + stagedMessages.size());
 				Object msg;
 				while ((msg = stagedMessages.poll()) != null) {
 					if (!decodeMsg(msg, true)) {
