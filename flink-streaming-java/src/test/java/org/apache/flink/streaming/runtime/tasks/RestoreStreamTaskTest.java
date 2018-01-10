@@ -247,7 +247,7 @@ public class RestoreStreamTaskTest extends TestLogger {
 		long checkpointId = 1L;
 		CheckpointMetaData checkpointMetaData = new CheckpointMetaData(checkpointId, 1L);
 
-		while (!streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpoint())) {}
+		while (!streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation())) {}
 
 		environment.getCheckpointLatch().await();
 		assertEquals(checkpointId, environment.getCheckpointId());

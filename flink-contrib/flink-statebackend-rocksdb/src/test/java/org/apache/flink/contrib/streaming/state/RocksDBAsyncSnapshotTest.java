@@ -192,7 +192,7 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 			}
 		}
 
-		task.triggerCheckpoint(new CheckpointMetaData(42, 17), CheckpointOptions.forCheckpoint());
+		task.triggerCheckpoint(new CheckpointMetaData(42, 17), CheckpointOptions.forCheckpointWithDefaultLocation());
 
 		testHarness.processElement(new StreamRecord<>("Wohoo", 0));
 
@@ -295,7 +295,7 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 
 		task.triggerCheckpoint(
 			new CheckpointMetaData(42, 17),
-			CheckpointOptions.forCheckpoint());
+			CheckpointOptions.forCheckpointWithDefaultLocation());
 
 		testHarness.processElement(new StreamRecord<>("Wohoo", 0));
 		blockerCheckpointStreamFactory.getWaiterLatch().await();
@@ -366,7 +366,7 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 				new ValueStateDescriptor<>("foobar", String.class));
 
 			RunnableFuture<KeyedStateHandle> snapshotFuture = keyedStateBackend.snapshot(
-				checkpointId, timestamp, checkpointStreamFactory, CheckpointOptions.forCheckpoint());
+				checkpointId, timestamp, checkpointStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation());
 
 			try {
 				FutureUtil.runIfNotDoneAndGet(snapshotFuture);
