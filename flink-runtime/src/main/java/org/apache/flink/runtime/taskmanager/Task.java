@@ -134,6 +134,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	private static final AtomicReferenceFieldUpdater<Task, ExecutionState> STATE_UPDATER =
 			AtomicReferenceFieldUpdater.newUpdater(Task.class, ExecutionState.class, "executionState");
 
+	/** The process exit code used when killing the process after graceful cancellation failed. */
+	private static final int HARD_CANCEL_EXIT_CODE = 199;
+
 	// ------------------------------------------------------------------------
 	//  Constant fields that are part of the initial Task construction
 	// ------------------------------------------------------------------------
@@ -1080,7 +1083,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 						if (taskCancellationTimeout > 0) {
 							Runnable cancelWatchdog = new TaskCancelerWatchDog(
 									executingThread,
-									taskManagerActions,
 									taskCancellationTimeout,
 									LOG);
 
@@ -1618,15 +1620,11 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		/** The executing task thread that we wait for to terminate. */
 		private final Thread executerThread;
 
-		/** The TaskManager to notify if cancellation does not happen in time. */
-		private final TaskManagerActions taskManager;
-
 		/** The timeout for cancellation. */
 		private final long timeoutMillis;
 
 		TaskCancelerWatchDog(
 				Thread executerThread,
-				TaskManagerActions taskManager,
 				long timeoutMillis,
 				Logger log) {
 
@@ -1634,7 +1632,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 			this.log = log;
 			this.executerThread = executerThread;
-			this.taskManager = taskManager;
 			this.timeoutMillis = timeoutMillis;
 		}
 
@@ -1656,9 +1653,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				}
 
 				if (executerThread.isAlive()) {
-					String msg = "Task did not exit gracefully within " + (timeoutMillis / 1000) + " + seconds.";
-					log.error(msg);
-					taskManager.notifyFatalError(msg, null);
+					log.error("Task did not exit gracefully within {} seconds.", timeoutMillis / 1000);
+					System.exit(HARD_CANCEL_EXIT_CODE);
 				}
 			}
 			catch (Throwable t) {

@@ -22,11 +22,14 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.core.testutils.CommonTestUtils;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.TransientBlobCache;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
+import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.execution.CancelTaskException;
@@ -80,8 +83,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
-import scala.concurrent.duration.FiniteDuration;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -937,17 +938,10 @@ public class TaskTest extends TestLogger {
 			Configuration config,
 			ExecutionConfig execConfig) throws IOException {
 
-		ResultPartitionManager partitionManager = mock(ResultPartitionManager.class);
+		NetworkEnvironment network = TaskTestUtils.createTestNetworkEnvironment();
 		ResultPartitionConsumableNotifier consumableNotifier = mock(ResultPartitionConsumableNotifier.class);
 		PartitionProducerStateChecker partitionProducerStateChecker = mock(PartitionProducerStateChecker.class);
-		TaskEventDispatcher taskEventDispatcher = mock(TaskEventDispatcher.class);
-		Executor executor = mock(Executor.class);
-		NetworkEnvironment network = mock(NetworkEnvironment.class);
-		when(network.getResultPartitionManager()).thenReturn(partitionManager);
-		when(network.getDefaultIOMode()).thenReturn(IOManager.IOMode.SYNC);
-		when(network.createKvStateTaskRegistry(any(JobID.class), any(JobVertexID.class)))
-				.thenReturn(mock(TaskKvStateRegistry.class));
-		when(network.getTaskEventDispatcher()).thenReturn(taskEventDispatcher);
+		Executor executor = Executors.directExecutor();
 
 		return createTask(invokable, blobService, libCache, network, consumableNotifier, partitionProducerStateChecker, executor, config, execConfig);
 	}
@@ -978,14 +972,17 @@ public class TaskTest extends TestLogger {
 		JobVertexID jobVertexId = new JobVertexID();
 		ExecutionAttemptID executionAttemptId = new ExecutionAttemptID();
 
-		InputSplitProvider inputSplitProvider = new TaskInputSplitProvider(
-			jobManagerGateway,
-			jobId,
-			jobVertexId,
-			executionAttemptId,
-			new FiniteDuration(60, TimeUnit.SECONDS));
+		InputSplitProvider inputSplitProvider = userCodeClassLoader -> null;
 
-		CheckpointResponder checkpointResponder = new ActorGatewayCheckpointResponder(jobManagerGateway);
+		CheckpointResponder checkpointResponder = new CheckpointResponder() {
+
+			@Override
+			public void acknowledgeCheckpoint(JobID job, ExecutionAttemptID id, long checkpointId,
+					CheckpointMetrics checkpointMetrics, TaskStateSnapshot subtaskState) {}
+
+			@Override
+			public void declineCheckpoint(JobID job, ExecutionAttemptID id, long checkpointId, Throwable cause) {}
+		};
 
 		SerializedValue<ExecutionConfig> serializedExecutionConfig = new SerializedValue<>(execConfig);
 
@@ -1352,6 +1349,22 @@ public class TaskTest extends TestLogger {
 		@Override
 		public void invoke() throws Exception {
 			throw new TestWrappedException(new IOException("test"));
+		}
+
+		@Override
+		public void cancel() {}
+	}
+
+	/** Test task that cannot be cancelled. */
+	public static final class NonInterruptibleTask extends AbstractInvokable {
+
+		public NonInterruptibleTask(Environment environment) {
+			super(environment);
+		}
+
+		@Override
+		public void invoke() {
+			CommonTestUtils.blockForeverNonInterruptibly();
 		}
 
 		@Override
