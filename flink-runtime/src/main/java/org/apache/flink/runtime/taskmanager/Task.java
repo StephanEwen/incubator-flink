@@ -265,7 +265,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	 * This class loader should be set as the context class loader of the threads in
 	 * {@link #asyncCallDispatcher} because user code may dynamically load classes in all callbacks.
 	 */
-	private ClassLoader userCodeClassLoader;
+	private volatile ClassLoader userCodeClassLoader;
 
 	/**
 	 * <p><b>IMPORTANT:</b> This constructor may not start any work that would need to
@@ -557,7 +557,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 		// all resource acquisitions and registrations from here on
 		// need to be undone in the end
-		Map<String, Future<Path>> distributedCacheEntries = new HashMap<>();
+		final Map<String, Future<Path>> distributedCacheEntries = new HashMap<>();
 		AbstractInvokable invokable = null;
 
 		try {
@@ -1408,18 +1408,17 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			throw new Exception("Could not load the task's invokable class.", t);
 		}
 
-		Constructor<? extends AbstractInvokable> statelessCtor;
+		Constructor<? extends AbstractInvokable> ctor;
 
 		try {
-			statelessCtor = invokableClass.getConstructor(Environment.class);
+			ctor = invokableClass.getConstructor(Environment.class);
 		} catch (NoSuchMethodException ee) {
 			throw new FlinkException("Task misses proper constructor", ee);
 		}
 
 		// instantiate the class
 		try {
-			//noinspection ConstantConditions  --> cannot happen
-			return statelessCtor.newInstance(environment);
+			return ctor.newInstance(environment);
 		} catch (InvocationTargetException e) {
 			// directly forward exceptions from the eager initialization
 			throw e.getTargetException();
