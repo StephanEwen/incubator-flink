@@ -32,22 +32,20 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * Concrete tasks extend this class, for example the streaming and batch tasks.
  *
  * <p>The TaskManager invokes the {@link #invoke()} method when executing a
- * task. All operations of the task happen in this method (setting up input
- * output stream readers and writers as well as the task's core operation).
+ * task. All of the task's work happens in that method. Once the {@code invoke()} method returns
+ * normally, the task is considered successfully completed. This implies that for unbounded
+ * operations, the method only returns (possibly through an exception) on cancellation, failures,
+ * or other externally induced termination requests.
  *
- * <p>All classes that extend must offer a constructor {@code MyTask(Environment, TaskStateSnapshot)}.
- * Tasks that are always stateless can, for convenience, also only implement the constructor
- * {@code MyTask(Environment)}.
+ * <h3>Implementation Contract for Subclasses</h3>
  *
- * <p><i>Developer note: While constructors cannot be enforced at compile time, we did not yet venture
+ * <p>All classes that extend must offer a constructor {@code MyTask(Environment)} that calls
+ * the super constructor {@link #AbstractInvokable(Environment)}.
+ * <i>(Developer note: While constructors cannot be enforced at compile time, we did not yet venture
  * on the endeavor of introducing factories (it is only an internal API after all, and with Java 8,
- * one can use {@code Class::new} almost like a factory lambda.</i>
+ * one can use {@code Class::new} almost like a factory lambda.)</i>
  *
- * <p><b>NOTE:</b> There is no constructor that accepts and initial task state snapshot
- * and stores it in a variable. That is on purpose, because the AbstractInvokable itself
- * does not need the state snapshot (only subclasses such as StreamTask do need the state)
- * and we do not want to store a reference indefinitely, thus preventing cleanup of
- * the initial state structure by the Garbage Collector.
+ * <h3>Checkpointing</h3>
  *
  * <p>Any subclass that supports recoverable state and participates in
  * checkpointing needs to override {@link #triggerCheckpoint(CheckpointMetaData, CheckpointOptions)},
@@ -87,8 +85,8 @@ public abstract class AbstractInvokable {
 	 * This method is called when a task is canceled either as a result of a user abort or an execution failure. It can
 	 * be overwritten to respond to shut down the user code properly.
 	 *
-	 * @throws Exception
-	 *         thrown if any exception occurs during the execution of the user code
+	 * @throws Exception Cancellation may throw exceptions, which will be logged, but do not
+	 *                   abort the cancellation procedure.
 	 */
 	public void cancel() throws Exception {
 		// The default implementation does nothing.
@@ -96,7 +94,7 @@ public abstract class AbstractInvokable {
 
 	/**
 	 * Returns the environment of this task.
-	 * 
+	 *
 	 * @return The environment of this task.
 	 */
 	public Environment getEnvironment() {
@@ -114,7 +112,7 @@ public abstract class AbstractInvokable {
 
 	/**
 	 * Returns the current number of subtasks the respective task is split into.
-	 * 
+	 *
 	 * @return the current number of subtasks the respective task is split into
 	 */
 	public int getCurrentNumberOfSubtasks() {
@@ -123,7 +121,7 @@ public abstract class AbstractInvokable {
 
 	/**
 	 * Returns the index of this subtask in the subtask group.
-	 * 
+	 *
 	 * @return the index of this subtask in the subtask group
 	 */
 	public int getIndexInSubtaskGroup() {
@@ -132,7 +130,7 @@ public abstract class AbstractInvokable {
 
 	/**
 	 * Returns the task configuration object which was attached to the original {@link org.apache.flink.runtime.jobgraph.JobVertex}.
-	 * 
+	 *
 	 * @return the task configuration object which was attached to the original {@link org.apache.flink.runtime.jobgraph.JobVertex}
 	 */
 	public Configuration getTaskConfiguration() {
@@ -141,7 +139,7 @@ public abstract class AbstractInvokable {
 
 	/**
 	 * Returns the job configuration object which was attached to the original {@link org.apache.flink.runtime.jobgraph.JobGraph}.
-	 * 
+	 *
 	 * @return the job configuration object which was attached to the original {@link org.apache.flink.runtime.jobgraph.JobGraph}
 	 */
 	public Configuration getJobConfiguration() {
