@@ -151,7 +151,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	 * processing time (default = {@code System.currentTimeMillis()}) and
 	 * register timers for tasks to be executed in the future.
 	 */
-	protected ProcessingTimeService timerService;
+	private final ProcessingTimeService timerService;
 
 	/** The map of user-defined accumulators of this task. */
 	private final Map<String, Accumulator<?, ?>> accumulatorMap;
@@ -206,10 +206,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		super(environment);
 
-		this.timerService = timeProvider;
 		this.configuration = new StreamConfig(getTaskConfiguration());
 		this.accumulatorMap = getEnvironment().getAccumulatorRegistry().getUserMap();
 		this.streamRecordWriters = createStreamRecordWriters(configuration, environment);
+		this.timerService = timeProvider != null ? timeProvider : createProcessingTimeService(lock, this, getName());
 	}
 
 	// ------------------------------------------------------------------------
@@ -255,14 +255,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 			stateBackend = createStateBackend();
 			checkpointStorage = stateBackend.createCheckpointStorage(getEnvironment().getJobID());
-
-			// if the clock is not already set, then assign a default TimeServiceProvider
-			if (timerService == null) {
-				ThreadFactory timerThreadFactory =
-					new DispatcherThreadFactory(TRIGGER_THREAD_GROUP, "Time Trigger for " + getName());
-
-				timerService = new SystemProcessingTimeService(this, getCheckpointLock(), timerThreadFactory);
-			}
 
 			operatorChain = new OperatorChain<>(this, streamRecordWriters);
 			headOperator = operatorChain.getHeadOperator();
@@ -387,9 +379,17 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	/**
 	 * This method releases all resources that were acquired in the constructor.
+	 *
+	 * @throws Exception The expectation is that any exception here propagates and causes
+	 *                   a hard TaskManager kill, because it would leave resource leaks.
 	 */
 	@Override
 	public void dispose() throws Exception {
+		// dispose the timer
+		// when execution has started, it should be already quiesced and shut down
+		// we need to check here for cases where execution never started
+		timerService.shutdownService();
+
 		// release the record writers, which may have spawned threads
 		// beware: without synchronization, #performCheckpoint() may run in
 		//         parallel and this call is not thread-safe
@@ -490,11 +490,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	@Override
 	protected void finalize() throws Throwable {
 		super.finalize();
-		if (timerService != null) {
 			if (!timerService.isTerminated()) {
-				LOG.info("Timer service is shutting down.");
-				timerService.shutdownService();
-			}
+			LOG.info("Timer service is shutting down.");
+			timerService.shutdownService();
 		}
 
 		cancelables.close();
@@ -688,9 +686,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	private void tryShutdownTimerService() {
-
-		if (timerService != null && !timerService.isTerminated()) {
-
+		if (!timerService.isTerminated()) {
 			try {
 				final long timeoutMs = getEnvironment().getTaskManagerInfo().getConfiguration().
 					getLong(TaskManagerOptions.TASK_CANCELLATION_TIMEOUT_TIMERS);
@@ -759,9 +755,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	 * processing time and registering timers.
 	 */
 	public ProcessingTimeService getProcessingTimeService() {
-		if (timerService == null) {
-			throw new IllegalStateException("The timer service has not been initialized.");
-		}
 		return timerService;
 	}
 
@@ -796,6 +789,21 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	// ------------------------------------------------------------------------
+	//  factories for the StreamTask's components
+	// ------------------------------------------------------------------------
+
+	private static ProcessingTimeService createProcessingTimeService(
+			Object checkpointLock,
+			AsyncExceptionHandler exceptionHandler,
+			String taskName) {
+
+		ThreadFactory timerThreadFactory =
+				new DispatcherThreadFactory(TRIGGER_THREAD_GROUP, "Time Trigger for " + taskName);
+
+		return new SystemProcessingTimeService(exceptionHandler, checkpointLock, timerThreadFactory);
+	}
+
+
 
 	/**
 	 * This runnable executes the asynchronous parts of all involved backend snapshots for the subtask.
