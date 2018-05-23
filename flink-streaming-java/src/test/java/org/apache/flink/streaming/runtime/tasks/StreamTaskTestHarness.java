@@ -43,6 +43,7 @@ import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.partitioner.BroadcastPartitioner;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
+import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
 
 import org.junit.Assert;
@@ -238,7 +239,6 @@ public class StreamTaskTestHarness<OUT> {
 	 * TimeoutException is thrown.
 	 *
 	 * @param timeout Timeout for the task completion
-	 * @throws Exception
 	 */
 	public void waitForTaskCompletion(long timeout) throws Exception {
 		if (taskThread == null) {
@@ -246,8 +246,15 @@ public class StreamTaskTestHarness<OUT> {
 		}
 
 		taskThread.join(timeout);
-		if (taskThread.getError() != null) {
-			throw new Exception("error in task", taskThread.getError());
+		if (taskThread.isAlive()) {
+			throw new Exception("Tas did not finish within timeout");
+		}
+		else {
+			ExceptionUtils.suppressExceptions(task::dispose);
+
+			if (taskThread.getError() != null) {
+				throw new Exception("error in task", taskThread.getError());
+			}
 		}
 	}
 

@@ -108,6 +108,9 @@ public class TaskTest extends TestLogger {
 	private static OneShotLatch triggerLatch;
 	private static OneShotLatch cancelLatch;
 
+	static boolean instantiated;
+	static boolean disposed;
+
 	private TaskExecutionStateListener listener;
 	private TaskManagerActions taskManagerConnection;
 
@@ -125,6 +128,17 @@ public class TaskTest extends TestLogger {
 		awaitLatch = new OneShotLatch();
 		triggerLatch = new OneShotLatch();
 		cancelLatch = new OneShotLatch();
+		instantiated = false;
+		disposed = false;
+	}
+
+	@After
+	public void validateTaskDisposed() {
+		if (instantiated) {
+			assertTrue("Task was instantiated, but not disposed", disposed);
+		} else {
+			assertFalse("Task was disposed even though not instantiated (test bug?)", disposed);
+		}
 	}
 
 	@After
@@ -1029,6 +1043,7 @@ public class TaskTest extends TestLogger {
 
 		public TestInvokableCorrect(Environment environment) {
 			super(environment);
+			instantiated = true;
 		}
 
 		@Override
@@ -1038,6 +1053,11 @@ public class TaskTest extends TestLogger {
 		public void cancel() throws Exception {
 			fail("This should not be called");
 		}
+
+		@Override
+		public void dispose() throws Exception {
+			disposed = true;
+		}
 	}
 
 	/** Test task class. */
@@ -1045,11 +1065,17 @@ public class TaskTest extends TestLogger {
 
 		public InvokableWithExceptionInInvoke(Environment environment) {
 			super(environment);
+			instantiated = true;
 		}
 
 		@Override
 		public void invoke() throws Exception {
 			throw new Exception("test");
+		}
+
+		@Override
+		public void dispose() throws Exception {
+			disposed = true;
 		}
 	}
 
@@ -1058,6 +1084,7 @@ public class TaskTest extends TestLogger {
 
 		public InvokableWithExceptionOnTrigger(Environment environment) {
 			super(environment);
+			instantiated = true;
 		}
 
 		@Override
@@ -1078,6 +1105,11 @@ public class TaskTest extends TestLogger {
 
 			throw new RuntimeException("test");
 		}
+
+		@Override
+		public void dispose() throws Exception {
+			disposed = true;
+		}
 	}
 
 	/** Test task class. */
@@ -1093,6 +1125,7 @@ public class TaskTest extends TestLogger {
 
 		public InvokableBlockingInInvoke(Environment environment) {
 			super(environment);
+			instantiated = true;
 		}
 
 		@Override
@@ -1104,6 +1137,11 @@ public class TaskTest extends TestLogger {
 				wait();
 			}
 		}
+
+		@Override
+		public void dispose() throws Exception {
+			disposed = true;
+		}
 	}
 
 	/** Test task class. */
@@ -1111,6 +1149,7 @@ public class TaskTest extends TestLogger {
 
 		public InvokableWithCancelTaskExceptionInInvoke(Environment environment) {
 			super(environment);
+			instantiated = true;
 		}
 
 		@Override
@@ -1124,6 +1163,11 @@ public class TaskTest extends TestLogger {
 
 			throw new CancelTaskException();
 		}
+
+		@Override
+		public void dispose() throws Exception {
+			disposed = true;
+		}
 	}
 
 	/** Test task class. */
@@ -1133,6 +1177,7 @@ public class TaskTest extends TestLogger {
 
 		public InvokableInterruptableSharedLockInInvokeAndCancel(Environment environment) {
 			super(environment);
+			instantiated = true;
 		}
 
 		@Override
@@ -1149,6 +1194,11 @@ public class TaskTest extends TestLogger {
 				cancelLatch.trigger();
 			}
 		}
+
+		@Override
+		public void dispose() throws Exception {
+			disposed = true;
+		}
 	}
 
 	/** Test task class. */
@@ -1156,6 +1206,7 @@ public class TaskTest extends TestLogger {
 
 		public InvokableBlockingInCancel(Environment environment) {
 			super(environment);
+			instantiated = true;
 		}
 
 		@Override
@@ -1181,6 +1232,11 @@ public class TaskTest extends TestLogger {
 				wait();
 			}
 		}
+
+		@Override
+		public void dispose() throws Exception {
+			disposed = true;
+		}
 	}
 
 	/** Test task class. */
@@ -1188,6 +1244,7 @@ public class TaskTest extends TestLogger {
 
 		public InvokableUninterruptibleBlockingInvoke(Environment environment) {
 			super(environment);
+			instantiated = true;
 		}
 
 		@Override
@@ -1206,6 +1263,11 @@ public class TaskTest extends TestLogger {
 		@Override
 		public void cancel() throws Exception {
 		}
+
+		@Override
+		public void dispose() throws Exception {
+			disposed = true;
+		}
 	}
 
 	/** Test task class. */
@@ -1213,6 +1275,7 @@ public class TaskTest extends TestLogger {
 
 		public FailingInvokableWithChainedException(Environment environment) {
 			super(environment);
+			instantiated = true;
 		}
 
 		@Override
@@ -1222,6 +1285,11 @@ public class TaskTest extends TestLogger {
 
 		@Override
 		public void cancel() {}
+
+		@Override
+		public void dispose() throws Exception {
+			disposed = true;
+		}
 	}
 
 	// ------------------------------------------------------------------------

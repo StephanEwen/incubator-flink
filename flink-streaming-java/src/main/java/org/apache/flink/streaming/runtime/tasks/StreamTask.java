@@ -367,15 +367,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			if (!disposed) {
 				disposeAllOperators();
 			}
-
-			// release the output resources. this method should never fail.
-			if (operatorChain != null) {
-				// beware: without synchronization, #performCheckpoint() may run in
-				//         parallel and this call is not thread-safe
-				synchronized (lock) {
-					operatorChain.releaseOutputs();
-				}
-			}
 		}
 	}
 
@@ -391,6 +382,21 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 		finally {
 			cancelables.close();
+		}
+	}
+
+	/**
+	 * This method releases all resources that were acquired in the constructor.
+	 */
+	@Override
+	public void dispose() throws Exception {
+		// release the record writers, which may have spawned threads
+		// beware: without synchronization, #performCheckpoint() may run in
+		//         parallel and this call is not thread-safe
+		synchronized (lock) {
+			for (StreamRecordWriter<?> writer : streamRecordWriters) {
+				writer.close();
+			}
 		}
 	}
 

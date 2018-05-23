@@ -815,6 +815,11 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 					dispatcher.shutdownNow();
 				}
 
+				// dispose all the task's resources
+				if (invokable != null) {
+					invokable.dispose();
+				}
+
 				// free the network resources
 				network.unregisterTask(this);
 

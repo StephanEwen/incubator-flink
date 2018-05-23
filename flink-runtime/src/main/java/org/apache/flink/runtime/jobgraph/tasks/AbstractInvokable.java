@@ -93,6 +93,21 @@ public abstract class AbstractInvokable {
 	}
 
 	/**
+	 * This method must release all resources that the task has acquired. The method is called
+	 * in all cases where the task is removed (completion, cancellation, failure) if the invokable
+	 * was instantiated.
+	 *
+	 * <p>This method will also be called also in cases where the {@link #invoke()} method was
+	 * never called, and can hence be used to dispose resources created in the invokable's constructor.
+	 *
+	 * @throws Exception The disposal may throw exceptions, which will be logged, but will not
+	 *                   abort the task cancellation/shutdown.
+	 */
+	public void dispose() throws Exception {
+		// The default implementation does nothing.
+	}
+
+	/**
 	 * Returns the environment of this task.
 	 *
 	 * @return The environment of this task.
