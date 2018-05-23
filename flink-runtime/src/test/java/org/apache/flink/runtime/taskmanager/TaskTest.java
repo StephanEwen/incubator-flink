@@ -37,7 +37,6 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
 import org.apache.flink.runtime.filecache.FileCache;
-import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
@@ -81,8 +80,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import scala.concurrent.duration.FiniteDuration;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -111,28 +108,19 @@ public class TaskTest extends TestLogger {
 	private static OneShotLatch triggerLatch;
 	private static OneShotLatch cancelLatch;
 
-	private ActorGateway taskManagerGateway;
-	private ActorGateway jobManagerGateway;
-	private ActorGateway listenerGateway;
-
-	private ActorGatewayTaskExecutionStateListener listener;
-	private ActorGatewayTaskManagerActions taskManagerConnection;
+	private TaskExecutionStateListener listener;
+	private TaskManagerActions taskManagerConnection;
 
 	private BlockingQueue<Object> taskManagerMessages;
-	private BlockingQueue<Object> jobManagerMessages;
-	private BlockingQueue<Object> listenerMessages;
+	private BlockingQueue<TaskExecutionState> listenerMessages;
 
 	@Before
 	public void createQueuesAndActors() {
 		taskManagerMessages = new LinkedBlockingQueue<>();
-		jobManagerMessages = new LinkedBlockingQueue<>();
 		listenerMessages = new LinkedBlockingQueue<>();
-		taskManagerGateway = new ForwardingActorGateway(taskManagerMessages);
-		jobManagerGateway = new ForwardingActorGateway(jobManagerMessages);
-		listenerGateway = new ForwardingActorGateway(listenerMessages);
 
-		listener = new ActorGatewayTaskExecutionStateListener(listenerGateway);
-		taskManagerConnection = new ActorGatewayTaskManagerActions(taskManagerGateway);
+		listener = new ListenerToQueue(listenerMessages);
+		taskManagerConnection = new TaskManagerActionsToQueue(taskManagerMessages);
 
 		awaitLatch = new OneShotLatch();
 		triggerLatch = new OneShotLatch();
@@ -141,13 +129,11 @@ public class TaskTest extends TestLogger {
 
 	@After
 	public void clearActorsAndMessages() {
-		jobManagerMessages = null;
+		listener = null;
+		taskManagerConnection = null;
+
 		taskManagerMessages = null;
 		listenerMessages = null;
-
-		taskManagerGateway = null;
-		jobManagerGateway = null;
-		listenerGateway = null;
 	}
 
 	// ------------------------------------------------------------------------
@@ -978,14 +964,7 @@ public class TaskTest extends TestLogger {
 		JobVertexID jobVertexId = new JobVertexID();
 		ExecutionAttemptID executionAttemptId = new ExecutionAttemptID();
 
-		InputSplitProvider inputSplitProvider = new TaskInputSplitProvider(
-			jobManagerGateway,
-			jobId,
-			jobVertexId,
-			executionAttemptId,
-			new FiniteDuration(60, TimeUnit.SECONDS));
-
-		CheckpointResponder checkpointResponder = new ActorGatewayCheckpointResponder(jobManagerGateway);
+		InputSplitProvider inputSplitProvider = mock(InputSplitProvider.class);
 
 		SerializedValue<ExecutionConfig> serializedExecutionConfig = new SerializedValue<>(execConfig);
 
@@ -1025,7 +1004,7 @@ public class TaskTest extends TestLogger {
 			new TestTaskStateManager(),
 			taskManagerConnection,
 			inputSplitProvider,
-			checkpointResponder,
+			mock(CheckpointResponder.class),
 			blobService,
 			libCache,
 			mock(FileCache.class),
@@ -1094,11 +1073,8 @@ public class TaskTest extends TestLogger {
 		try {
 			// we may have to wait for a bit to give the actors time to receive the message
 			// and put it into the queue
-			TaskMessages.UpdateTaskExecutionState message =
-					(TaskMessages.UpdateTaskExecutionState) listenerMessages.take();
-			assertNotNull("There is no additional listener message", message);
-
-			TaskExecutionState taskState =  message.taskExecutionState();
+			TaskExecutionState taskState = listenerMessages.take();
+			assertNotNull("There is no additional listener message", taskState);
 
 			assertEquals(task.getJobID(), taskState.getJobID());
 			assertEquals(task.getExecutionId(), taskState.getID());
@@ -1119,16 +1095,11 @@ public class TaskTest extends TestLogger {
 		try {
 			// we may have to wait for a bit to give the actors time to receive the message
 			// and put it into the queue
-			TaskMessages.UpdateTaskExecutionState message1 =
-					(TaskMessages.UpdateTaskExecutionState) listenerMessages.take();
-			TaskMessages.UpdateTaskExecutionState message2 =
-					(TaskMessages.UpdateTaskExecutionState) listenerMessages.take();
+			TaskExecutionState taskState1 = listenerMessages.take();
+			TaskExecutionState taskState2 = listenerMessages.take();
 
-			assertNotNull("There is no additional listener message", message1);
-			assertNotNull("There is no additional listener message", message2);
-
-			TaskExecutionState taskState1 =  message1.taskExecutionState();
-			TaskExecutionState taskState2 =  message2.taskExecutionState();
+			assertNotNull("There is no additional listener message", taskState1);
+			assertNotNull("There is no additional listener message", taskState2);
 
 			assertEquals(task.getJobID(), taskState1.getJobID());
 			assertEquals(task.getJobID(), taskState2.getJobID());
@@ -1367,6 +1338,53 @@ public class TaskTest extends TestLogger {
 
 		public TestWrappedException(@Nonnull Throwable cause) {
 			super(cause);
+		}
+	}
+
+	// ------------------------------------------------------------------------
+	//  listeners and observers
+	// ------------------------------------------------------------------------
+
+	private static class ListenerToQueue implements TaskExecutionStateListener {
+
+		private final BlockingQueue<TaskExecutionState> messages;
+
+		ListenerToQueue(BlockingQueue<TaskExecutionState> messages) {
+			this.messages = messages;
+		}
+
+		@Override
+		public void notifyTaskExecutionStateChanged(TaskExecutionState taskExecutionState) {
+			messages.add(taskExecutionState);
+		}
+	}
+
+	private static class TaskManagerActionsToQueue implements TaskManagerActions {
+
+		private final BlockingQueue<Object> messages;
+
+		TaskManagerActionsToQueue(BlockingQueue<Object> messages) {
+			this.messages = messages;
+		}
+
+		@Override
+		public void notifyFinalState(ExecutionAttemptID executionAttemptID) {
+			messages.add(new TaskMessages.TaskInFinalState(executionAttemptID));
+		}
+
+		@Override
+		public void notifyFatalError(String message, Throwable cause) {
+			messages.add(new TaskManagerMessages.FatalError(message, cause));
+		}
+
+		@Override
+		public void failTask(ExecutionAttemptID executionAttemptID, Throwable cause) {
+			messages.add(new TaskMessages.FailTask(executionAttemptID, cause));
+		}
+
+		@Override
+		public void updateTaskExecutionState(TaskExecutionState taskExecutionState) {
+			messages.add(new TaskMessages.UpdateTaskExecutionState(taskExecutionState));
 		}
 	}
 }
