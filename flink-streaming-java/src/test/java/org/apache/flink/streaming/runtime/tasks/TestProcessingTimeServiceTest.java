@@ -16,21 +16,15 @@
  * limitations under the License.
  */
 
-package org.apache.flink.streaming.runtime.operators;
+package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.StreamMap;
-import org.apache.flink.streaming.runtime.tasks.AsyncExceptionHandler;
-import org.apache.flink.streaming.runtime.tasks.OneInputStreamTask;
-import org.apache.flink.streaming.runtime.tasks.OneInputStreamTaskTestHarness;
-import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
-import org.apache.flink.streaming.runtime.tasks.TestProcessingTimeService;
+import org.apache.flink.streaming.runtime.operators.StreamTaskTimerTest;
 
 import org.junit.Test;
-
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 
@@ -44,7 +38,7 @@ public class TestProcessingTimeServiceTest {
 		final TestProcessingTimeService tp = new TestProcessingTimeService();
 
 		final OneInputStreamTaskTestHarness<String, String> testHarness = new OneInputStreamTaskTestHarness<>(
-				(env) -> new OneInputStreamTask<>(env, tp),
+				(env) -> new OneInputStreamTask<>(env, new StreamTaskServices().setProcessingTimeService(tp)),
 				BasicTypeInfo.STRING_TYPE_INFO,
 				BasicTypeInfo.STRING_TYPE_INFO);
 
@@ -93,24 +87,5 @@ public class TestProcessingTimeServiceTest {
 		assertEquals(0, tp.getNumActiveTimers());
 
 		tp.shutdownService();
-	}
-
-	// ------------------------------------------------------------------------
-
-	/**
-	 * An {@link AsyncExceptionHandler} storing the handled exception.
-	 */
-	public static class ReferenceSettingExceptionHandler implements AsyncExceptionHandler {
-
-		private final AtomicReference<Throwable> errorReference;
-
-		public ReferenceSettingExceptionHandler(AtomicReference<Throwable> errorReference) {
-			this.errorReference = errorReference;
-		}
-
-		@Override
-		public void handleAsyncException(String message, Throwable exception) {
-			errorReference.compareAndSet(null, exception);
-		}
 	}
 }

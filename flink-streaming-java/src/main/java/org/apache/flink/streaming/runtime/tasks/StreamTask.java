@@ -29,7 +29,6 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
-import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
@@ -40,6 +39,8 @@ import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.StateBackendLoader;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
+import org.apache.flink.runtime.taskmanager.ResourceLeakException;
+import org.apache.flink.runtime.util.ExecutorThreadFactory;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
@@ -69,7 +70,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -131,20 +131,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	 */
 	private final Object lock = new Object();
 
-	/** the head operator that consumes the input streams of this task. */
-	protected OP headOperator;
-
-	/** The chain of operators executed by this task. */
-	protected OperatorChain<OUT, OP> operatorChain;
-
 	/** The configuration of this streaming task. */
-	protected final StreamConfig configuration;
-
-	/** Our state backend. We use this to create checkpoint streams and a keyed state backend. */
-	protected StateBackend stateBackend;
-
-	/** The external storage where checkpoint data is persisted. */
-	private CheckpointStorage checkpointStorage;
+	private final StreamConfig configuration;
 
 	/**
 	 * The internal {@link ProcessingTimeService} used to define the current
@@ -159,6 +147,30 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	/** The currently active background materialization threads. */
 	private final CloseableRegistry cancelables = new CloseableRegistry();
 
+	/** Thread pool for async snapshot workers. */
+	private final ExecutorService asyncOperationsThreadPool;
+
+	/** Handler for exceptions during checkpointing in the stream task. Used in synchronous part of the checkpoint. */
+	private final CheckpointExceptionHandler synchronousCheckpointExceptionHandler;
+
+	/** Wrapper for synchronousCheckpointExceptionHandler to deal with rethrown exceptions. Used in the async part. */
+	private final CheckpointExceptionHandler asynchronousCheckpointExceptionHandler;
+
+	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
+
+	/** The chain of operators executed by this task. */
+	private final OperatorChain<OUT, OP> operatorChain;
+
+	/** the head operator that consumes the input streams of this task. */
+	@Nullable
+	protected OP headOperator;
+
+	/** Our state backend. We use this to create checkpoint streams and a keyed state backend. */
+	private StateBackend stateBackend;
+
+	/** The external storage where checkpoint data is persisted. */
+	private CheckpointStorage checkpointStorage;
+
 	/**
 	 * Flag to mark the task "in operation", in which case check needs to be initialized to true,
 	 * so that early cancel() before invoke() behaves correctly.
@@ -168,48 +180,120 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	/** Flag to mark this task as canceled. */
 	private volatile boolean canceled;
 
-	/** Thread pool for async snapshot workers. */
-	private ExecutorService asyncOperationsThreadPool;
-
-	/** Handler for exceptions during checkpointing in the stream task. Used in synchronous part of the checkpoint. */
-	private CheckpointExceptionHandler synchronousCheckpointExceptionHandler;
-
-	/** Wrapper for synchronousCheckpointExceptionHandler to deal with rethrown exceptions. Used in the async part. */
-	private AsyncCheckpointExceptionHandler asynchronousCheckpointExceptionHandler;
-
-	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
-
 	// ------------------------------------------------------------------------
 
 	/**
-	 * Constructor for initialization, possibly with initial state (recovery / savepoint / etc).
+	 * Constructor for regular initialization during execution.
 	 *
 	 * @param env The task environment for this task.
 	 */
 	protected StreamTask(Environment env) {
-		this(env, null);
+		this(env,
+				null,
+				null,
+				null,
+				null,
+				null);
 	}
 
 	/**
-	 * Constructor for initialization, possibly with initial state (recovery / savepoint / etc).
+	 * Constructor to inject components for tests.
 	 *
-	 * <p>This constructor accepts a special {@link ProcessingTimeService}. By default (and if
-	 * null is passes for the time provider) a {@link SystemProcessingTimeService DefaultTimerService}
-	 * will be used.
-	 *
-	 * @param environment The task environment for this task.
-	 * @param timeProvider Optionally, a specific time provider to use.
+	 * @param env The task environment for this task.
+	 * @param services The holder for the injected test components.
 	 */
-	protected StreamTask(
-			Environment environment,
-			@Nullable ProcessingTimeService timeProvider) {
+	@VisibleForTesting
+	StreamTask(Environment env, StreamTaskServices services) {
+		this(env,
+				services.getProcessingTimeService(),
+				services.getAsyncOperationsThreadPool(),
+				services.getSynchronousCheckpointExceptionHandler(),
+				services.getAsynchronousCheckpointExceptionHandler(),
+				null);
+	}
 
-		super(environment);
+	/**
+	 * Common constructor to allow all fields to be final and share the default
+	 * initialization logic between regular and test setups.
+	 */
+	private StreamTask(
+			final Environment env,
+			@Nullable ProcessingTimeService timerService,
+			@Nullable ExecutorService asyncOperationsThreadPool,
+			@Nullable CheckpointExceptionHandlerFactory checkpointExceptionHandler,
+			@Nullable CheckpointExceptionHandler asynchronousCheckpointExceptionHandler,
+			@Nullable List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters) {
 
-		this.configuration = new StreamConfig(getTaskConfiguration());
-		this.accumulatorMap = getEnvironment().getAccumulatorRegistry().getUserMap();
-		this.streamRecordWriters = createStreamRecordWriters(configuration, environment);
-		this.timerService = timeProvider != null ? timeProvider : createProcessingTimeService(lock, this, getName());
+		super(env);
+
+		// this constructor needs to make sure it undoes all resource allocation,
+		// in case it does not complete successfully
+
+		try {
+			this.configuration = new StreamConfig(getTaskConfiguration());
+			this.accumulatorMap = env.getAccumulatorRegistry().getUserMap();
+
+			if (timerService == null) {
+				timerService = new SystemProcessingTimeService(this, lock,
+						new DispatcherThreadFactory(TRIGGER_THREAD_GROUP, "Time Trigger for " + getName()));
+			}
+			this.timerService = timerService;
+
+			if (asyncOperationsThreadPool == null) {
+				asyncOperationsThreadPool = Executors.newCachedThreadPool(
+						new ExecutorThreadFactory("AsyncCheckpoints for " + getName() + ' '));
+			}
+			this.asyncOperationsThreadPool = asyncOperationsThreadPool;
+
+			this.synchronousCheckpointExceptionHandler = (checkpointExceptionHandler != null ?
+					checkpointExceptionHandler : new CheckpointExceptionHandlerFactory())
+							.createCheckpointExceptionHandler(
+									env.getExecutionConfig().isFailTaskOnCheckpointError(),
+									env);
+
+			this.asynchronousCheckpointExceptionHandler = asynchronousCheckpointExceptionHandler != null ?
+					asynchronousCheckpointExceptionHandler :
+					new AsyncCheckpointExceptionHandler(this);
+
+			if (streamRecordWriters == null) {
+				streamRecordWriters = createStreamRecordWriters(configuration, env);
+			}
+			this.streamRecordWriters = streamRecordWriters;
+
+			this.operatorChain = new OperatorChain<>(this, streamRecordWriters);
+			this.headOperator = operatorChain.getHeadOperator();
+		}
+		catch (Throwable t) {
+			ExceptionUtils.rethrowIfFatalError(t);
+
+			// cleanup all that we already acquired
+			try {
+				if (asyncOperationsThreadPool != null) {
+					asyncOperationsThreadPool.shutdownNow();
+				}
+				if (timerService != null) {
+					timerService.shutdownService();
+				}
+				if (streamRecordWriters != null) {
+					for (StreamRecordWriter<?> srw : streamRecordWriters) {
+						srw.close();
+					}
+				}
+			}
+			catch (Throwable cleanupError) {
+				ExceptionUtils.rethrowIfFatalError(cleanupError);
+
+				// if the cleanup fails, that's bad!
+				// the ResourceLeakException should supercede the original exception, and
+				// communicate this even worse state
+				ResourceLeakException rle = new ResourceLeakException(cleanupError);
+				rle.addSuppressed(t);
+				throw rle;
+			}
+
+			ExceptionUtils.rethrow(t);
+			throw new Error(); // silence the compiler
+		}
 	}
 
 	// ------------------------------------------------------------------------
@@ -243,21 +327,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			// -------- Initialize ---------
 			LOG.debug("Initializing {}.", getName());
 
-			asyncOperationsThreadPool = Executors.newCachedThreadPool();
-
-			CheckpointExceptionHandlerFactory cpExceptionHandlerFactory = createCheckpointExceptionHandlerFactory();
-
-			synchronousCheckpointExceptionHandler = cpExceptionHandlerFactory.createCheckpointExceptionHandler(
-				getExecutionConfig().isFailTaskOnCheckpointError(),
-				getEnvironment());
-
-			asynchronousCheckpointExceptionHandler = new AsyncCheckpointExceptionHandler(this);
-
 			stateBackend = createStateBackend();
 			checkpointStorage = stateBackend.createCheckpointStorage(getEnvironment().getJobID());
-
-			operatorChain = new OperatorChain<>(this, streamRecordWriters);
-			headOperator = operatorChain.getHeadOperator();
 
 			// task specific initialization
 			init();
@@ -466,16 +537,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	 * exception, this method catches it and logs the message.
 	 */
 	private void disposeAllOperators() {
-		if (operatorChain != null) {
-			for (StreamOperator<?> operator : operatorChain.getAllOperators()) {
-				try {
-					if (operator != null) {
-						operator.dispose();
-					}
+		for (StreamOperator<?> operator : operatorChain.getAllOperators()) {
+			try {
+				if (operator != null) {
+					operator.dispose();
 				}
-				catch (Throwable t) {
-					LOG.error("Error during disposal of stream operator.", t);
-				}
+			}
+			catch (Throwable t) {
+				LOG.error("Error during disposal of stream operator.", t);
 			}
 		}
 	}
@@ -636,28 +705,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				return true;
 			}
 			else {
-				// we cannot perform our checkpoint - let the downstream operators know that they
-				// should not wait for any input from this operator
-
-				// we cannot broadcast the cancellation markers on the 'operator chain', because it may not
-				// yet be created
-				final CancelCheckpointMarker message = new CancelCheckpointMarker(checkpointMetaData.getCheckpointId());
-				Exception exception = null;
-
-				for (StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> streamRecordWriter : streamRecordWriters) {
-					try {
-						streamRecordWriter.broadcastEvent(message);
-					} catch (Exception e) {
-						exception = ExceptionUtils.firstOrSuppressed(
-							new Exception("Could not send cancel checkpoint marker to downstream tasks.", e),
-							exception);
-					}
-				}
-
-				if (exception != null) {
-					throw exception;
-				}
-
+				operatorChain.broadcastCheckpointCancelMarker(checkpointMetaData.getCheckpointId());
 				return false;
 			}
 		}
@@ -746,10 +794,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				LOG);
 	}
 
-	protected CheckpointExceptionHandlerFactory createCheckpointExceptionHandlerFactory() {
-		return new CheckpointExceptionHandlerFactory();
-	}
-
 	/**
 	 * Returns the {@link ProcessingTimeService} responsible for telling the current
 	 * processing time and registering timers.
@@ -789,21 +833,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	// ------------------------------------------------------------------------
-	//  factories for the StreamTask's components
-	// ------------------------------------------------------------------------
-
-	private static ProcessingTimeService createProcessingTimeService(
-			Object checkpointLock,
-			AsyncExceptionHandler exceptionHandler,
-			String taskName) {
-
-		ThreadFactory timerThreadFactory =
-				new DispatcherThreadFactory(TRIGGER_THREAD_GROUP, "Time Trigger for " + taskName);
-
-		return new SystemProcessingTimeService(exceptionHandler, checkpointLock, timerThreadFactory);
-	}
-
-
 
 	/**
 	 * This runnable executes the asynchronous parts of all involved backend snapshots for the subtask.
@@ -948,9 +977,16 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 					// We only report the exception for the original cause of fail and cleanup.
 					// Otherwise this followup exception could race the original exception in failing the task.
-					owner.asynchronousCheckpointExceptionHandler.tryHandleCheckpointException(
-						checkpointMetaData,
-						checkpointException);
+					try {
+						owner.asynchronousCheckpointExceptionHandler.tryHandleCheckpointException(
+							checkpointMetaData,
+							checkpointException);
+					}
+					catch (Exception ee) {
+						// this should never happen
+						// just in case: let it bubble out and be handled by the uncaught exception handler
+						throw new Error(ee);
+					}
 
 					currentState = CheckpointingOperation.AsyncCheckpointState.DISCARDED;
 				} else {

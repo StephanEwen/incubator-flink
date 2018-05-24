@@ -29,8 +29,6 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.io.StreamInputProcessor;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 
-import javax.annotation.Nullable;
-
 /**
  * A {@link StreamTask} for executing a {@link OneInputStreamOperator}.
  */
@@ -53,20 +51,16 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 	}
 
 	/**
-	 * Constructor for initialization, possibly with initial state (recovery / savepoint / etc).
-	 *
-	 * <p>This constructor accepts a special {@link ProcessingTimeService}. By default (and if
-	 * null is passes for the time provider) a {@link SystemProcessingTimeService DefaultTimerService}
-	 * will be used.
+	 * Constructor to inject components for tests.
 	 *
 	 * @param env The task environment for this task.
-	 * @param timeProvider Optionally, a specific time provider to use.
+	 * @param services The holder for the injected test components.
 	 */
 	@VisibleForTesting
-	public OneInputStreamTask(
+	OneInputStreamTask(
 			Environment env,
-			@Nullable ProcessingTimeService timeProvider) {
-		super(env, timeProvider);
+			StreamTaskServices services) {
+		super(env, services);
 	}
 
 	@Override

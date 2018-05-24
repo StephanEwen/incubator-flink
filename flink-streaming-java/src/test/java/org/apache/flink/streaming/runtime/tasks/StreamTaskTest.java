@@ -20,13 +20,11 @@ package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
@@ -114,6 +112,7 @@ import org.apache.flink.util.TestLogger;
 
 import org.junit.Assert;
 import org.junit.Test;
+
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.internal.util.reflection.Whitebox;
@@ -148,7 +147,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyLong;
-import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -164,7 +162,7 @@ import static org.powermock.api.mockito.PowerMockito.whenNew;
 @RunWith(PowerMockRunner.class)
 @PrepareForTest(StreamTask.class)
 @PowerMockIgnore("org.apache.log4j.*")
-@SuppressWarnings("deprecation")
+@SuppressWarnings("serial")
 public class StreamTaskTest extends TestLogger {
 
 	private static OneShotLatch syncLatch;
@@ -326,9 +324,6 @@ public class StreamTaskTest extends TestLogger {
 		final long checkpointId = 42L;
 		final long timestamp = 1L;
 
-		TaskInfo mockTaskInfo = mock(TaskInfo.class);
-		when(mockTaskInfo.getTaskNameWithSubtasks()).thenReturn("foobar");
-		when(mockTaskInfo.getIndexOfThisSubtask()).thenReturn(0);
 		Environment mockEnvironment = new MockEnvironmentBuilder().build();
 
 		StreamTask<?, ?> streamTask = new EmptyStreamTask(mockEnvironment);
@@ -364,20 +359,8 @@ public class StreamTaskTest extends TestLogger {
 		when(operatorChain.getAllOperators()).thenReturn(streamOperators);
 
 		Whitebox.setInternalState(streamTask, "isRunning", true);
-		Whitebox.setInternalState(streamTask, "lock", new Object());
 		Whitebox.setInternalState(streamTask, "operatorChain", operatorChain);
-		Whitebox.setInternalState(streamTask, "cancelables", new CloseableRegistry());
-		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
 		Whitebox.setInternalState(streamTask, "checkpointStorage", new MemoryBackendCheckpointStorage(new JobID(), null, null, Integer.MAX_VALUE));
-
-		CheckpointExceptionHandlerFactory checkpointExceptionHandlerFactory = new CheckpointExceptionHandlerFactory();
-		CheckpointExceptionHandler checkpointExceptionHandler =
-			checkpointExceptionHandlerFactory.createCheckpointExceptionHandler(true, mockEnvironment);
-		Whitebox.setInternalState(streamTask, "synchronousCheckpointExceptionHandler", checkpointExceptionHandler);
-
-		StreamTask.AsyncCheckpointExceptionHandler asyncCheckpointExceptionHandler =
-			new StreamTask.AsyncCheckpointExceptionHandler(streamTask);
-		Whitebox.setInternalState(streamTask, "asynchronousCheckpointExceptionHandler", asyncCheckpointExceptionHandler);
 
 		try {
 			streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation());
@@ -388,6 +371,8 @@ public class StreamTaskTest extends TestLogger {
 
 		verify(operatorSnapshotResult1).cancel();
 		verify(operatorSnapshotResult2).cancel();
+
+		streamTask.dispose();
 	}
 
 	/**
@@ -399,8 +384,6 @@ public class StreamTaskTest extends TestLogger {
 		final long checkpointId = 42L;
 		final long timestamp = 1L;
 
-		MockEnvironment mockEnvironment = new MockEnvironmentBuilder().build();
-		StreamTask<?, ?> streamTask = spy(new EmptyStreamTask(mockEnvironment));
 		CheckpointMetaData checkpointMetaData = new CheckpointMetaData(checkpointId, timestamp);
 
 		// mock the operators
@@ -409,12 +392,13 @@ public class StreamTaskTest extends TestLogger {
 		StreamOperator<?> streamOperator3 = mock(StreamOperator.class);
 
 		// mock the new state operator snapshots
-		OperatorSnapshotFutures operatorSnapshotResult1 = mock(OperatorSnapshotFutures.class);
-		OperatorSnapshotFutures operatorSnapshotResult2 = mock(OperatorSnapshotFutures.class);
-		OperatorSnapshotFutures operatorSnapshotResult3 = mock(OperatorSnapshotFutures.class);
+		OperatorSnapshotFutures operatorSnapshotResult1 = spy(new OperatorSnapshotFutures());
+		OperatorSnapshotFutures operatorSnapshotResult2 = spy(new OperatorSnapshotFutures());
+		OperatorSnapshotFutures operatorSnapshotResult3 = spy(new OperatorSnapshotFutures());
 
+		final Exception testException = new Exception("Test exception");
 		RunnableFuture<SnapshotResult<OperatorStateHandle>> failingFuture = mock(RunnableFuture.class);
-		when(failingFuture.get()).thenThrow(new ExecutionException(new Exception("Test exception")));
+		when(failingFuture.get()).thenThrow(new ExecutionException(testException));
 
 		when(operatorSnapshotResult3.getOperatorStateRawFuture()).thenReturn(failingFuture);
 
@@ -434,31 +418,28 @@ public class StreamTaskTest extends TestLogger {
 		OperatorChain<Void, AbstractStreamOperator<Void>> operatorChain = mock(OperatorChain.class);
 		when(operatorChain.getAllOperators()).thenReturn(streamOperators);
 
+		MockEnvironment mockEnvironment = new MockEnvironmentBuilder().build();
+		StreamTask<?, ?> streamTask = new EmptyStreamTask(
+				mockEnvironment,
+				new StreamTaskServices()
+						.setAsyncOperationsThreadPool(new DirectExecutorService()));
+
 		Whitebox.setInternalState(streamTask, "isRunning", true);
-		Whitebox.setInternalState(streamTask, "lock", new Object());
 		Whitebox.setInternalState(streamTask, "operatorChain", operatorChain);
-		Whitebox.setInternalState(streamTask, "cancelables", new CloseableRegistry());
-		Whitebox.setInternalState(streamTask, "asyncOperationsThreadPool", new DirectExecutorService());
-		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
 		Whitebox.setInternalState(streamTask, "checkpointStorage", new MemoryBackendCheckpointStorage(new JobID(), null, null, Integer.MAX_VALUE));
-
-		CheckpointExceptionHandlerFactory checkpointExceptionHandlerFactory = new CheckpointExceptionHandlerFactory();
-		CheckpointExceptionHandler checkpointExceptionHandler =
-			checkpointExceptionHandlerFactory.createCheckpointExceptionHandler(true, mockEnvironment);
-		Whitebox.setInternalState(streamTask, "synchronousCheckpointExceptionHandler", checkpointExceptionHandler);
-
-		StreamTask.AsyncCheckpointExceptionHandler asyncCheckpointExceptionHandler =
-			new StreamTask.AsyncCheckpointExceptionHandler(streamTask);
-		Whitebox.setInternalState(streamTask, "asynchronousCheckpointExceptionHandler", asyncCheckpointExceptionHandler);
 
 		mockEnvironment.setExpectedExternalFailureCause(Throwable.class);
 		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation());
 
-		verify(streamTask).handleAsyncException(anyString(), any(Throwable.class));
+		Throwable t = mockEnvironment.getActualExternalFailureCause().get();
+		assertTrue(t instanceof AsynchronousException);
+		assertEquals(testException, t.getCause().getCause().getCause());
 
 		verify(operatorSnapshotResult1).cancel();
 		verify(operatorSnapshotResult2).cancel();
 		verify(operatorSnapshotResult3).cancel();
+
+		streamTask.dispose();
 	}
 
 	/**
@@ -534,11 +515,7 @@ public class StreamTaskTest extends TestLogger {
 		CheckpointStorage checkpointStorage = new MemoryBackendCheckpointStorage(new JobID(), null, null, Integer.MAX_VALUE);
 
 		Whitebox.setInternalState(streamTask, "isRunning", true);
-		Whitebox.setInternalState(streamTask, "lock", new Object());
 		Whitebox.setInternalState(streamTask, "operatorChain", operatorChain);
-		Whitebox.setInternalState(streamTask, "cancelables", new CloseableRegistry());
-		Whitebox.setInternalState(streamTask, "asyncOperationsThreadPool", Executors.newFixedThreadPool(1));
-		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
 		Whitebox.setInternalState(streamTask, "checkpointStorage", checkpointStorage);
 
 		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation());
@@ -580,6 +557,8 @@ public class StreamTaskTest extends TestLogger {
 		verify(rawKeyedStateHandle, never()).discardState();
 		verify(managedOperatorStateHandle, never()).discardState();
 		verify(rawOperatorStateHandle, never()).discardState();
+
+		streamTask.dispose();
 	}
 
 	/**
@@ -610,7 +589,6 @@ public class StreamTaskTest extends TestLogger {
 				}
 			);
 
-		StreamTask<?, ?> streamTask = new EmptyStreamTask(mockEnvironment);
 		CheckpointMetaData checkpointMetaData = new CheckpointMetaData(checkpointId, timestamp);
 
 		final StreamOperator<?> streamOperator = mock(StreamOperator.class);
@@ -638,13 +616,12 @@ public class StreamTaskTest extends TestLogger {
 		CheckpointStorage checkpointStorage = new MemoryBackendCheckpointStorage(new JobID(), null, null, Integer.MAX_VALUE);
 
 		ExecutorService executor = Executors.newFixedThreadPool(1);
+		StreamTask<?, ?> streamTask = new EmptyStreamTask(
+				mockEnvironment,
+				new StreamTaskServices().setAsyncOperationsThreadPool(executor));
 
 		Whitebox.setInternalState(streamTask, "isRunning", true);
-		Whitebox.setInternalState(streamTask, "lock", new Object());
 		Whitebox.setInternalState(streamTask, "operatorChain", operatorChain);
-		Whitebox.setInternalState(streamTask, "cancelables", new CloseableRegistry());
-		Whitebox.setInternalState(streamTask, "asyncOperationsThreadPool", executor);
-		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
 		Whitebox.setInternalState(streamTask, "checkpointStorage", checkpointStorage);
 
 		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation());
@@ -671,6 +648,8 @@ public class StreamTaskTest extends TestLogger {
 		verify(rawKeyedStateHandle).discardState();
 		verify(managedOperatorStateHandle).discardState();
 		verify(rawOperatorStateHandle).discardState();
+
+		streamTask.dispose();
 	}
 
 	/**
@@ -736,11 +715,7 @@ public class StreamTaskTest extends TestLogger {
 		when(operatorChain.getAllOperators()).thenReturn(streamOperators);
 
 		Whitebox.setInternalState(streamTask, "isRunning", true);
-		Whitebox.setInternalState(streamTask, "lock", new Object());
 		Whitebox.setInternalState(streamTask, "operatorChain", operatorChain);
-		Whitebox.setInternalState(streamTask, "cancelables", new CloseableRegistry());
-		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
-		Whitebox.setInternalState(streamTask, "asyncOperationsThreadPool", Executors.newCachedThreadPool());
 		Whitebox.setInternalState(streamTask, "checkpointStorage", new MemoryBackendCheckpointStorage(new JobID(), null, null, Integer.MAX_VALUE));
 
 		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation());
@@ -749,6 +724,8 @@ public class StreamTaskTest extends TestLogger {
 
 		// ensure that 'null' was acknowledged as subtask state
 		Assert.assertNull(checkpointResult.get(0));
+
+		streamTask.dispose();
 	}
 
 	/**
@@ -803,6 +780,8 @@ public class StreamTaskTest extends TestLogger {
 			if (atomicThrowable.get() != null) {
 				throw atomicThrowable.get();
 			}
+
+			streamTask.dispose();
 		}
 	}
 
@@ -819,7 +798,7 @@ public class StreamTaskTest extends TestLogger {
 	public static class NoOpStreamTask<T, OP extends StreamOperator<T>> extends StreamTask<T, OP> {
 
 		public NoOpStreamTask(Environment environment) {
-			super(environment, null);
+			super(environment);
 		}
 
 		@Override
@@ -1014,7 +993,6 @@ public class StreamTaskTest extends TestLogger {
 	 * Mocked state backend factory which returns mocks for the operator and keyed state backends.
 	 */
 	public static final class TestMemoryStateBackendFactory implements StateBackendFactory<AbstractStateBackend> {
-		private static final long serialVersionUID = 1L;
 
 		@Override
 		public AbstractStateBackend createFromConfig(Configuration config) {
@@ -1032,7 +1010,11 @@ public class StreamTaskTest extends TestLogger {
 	private static class EmptyStreamTask extends StreamTask<String, AbstractStreamOperator<String>> {
 
 		public EmptyStreamTask(Environment env) {
-			super(env, null);
+			super(env);
+		}
+
+		public EmptyStreamTask(Environment env, StreamTaskServices services) {
+			super(env, services);
 		}
 
 		@Override

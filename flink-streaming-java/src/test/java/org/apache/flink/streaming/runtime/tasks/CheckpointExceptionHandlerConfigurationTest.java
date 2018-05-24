@@ -75,7 +75,9 @@ public class CheckpointExceptionHandlerConfigurationTest extends TestLogger {
 			}
 		};
 
-		StreamTask streamTask = new StreamTask(environment, null) {
+		StreamTaskServices injector = new StreamTaskServices().setSynchronousCheckpointExceptionHandler(inspectingFactory);
+
+		StreamTask streamTask = new StreamTask(environment, injector) {
 			@Override
 			protected void init() throws Exception {}
 
@@ -87,11 +89,6 @@ public class CheckpointExceptionHandlerConfigurationTest extends TestLogger {
 
 			@Override
 			protected void cancelTask() throws Exception {}
-
-			@Override
-			protected CheckpointExceptionHandlerFactory createCheckpointExceptionHandlerFactory() {
-				return inspectingFactory;
-			}
 		};
 
 		streamTask.invoke();

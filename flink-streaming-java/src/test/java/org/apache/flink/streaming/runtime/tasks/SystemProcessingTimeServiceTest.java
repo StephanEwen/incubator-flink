@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.core.testutils.OneShotLatch;
-import org.apache.flink.streaming.runtime.operators.TestProcessingTimeServiceTest.ReferenceSettingExceptionHandler;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TestLogger;
 

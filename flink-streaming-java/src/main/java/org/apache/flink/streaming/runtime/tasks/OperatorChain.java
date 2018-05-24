@@ -84,6 +84,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 
 	private final WatermarkGaugeExposingOutput<StreamRecord<OUT>> chainEntryPoint;
 
+	@Nullable
 	private final OP headOperator;
 
 	/**
@@ -246,6 +247,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		}
 	}
 
+	@Nullable
 	public OP getHeadOperator() {
 		return headOperator;
 	}
