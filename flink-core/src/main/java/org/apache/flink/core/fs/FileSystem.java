@@ -495,7 +495,7 @@ public abstract class FileSystem {
 	 */
 	public abstract FSDataInputStream open(Path f) throws IOException;
 
-	public <T> PersistentResumableWriter.Factory<T> createPersistentResumableWriter(Path path) throws IOException {
+	public ResumableWriter<?> createResumableWriter() throws IOException {
 		throw new UnsupportedOperationException("This file system does not support PersistentResumableWriter.");
 	}
 

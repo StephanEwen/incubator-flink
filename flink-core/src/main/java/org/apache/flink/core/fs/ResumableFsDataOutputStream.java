@@ -18,29 +18,14 @@
 
 package org.apache.flink.core.fs;
 
-import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.core.fs.ResumableWriter.Resumable;
 
 import java.io.IOException;
-import java.io.OutputStream;
 
-public interface PersistentResumableWriter<ResumableT> {
 
-	OutputStream getCurrentOutputStream();
+public abstract class ResumableFsDataOutputStream<ResumableT extends Resumable> extends FSDataOutputStream {
 
-	ResumableT persist() throws IOException;
+	public abstract ResumableT persist() throws IOException;
 
-	void closeAndPublish() throws IOException;
-
-	// ------------------------------------------------------------------------
-	//  Factory
-	// ------------------------------------------------------------------------
-
-	interface Factory<ResumableT> {
-
-		PersistentResumableWriter<ResumableT> open(Path path) throws IOException;
-
-		PersistentResumableWriter<ResumableT> resume(ResumableT resumable) throws IOException;
-
-		SimpleVersionedSerializer<ResumableT> getResumableSerializer();
-	}
+	public abstract void closeAndPublish() throws IOException;
 }
