@@ -495,6 +495,10 @@ public abstract class FileSystem {
 	 */
 	public abstract FSDataInputStream open(Path f) throws IOException;
 
+	public <T> PersistentResumableWriter.Factory<T> createPersistentResumableWriter(Path path) throws IOException {
+		throw new UnsupportedOperationException("This file system does not support PersistentResumableWriter.");
+	}
+
 	/**
 	 * Return the number of bytes that large input files should be optimally be split into to minimize I/O time.
 	 *
