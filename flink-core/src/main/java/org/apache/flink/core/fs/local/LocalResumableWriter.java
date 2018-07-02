@@ -52,7 +52,7 @@ public class LocalResumableWriter implements ResumableWriter<LocalResumable> {
 
 	@Override
 	public SimpleVersionedSerializer<LocalResumable> getResumableSerializer() {
-		return null;
+		return LocalResumableSerializer.INSTANCE;
 	}
 
 	/**
