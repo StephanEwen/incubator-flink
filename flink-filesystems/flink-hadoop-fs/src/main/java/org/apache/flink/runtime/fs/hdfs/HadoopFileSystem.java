@@ -197,7 +197,7 @@ public class HadoopFileSystem extends FileSystem {
 	//  Utilities
 	// ------------------------------------------------------------------------
 
-	private static org.apache.hadoop.fs.Path toHadoopPath(Path path) {
+	static org.apache.hadoop.fs.Path toHadoopPath(Path path) {
 		return new org.apache.hadoop.fs.Path(path.toUri());
 	}
 
