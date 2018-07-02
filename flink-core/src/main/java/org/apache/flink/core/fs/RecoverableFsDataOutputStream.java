@@ -18,14 +18,29 @@
 
 package org.apache.flink.core.fs;
 
-import org.apache.flink.core.fs.ResumableWriter.Resumable;
+import org.apache.flink.core.fs.ResumableWriter.CommitRecoverable;
+import org.apache.flink.core.fs.ResumableWriter.ResumeRecoverable;
 
 import java.io.IOException;
 
 
-public abstract class ResumableFsDataOutputStream<ResumableT extends Resumable> extends FSDataOutputStream {
+public abstract class RecoverableFsDataOutputStream extends FSDataOutputStream {
 
-	public abstract ResumableT persist() throws IOException;
+	public abstract ResumeRecoverable persist() throws IOException;
 
-	public abstract void closeAndPublish() throws IOException;
+	public abstract Committer closeForCommit() throws IOException;
+
+	@Override
+	public abstract void close() throws IOException;
+
+	// ------------------------------------------------------------------------
+
+	public interface Committer {
+
+		void commit() throws IOException;
+
+		void commitAfterRecovery() throws IOException;
+
+		CommitRecoverable getRecoverable();
+	}
 }

@@ -22,15 +22,23 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.IOException;
 
-public interface ResumableWriter<ResumableT extends ResumableWriter.Resumable> {
+public interface ResumableWriter {
 
-	ResumableFsDataOutputStream<ResumableT> open(Path path) throws IOException;
+	RecoverableFsDataOutputStream open(Path path) throws IOException;
 
-	ResumableFsDataOutputStream<ResumableT> resume(ResumableT resumable) throws IOException;
+	RecoverableFsDataOutputStream recover(ResumeRecoverable resumable) throws IOException;
 
-	SimpleVersionedSerializer<ResumableT> getResumableSerializer();
+	RecoverableFsDataOutputStream.Committer recoverForCommit(CommitRecoverable resumable) throws IOException;
+
+	SimpleVersionedSerializer<CommitRecoverable> getCommitRecoverableSerializer();
+
+	SimpleVersionedSerializer<ResumeRecoverable> getResumeRecoverableSerializer();
+
+	boolean supportsResume();
 
 	// ------------------------------------------------------------------------
 
-	interface Resumable {}
+	interface CommitRecoverable {}
+
+	interface ResumeRecoverable extends CommitRecoverable {}
 }

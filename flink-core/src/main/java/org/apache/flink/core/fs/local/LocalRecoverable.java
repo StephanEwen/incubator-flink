@@ -19,7 +19,8 @@
 package org.apache.flink.core.fs.local;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.core.fs.ResumableWriter.Resumable;
+import org.apache.flink.core.fs.ResumableWriter.CommitRecoverable;
+import org.apache.flink.core.fs.ResumableWriter.ResumeRecoverable;
 
 import java.io.File;
 
@@ -27,10 +28,10 @@ import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * A description of a file in the local file system to resume at a specific position.
+ * An implementation of the resume and commit descriptor objects for local recoverable streams.
  */
 @Internal
-class LocalResumable implements Resumable {
+class LocalRecoverable implements CommitRecoverable, ResumeRecoverable {
 
 	/** The file path for the final result file. */
 	private final File targetFile;
@@ -47,7 +48,7 @@ class LocalResumable implements Resumable {
 	 * @param targetFile The file to resume.
 	 * @param offset The position to resume from.
 	 */
-	LocalResumable(File targetFile, File tempFile, long offset) {
+	LocalRecoverable(File targetFile, File tempFile, long offset) {
 		checkArgument(offset >= 0, "offset must be >= 0");
 		this.targetFile = checkNotNull(targetFile, "targetFile");
 		this.tempFile = checkNotNull(tempFile, "tempFile");
@@ -68,6 +69,6 @@ class LocalResumable implements Resumable {
 
 	@Override
 	public String toString() {
-		return "Resumable " + tempFile + " @ " + offset + " => " + targetFile;
+		return "LocalRecoverable " + tempFile + " @ " + offset + " -> " + targetFile;
 	}
 }

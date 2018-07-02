@@ -18,6 +18,7 @@
 
 package org.apache.flink.core.fs.local;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.File;
@@ -28,11 +29,12 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Simple serializer for the {@link LocalResumable}.
+ * Simple serializer for the {@link LocalRecoverable}.
  */
-class LocalResumableSerializer implements SimpleVersionedSerializer<LocalResumable> {
+@Internal
+class LocalRecoverableSerializer implements SimpleVersionedSerializer<LocalRecoverable> {
 
-	static final LocalResumableSerializer INSTANCE = new LocalResumableSerializer();
+	static final LocalRecoverableSerializer INSTANCE = new LocalRecoverableSerializer();
 
 	private static final Charset CHARSET = StandardCharsets.UTF_8;
 
@@ -41,7 +43,7 @@ class LocalResumableSerializer implements SimpleVersionedSerializer<LocalResumab
 	/**
 	 * Do not instantiate, use reusable {@link #INSTANCE} instead.
 	 */
-	private LocalResumableSerializer() {}
+	private LocalRecoverableSerializer() {}
 
 	@Override
 	public int getVersion() {
@@ -49,7 +51,7 @@ class LocalResumableSerializer implements SimpleVersionedSerializer<LocalResumab
 	}
 
 	@Override
-	public byte[] serialize(LocalResumable obj) throws IOException {
+	public byte[] serialize(LocalRecoverable obj) throws IOException {
 		final byte[] targetFileBytes = obj.targetFile().getAbsolutePath().getBytes(CHARSET);
 		final byte[] tempFileBytes = obj.tempFile().getAbsolutePath().getBytes(CHARSET);
 		final byte[] targetBytes = new byte[20 + targetFileBytes.length + tempFileBytes.length];
@@ -66,7 +68,7 @@ class LocalResumableSerializer implements SimpleVersionedSerializer<LocalResumab
 	}
 
 	@Override
-	public LocalResumable deserialize(int version, byte[] serialized) throws IOException {
+	public LocalRecoverable deserialize(int version, byte[] serialized) throws IOException {
 		switch (version) {
 			case 1:
 				return deserializeV1(serialized);
@@ -75,7 +77,7 @@ class LocalResumableSerializer implements SimpleVersionedSerializer<LocalResumab
 		}
 	}
 
-	private static LocalResumable deserializeV1(byte[] serialized) throws IOException {
+	private static LocalRecoverable deserializeV1(byte[] serialized) throws IOException {
 		final ByteBuffer bb = ByteBuffer.wrap(serialized).order(ByteOrder.LITTLE_ENDIAN);
 
 		if (bb.getInt() != MAGIC_NUMBER) {
@@ -91,7 +93,7 @@ class LocalResumableSerializer implements SimpleVersionedSerializer<LocalResumab
 		final String targetPath = new String(targetFileBytes, CHARSET);
 		final String tempPath = new String(tempFileBytes, CHARSET);
 
-		return new LocalResumable(new File(targetPath), new File(tempPath), offset);
+		return new LocalRecoverable(new File(targetPath), new File(tempPath), offset);
 
 	}
 }
