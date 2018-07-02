@@ -117,6 +117,13 @@ class LocalRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream {
 			final File src = recoverable.tempFile();
 			final File dest = recoverable.targetFile();
 
+			// sanity check
+			if (src.length() != recoverable.offset()) {
+				// something was done to this file since the committer was created.
+				// this is not the "clean" case
+				throw new IOException("Cannot clean commit: File has trailing junk data.");
+			}
+
 			// rather than fall into default recovery, handle errors explicitly
 			// in order to improve error messages
 			try {
@@ -136,8 +143,17 @@ class LocalRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream {
 		public void commitAfterRecovery() throws IOException {
 			final File src = recoverable.tempFile();
 			final File dest = recoverable.targetFile();
+			final long expectedLength = recoverable.offset();
 
 			if (src.exists()) {
+				if (src.length() > expectedLength) {
+					// can happen if we co from persist to recovering for commit directly
+					// truncate the trailing junk away
+					try (FileOutputStream fos = new FileOutputStream(src, true)) {
+						fos.getChannel().truncate(expectedLength);
+					}
+				}
+
 				// source still exists, so no renaming happened yet. do it!
 				Files.move(src.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE);
 			}
