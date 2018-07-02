@@ -143,7 +143,7 @@ public class LocalFileSystem extends FileSystem {
 	}
 
 	@Override
-	public LocalResumableWriter createResumableWriter() throws IOException {
+	public LocalResumableWriter createRecoverableWriter() throws IOException {
 		return new LocalResumableWriter(this);
 	}
 

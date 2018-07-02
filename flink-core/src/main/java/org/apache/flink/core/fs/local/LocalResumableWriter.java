@@ -18,8 +18,11 @@
 
 package org.apache.flink.core.fs.local;
 
+import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.core.fs.ResumableFsDataOutputStream;
+import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
+import org.apache.flink.core.fs.RecoverableFsDataOutputStream.Committer;
 import org.apache.flink.core.fs.ResumableWriter;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
@@ -30,7 +33,11 @@ import java.util.UUID;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
-public class LocalResumableWriter implements ResumableWriter<LocalResumable> {
+/**
+ *
+ */
+@Internal
+public class LocalResumableWriter implements ResumableWriter {
 
 	private final LocalFileSystem fs;
 
@@ -39,28 +46,59 @@ public class LocalResumableWriter implements ResumableWriter<LocalResumable> {
 	}
 
 	@Override
-	public ResumableFsDataOutputStream<LocalResumable> open(Path filePath) throws IOException {
+	public RecoverableFsDataOutputStream open(Path filePath) throws IOException {
 		final File targetFile = fs.pathToFile(filePath);
 		final File tempFile = generateStagingTempFilePath(targetFile);
-		return new LocalResumableFsDataOutputStream(targetFile, tempFile);
+		return new LocalRecoverableFsDataOutputStream(targetFile, tempFile);
 	}
 
 	@Override
-	public ResumableFsDataOutputStream<LocalResumable> resume(LocalResumable resumable) throws IOException {
-		return new LocalResumableFsDataOutputStream(resumable);
+	public RecoverableFsDataOutputStream recover(ResumeRecoverable recoverable) throws IOException {
+		if (recoverable instanceof LocalRecoverable) {
+			return new LocalRecoverableFsDataOutputStream((LocalRecoverable) recoverable);
+		}
+		else {
+			throw new IllegalArgumentException(
+					"LocalFileSystem cannot recover recoverable for other file system: " + recoverable);
+		}
 	}
 
 	@Override
-	public SimpleVersionedSerializer<LocalResumable> getResumableSerializer() {
-		return LocalResumableSerializer.INSTANCE;
+	public Committer recoverForCommit(CommitRecoverable recoverable) throws IOException {
+		if (recoverable instanceof LocalRecoverable) {
+			return new LocalRecoverableFsDataOutputStream.LocalCommitter((LocalRecoverable) recoverable);
+		}
+		else {
+			throw new IllegalArgumentException(
+					"LocalFileSystem cannot recover recoverable for other file system: " + recoverable);
+		}
 	}
 
-	/**
-	 *
-	 * @param targetFile
-	 * @return
-	 */
-	public static File generateStagingTempFilePath(File targetFile) {
+	@Override
+	public SimpleVersionedSerializer<CommitRecoverable> getCommitRecoverableSerializer() {
+		@SuppressWarnings("unchecked")
+		SimpleVersionedSerializer<CommitRecoverable> typedSerializer = (SimpleVersionedSerializer<CommitRecoverable>)
+				(SimpleVersionedSerializer<?>) LocalRecoverableSerializer.INSTANCE;
+
+		return typedSerializer;
+	}
+
+	@Override
+	public SimpleVersionedSerializer<ResumeRecoverable> getResumeRecoverableSerializer() {
+		@SuppressWarnings("unchecked")
+		SimpleVersionedSerializer<ResumeRecoverable> typedSerializer = (SimpleVersionedSerializer<ResumeRecoverable>)
+				(SimpleVersionedSerializer<?>) LocalRecoverableSerializer.INSTANCE;
+
+		return typedSerializer;
+	}
+
+	@Override
+	public boolean supportsResume() {
+		return true;
+	}
+
+	@VisibleForTesting
+	static File generateStagingTempFilePath(File targetFile) {
 		checkArgument(targetFile.isAbsolute(), "targetFile must be absolute");
 		checkArgument(targetFile.isDirectory(), "targetFile must not be a directory");
 
@@ -70,7 +108,7 @@ public class LocalResumableWriter implements ResumableWriter<LocalResumable> {
 		checkArgument(parent != null, "targetFile must not be the root directory");
 
 		while (true) {
-			File candidate = new File(parent, ".tmp_" + name + '_' + UUID.randomUUID().toString());
+			File candidate = new File(parent, "." + name + ".inprogress." + UUID.randomUUID().toString());
 			if (!candidate.exists()) {
 				return candidate;
 			}
