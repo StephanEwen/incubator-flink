@@ -22,6 +22,8 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.ResumableWriter.CommitRecoverable;
 import org.apache.flink.core.fs.ResumableWriter.ResumeRecoverable;
+import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.FlinkRuntimeException;
 
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -30,11 +32,16 @@ import org.apache.hadoop.fs.Path;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 @Internal
 class HadoopRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream {
+
+	private static Method truncateHandle;
 
 	private final FileSystem fs;
 
@@ -49,6 +56,8 @@ class HadoopRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream 
 			Path targetFile,
 			Path tempFile) throws IOException {
 
+		ensureTruncateInitialized();
+
 		this.fs = checkNotNull(fs);
 		this.targetFile = checkNotNull(targetFile);
 		this.tempFile = checkNotNull(tempFile);
@@ -59,12 +68,14 @@ class HadoopRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream 
 			FileSystem fs,
 			HadoopFsRecoverable recoverable) throws IOException {
 
+		ensureTruncateInitialized();
+
 		this.fs = checkNotNull(fs);
 		this.targetFile = checkNotNull(recoverable.targetFile());
 		this.tempFile = checkNotNull(recoverable.tempFile());
 
 		// truncate back and append
-		fs.truncate(recoverable.tempFile(), recoverable.offset());
+		truncate(fs, recoverable.tempFile(), recoverable.offset());
 		out = fs.append(tempFile);
 	}
 
@@ -112,7 +123,57 @@ class HadoopRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream 
 	}
 
 	// ------------------------------------------------------------------------
+	//  Reflection utils for truncation
+	//    These are needed to compile against Hadoop versions before
+	//    Hadoop 2.7, which have no truncation calls for HDFS.
+	// ------------------------------------------------------------------------
 
+	private static void ensureTruncateInitialized() throws FlinkRuntimeException {
+		if (truncateHandle == null) {
+			Method truncateMethod;
+			try {
+				truncateMethod = FileSystem.class.getMethod("truncate", Path.class, long.class);
+			}
+			catch (NoSuchMethodException e) {
+				throw new FlinkRuntimeException("Could not find a public truncate method on the Hadoop File System.");
+			}
+
+			if (!Modifier.isPublic(truncateMethod.getModifiers())) {
+				throw new FlinkRuntimeException("Could not find a public truncate method on the Hadoop File System.");
+			}
+
+			truncateHandle = truncateMethod;
+		}
+	}
+
+	static void truncate(FileSystem hadoopFs, Path file, long length) throws IOException {
+		if (truncateHandle != null) {
+			try {
+				truncateHandle.invoke(hadoopFs, file, length);
+			}
+			catch (InvocationTargetException e) {
+				ExceptionUtils.rethrowIOException(e.getTargetException());
+			}
+			catch (Throwable t) {
+				throw new IOException(
+						"Truncation of file failed because of access/linking problems with Hadoop's truncate call. " +
+								"This is most likely a dependency conflict or class loading problem.");
+			}
+		}
+		else {
+			throw new IllegalStateException("Truncation handle has not been initialized");
+		}
+	}
+
+	// ------------------------------------------------------------------------
+	//  Committer
+	// ------------------------------------------------------------------------
+
+	/**
+	 * Implementation of a committer for the Hadoop File System abstraction.
+	 * This implementation commits by renaming the temp file to the final file path.
+	 * The temp file is truncated before renaming in case there is trailing garbage data.
+	 */
 	static class HadoopFsCommitter implements Committer {
 
 		private final FileSystem fs;
@@ -172,7 +233,7 @@ class HadoopRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream 
 				if (srcStatus.getLen() > expectedLength) {
 					// can happen if we co from persist to recovering for commit directly
 					// truncate the trailing junk away
-					fs.truncate(src, expectedLength);
+					truncate(fs, src, expectedLength);
 				}
 			}
 			else if (!fs.exists(dest)) {

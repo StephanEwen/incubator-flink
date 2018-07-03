@@ -25,6 +25,7 @@ import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream.Committer;
 import org.apache.flink.core.fs.ResumableWriter;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.runtime.util.HadoopUtils;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -38,10 +39,23 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Internal
 public class HadoopRecoverableWriter implements ResumableWriter {
 
+	/** The Hadoop file system on which the writer operates. */
 	private final org.apache.hadoop.fs.FileSystem fs;
 
+	/**
+	 * Creates a new Recoverable writer.
+	 * @param fs The Hadoop file system on which the writer operates.
+	 */
 	public HadoopRecoverableWriter(org.apache.hadoop.fs.FileSystem fs) {
 		this.fs = checkNotNull(fs);
+
+		// This writer is only supported on a subset of file systems, and on
+		// specific versions. We check these schemes and versions eagerly for
+		// better error messages.
+		if (!"hdfs".equalsIgnoreCase(fs.getScheme()) || !HadoopUtils.isMinHadoopVersion(2, 7)) {
+			throw new UnsupportedOperationException(
+					"Recoverable writers on Hadoop are only supported for HDFS and for Hadoop version 2.7 or newer");
+		}
 	}
 
 	@Override
@@ -58,7 +72,7 @@ public class HadoopRecoverableWriter implements ResumableWriter {
 		}
 		else {
 			throw new IllegalArgumentException(
-					"LocalFileSystem cannot recover recoverable for other file system: " + recoverable);
+					"Hadoop File System cannot recover a recoverable for another file system: " + recoverable);
 		}
 	}
 
@@ -69,28 +83,26 @@ public class HadoopRecoverableWriter implements ResumableWriter {
 		}
 		else {
 			throw new IllegalArgumentException(
-					"LocalFileSystem cannot recover recoverable for other file system: " + recoverable);
+					"Hadoop File System  cannot recover a recoverable for another file system: " + recoverable);
 		}
 	}
 
 	@Override
 	public SimpleVersionedSerializer<CommitRecoverable> getCommitRecoverableSerializer() {
-//		@SuppressWarnings("unchecked")
-//		SimpleVersionedSerializer<CommitRecoverable> typedSerializer = (SimpleVersionedSerializer<CommitRecoverable>)
-//				(SimpleVersionedSerializer<?>) LocalRecoverableSerializer.INSTANCE;
-//
-//		return typedSerializer;
-		throw new UnsupportedOperationException();
+		@SuppressWarnings("unchecked")
+		SimpleVersionedSerializer<CommitRecoverable> typedSerializer = (SimpleVersionedSerializer<CommitRecoverable>)
+				(SimpleVersionedSerializer<?>) HadoopRecoverableSerializer.INSTANCE;
+
+		return typedSerializer;
 	}
 
 	@Override
 	public SimpleVersionedSerializer<ResumeRecoverable> getResumeRecoverableSerializer() {
-//		@SuppressWarnings("unchecked")
-//		SimpleVersionedSerializer<ResumeRecoverable> typedSerializer = (SimpleVersionedSerializer<ResumeRecoverable>)
-//				(SimpleVersionedSerializer<?>) LocalRecoverableSerializer.INSTANCE;
-//
-//		return typedSerializer;
-		throw new UnsupportedOperationException();
+		@SuppressWarnings("unchecked")
+		SimpleVersionedSerializer<ResumeRecoverable> typedSerializer = (SimpleVersionedSerializer<ResumeRecoverable>)
+				(SimpleVersionedSerializer<?>) HadoopRecoverableSerializer.INSTANCE;
+
+		return typedSerializer;
 	}
 
 	@Override
