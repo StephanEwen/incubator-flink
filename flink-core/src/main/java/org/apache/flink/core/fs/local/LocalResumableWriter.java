@@ -49,6 +49,13 @@ public class LocalResumableWriter implements ResumableWriter {
 	public RecoverableFsDataOutputStream open(Path filePath) throws IOException {
 		final File targetFile = fs.pathToFile(filePath);
 		final File tempFile = generateStagingTempFilePath(targetFile);
+
+		// try to create the parent
+		final File parent = tempFile.getParentFile();
+		if (parent != null && !parent.mkdirs() && !parent.exists()) {
+			throw new IOException("Failed to create the parent directory: " + parent);
+		}
+
 		return new LocalRecoverableFsDataOutputStream(targetFile, tempFile);
 	}
 
@@ -100,7 +107,7 @@ public class LocalResumableWriter implements ResumableWriter {
 	@VisibleForTesting
 	static File generateStagingTempFilePath(File targetFile) {
 		checkArgument(targetFile.isAbsolute(), "targetFile must be absolute");
-		checkArgument(targetFile.isDirectory(), "targetFile must not be a directory");
+		checkArgument(!targetFile.isDirectory(), "targetFile must not be a directory");
 
 		final File parent = targetFile.getParentFile();
 		final String name = targetFile.getName();

@@ -23,11 +23,24 @@ import org.apache.flink.core.fs.ResumableWriter.ResumeRecoverable;
 
 import java.io.IOException;
 
-
+/**
+ * An output stream to a file system that can be recovered at well defined points.
+ * The stream initially writes to hidden files or temp files and only creates the
+ * target file once it is closed and "committed".
+ */
 public abstract class RecoverableFsDataOutputStream extends FSDataOutputStream {
 
+	/**
+	 * Ensures all data so far is persistent (similar to {@link #sync()}) and returns
+	 * a handle to recover the stream at the current position.
+	 */
 	public abstract ResumeRecoverable persist() throws IOException;
 
+	/**
+	 * Closes the stream, ensuring persistence of all data (similar to {@link #sync()}).
+	 * This returns a Committer that can be used to publish (make visible) the file
+	 * that the stream was writing to.
+	 */
 	public abstract Committer closeForCommit() throws IOException;
 
 	@Override
@@ -35,6 +48,10 @@ public abstract class RecoverableFsDataOutputStream extends FSDataOutputStream {
 
 	// ------------------------------------------------------------------------
 
+	/**
+	 * A committer can publish the file of a stream that was closed.
+	 * The Committer can be recovered via a {@link CommitRecoverable}.
+	 */
 	public interface Committer {
 
 		void commit() throws IOException;

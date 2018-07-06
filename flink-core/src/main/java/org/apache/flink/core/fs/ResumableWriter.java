@@ -22,6 +22,9 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.IOException;
 
+/**
+ * The ResumableWriter creates and recovers RecoverableFsDataOutputStream.
+ */
 public interface ResumableWriter {
 
 	RecoverableFsDataOutputStream open(Path path) throws IOException;
@@ -38,7 +41,16 @@ public interface ResumableWriter {
 
 	// ------------------------------------------------------------------------
 
+	/**
+	 * A handle to an in-progress stream with a defined and persistent amount of data.
+	 * The handle can be used to recover the stream and publish the result file.
+	 */
 	interface CommitRecoverable {}
 
+	/**
+	 * A handle to an in-progress stream with a defined and persistent amount of data.
+	 * The handle can be used to recover the stream and either publish the result file
+	 * or keep appending data to the stream.
+	 */
 	interface ResumeRecoverable extends CommitRecoverable {}
 }

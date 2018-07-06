@@ -24,7 +24,6 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.FileSystemKind;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.ResumableWriter;
-import org.apache.flink.runtime.util.HadoopUtils;
 
 import java.io.IOException;
 import java.net.URI;
