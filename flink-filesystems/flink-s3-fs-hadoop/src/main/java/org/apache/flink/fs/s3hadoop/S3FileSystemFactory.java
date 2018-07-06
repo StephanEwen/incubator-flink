@@ -22,7 +22,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.FileSystemFactory;
 import org.apache.flink.runtime.fs.hdfs.HadoopFileSystem;
-import org.apache.flink.runtime.util.HadoopUtils;
 
 import org.apache.hadoop.fs.s3a.S3AFileSystem;
 import org.slf4j.Logger;
@@ -76,7 +75,7 @@ public class S3FileSystemFactory implements FileSystemFactory {
 			if (hadoopConfig == null) {
 				if (flinkConfig != null) {
 					LOG.debug("Loading Hadoop configuration for s3a file system");
-					hadoopConfig = HadoopUtils.getHadoopConfiguration(flinkConfig);
+					hadoopConfig = new org.apache.hadoop.conf.Configuration();
 
 					// add additional config entries from the Flink config to the Presto Hadoop config
 					for (String key : flinkConfig.keySet()) {
