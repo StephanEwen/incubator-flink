@@ -22,35 +22,97 @@ import org.apache.flink.core.fs.ResumableWriter.ResumeRecoverable;
 
 import com.amazonaws.services.s3.model.PartETag;
 
+import javax.annotation.Nullable;
+
 import java.util.List;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
+import static org.apache.flink.util.Preconditions.checkNotNull;
+
 /**
- * Data object to recover an S3 recoverable output stream.
+ * Data object to recover an S3 MultiPartUpload for a recoverable output stream.
  */
 class S3Recoverable implements ResumeRecoverable {
 
 	private final String uploadId;
 
-	private final String bucket;
-
 	private final String key;
 
 	private final List<PartETag> parts;
 
-	S3Recoverable(String uploadId, String bucket, String key, List<PartETag> parts) {
-		this.uploadId = uploadId;
-		this.bucket = bucket;
-		this.key = key;
-		this.parts = parts;
+	@Nullable
+	private final String lastPartObject;
+
+	private long numBytesInParts;
+
+	private long lastPartObjectLength;
+
+	S3Recoverable(
+			String uploadId,
+			String key,
+			List<PartETag> parts,
+			long numBytesInParts) {
+
+		this(uploadId, key, parts, numBytesInParts, null, -1);
 	}
+
+	S3Recoverable(
+			String uploadId,
+			String key,
+			List<PartETag> parts,
+			long numBytesInParts,
+			@Nullable String lastPartObject,
+			long lastPartObjectLength) {
+
+		checkArgument(numBytesInParts > 0);
+		checkArgument(lastPartObject == null || lastPartObjectLength > 0);
+
+		this.uploadId = checkNotNull(uploadId);
+		this.key = checkNotNull(key);
+		this.parts = checkNotNull(parts);
+		this.numBytesInParts = numBytesInParts;
+
+		this.lastPartObject = lastPartObject;
+		this.lastPartObjectLength = lastPartObjectLength;
+	}
+
+	// ------------------------------------------------------------------------
+
+	public String uploadId() {
+		return uploadId;
+	}
+
+	public String key() {
+		return key;
+	}
+
+	public List<PartETag> parts() {
+		return parts;
+	}
+
+	public long getNumBytesInParts() {
+		return numBytesInParts;
+	}
+
+	@Nullable
+	public String lastPartObject() {
+		return lastPartObject;
+	}
+
+	public long getLastPartObjectLength() {
+		return lastPartObjectLength;
+	}
+
+	// ------------------------------------------------------------------------
 
 	@Override
 	public String toString() {
 		StringBuilder buf = new StringBuilder(128);
 		buf.append("S3Recoverable: ");
-		buf.append(bucket).append('/').append(key);
-		buf.append(" - ").append(uploadId).append(" [");
-
+		buf.append("key=").append(key);
+		buf.append(", uploadId=").append(uploadId);
+		buf.append(", bytesInParts=").append(numBytesInParts);
+		buf.append(", parts=[");
 		int num = 0;
 		for (PartETag part : parts) {
 			if (0 != num++) {
@@ -58,7 +120,9 @@ class S3Recoverable implements ResumeRecoverable {
 			}
 			buf.append(part.getPartNumber()).append('=').append(part.getETag());
 		}
-		buf.append(']');
+		buf.append("], trailingPart=").append(lastPartObject);
+		buf.append("trailingPartLen=").append(lastPartObjectLength);
+
 		return buf.toString();
 	}
 }
