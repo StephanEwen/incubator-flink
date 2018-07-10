@@ -18,8 +18,11 @@
 
 package org.apache.flink.fs.s3hadoop.utils;
 
-import org.apache.flink.fs.s3hadoop.S3RecoverableFsDataOutputStream;
 import org.apache.flink.util.ExceptionUtils;
+
+import org.slf4j.Logger;
+
+import javax.annotation.Nullable;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -37,11 +40,23 @@ public class RefCountedFile {
 
 	private final AtomicInteger references;
 
+	@Nullable
+	private final Logger logger;
+
 	/**
 	 * Creates a new file with a reference count starting at one.
 	 */
 	public RefCountedFile(File file) {
+		this(file, null);
+	}
+
+	/**
+	 * Creates a new file with a reference count starting at one.
+	 * The optional logger is used to log delete failures.
+	 */
+	public RefCountedFile(File file, @Nullable Logger logger) {
 		this.file = checkNotNull(file);
+		this.logger = logger;
 		this.references = new AtomicInteger(1);
 	}
 
@@ -64,7 +79,6 @@ public class RefCountedFile {
 		int ref;
 		do {
 			ref = references.get();
-
 			if (ref == 0) {
 				throw new IllegalStateException("RefCountedFile is already released");
 			}
@@ -80,12 +94,10 @@ public class RefCountedFile {
 		int ref;
 		do {
 			ref = references.get();
-
 			if (ref == 0) {
 				// already disposed
 				return;
 			}
-
 		}
 		while (!references.compareAndSet(ref, ref - 1));
 
@@ -97,7 +109,9 @@ public class RefCountedFile {
 			}
 			catch (Throwable t) {
 				ExceptionUtils.rethrowIfFatalError(t);
-				S3RecoverableFsDataOutputStream.LOG.warn("Failed to delete temp file {}", file.getAbsolutePath());
+				if (logger != null) {
+					logger.warn("Failed to delete temp file {}", file.getAbsolutePath());
+				}
 			}
 		}
 	}

@@ -18,29 +18,22 @@
 
 package org.apache.flink.fs.s3hadoop;
 
-import com.amazonaws.services.s3.model.CopyPartRequest;
-import com.amazonaws.services.s3.model.CopyPartResult;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream.Committer;
 import org.apache.flink.core.fs.ResumableWriter;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
-import org.apache.flink.fs.s3hadoop.S3RecoverableFsDataOutputStream;
+import org.apache.flink.fs.s3hadoop.utils.BackPressuringExecutor;
+import org.apache.flink.fs.s3hadoop.utils.TempFileCreator;
 import org.apache.flink.runtime.fs.hdfs.HadoopFileSystem;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.PartETag;
 import org.apache.hadoop.fs.s3a.S3AFileSystem;
-import org.apache.hadoop.fs.s3a.WriteOperationHelper;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.Executor;
-import java.util.function.Supplier;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -48,118 +41,128 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * An implementation of the {@link ResumableWriter} against S3.
  *
- * <p>
+ * <p>This implementation makes heavy use of MultiPart Uploads in S3 to persist
+ * intermediate data as soon as possible.
  *
  * <p>This class partially reuses utility classes and implementations from the Hadoop
  * project, specifically around configuring S3 requests and handling retries.
  */
 public class S3RecoverableWriter implements ResumableWriter {
 
-	/** The minimum size for parts in a multipart upload. */
-	public static final int MIN_PART_SIZE = 5 << 20;
-
 	private final S3AFileSystem s3aFs;
 
-	private final WriteOperationHelper writeHelper;
-
-	private final AmazonS3 s3client;
+	private final S3AccessHelper s3access;
 
 	private final Executor uploadThreadPool;
 
-	private final Supplier<Tuple2<File, OutputStream>> tempFileCreator;
+	private final TempFileCreator tempFileCreator;
 
-	/** The size for each part in the multipart upload. */
-	private final int partSize;
+	/** The number of bytes at which new MPU parts are started between checkpoints. */
+	private final int rollingPartSize;
+
+	private final int maxConcurrentUploadsPerStream;
 
 	private final int streamBufferSize;
 
 	public S3RecoverableWriter(
 			S3AFileSystem s3aFs,
 			Executor uploadThreadPool,
-			int partSize,
-			Supplier<Tuple2<File, OutputStream>> tempFileCreator) {
+			TempFileCreator tempFileCreator,
+			int rollingPartSize,
+			int maxConcurrentUploadsPerStream) {
 
-		checkArgument(partSize >= MIN_PART_SIZE);
+		checkArgument(rollingPartSize >= RecoverableS3MultiPartUpload.MIN_PART_SIZE);
 
 		this.s3aFs = checkNotNull(s3aFs);
-		this.partSize = partSize;
-
-		this.writeHelper = new WriteOperationAccessor(s3aFs, s3aFs.getConf());
+		this.s3access = new S3AccessHelper(s3aFs, s3aFs.getConf());
+		this.uploadThreadPool = checkNotNull(uploadThreadPool);
+		this.tempFileCreator = checkNotNull(tempFileCreator);
+		this.rollingPartSize = rollingPartSize;
+		this.maxConcurrentUploadsPerStream = maxConcurrentUploadsPerStream;
+		this.streamBufferSize = 4096;
 	}
 
 	@Override
 	public RecoverableFsDataOutputStream open(Path path) throws IOException {
 		final String key = pathToKey(path);
-		final String multiPartUploadId = writeHelper.initiateMultiPartUpload(key);
+		final String keyPrefixForTemp = tempKeyPrefixForKey(key);
+
+		final String multiPartUploadId;
+		try {
+			multiPartUploadId = s3access.initiateMultiPartUpload(key);
+		}
+		catch (Exception e) {
+			throw new IOException("Could not open stream: failed to initiate S3 Multipart Upload.", e);
+		}
 
 		final RecoverableS3MultiPartUpload upload = RecoverableS3MultiPartUpload.newUpload(
-				writeHelper, uploadThreadPool, multiPartUploadId, key);
+				s3access, limitExecutor(uploadThreadPool), multiPartUploadId, key, keyPrefixForTemp);
 
 		return S3RecoverableFsDataOutputStream.newStream(
-				upload, tempFileCreator, partSize, streamBufferSize);
+				upload, tempFileCreator, rollingPartSize, streamBufferSize);
 	}
 
 	@Override
-	public RecoverableFsDataOutputStream recover(ResumeRecoverable recoverable) throws IOException {
+	public S3RecoverableFsDataOutputStream recover(ResumeRecoverable recoverable) throws IOException {
 		if (!(recoverable instanceof S3Recoverable)) {
 			throw new IllegalArgumentException(
-					"LocalFileSystem cannot recover recoverable for other file system: " + recoverable);
+					"S3 File System cannot recover recoverable for other file system: " + recoverable);
 		}
 
 		final S3Recoverable s3recoverable = (S3Recoverable) recoverable;
 
-		final RecoverableS3MultiPartUpload upload = RecoverableS3MultiPartUpload.recoverUpload(
-				writeHelper,
-				uploadThreadPool,
+		// if we have an object for trailing data, download that to let the stream resume with it
+		final String inProgressPartKey = s3recoverable.lastPartObject();
+		final File inProgressPart = inProgressPartKey == null ? null :
+				downloadLastDataChunk(inProgressPartKey, s3recoverable.lastPartObjectLength());
 
+		// recover the Multipart Upload
+		final RecoverableS3MultiPartUpload upload = RecoverableS3MultiPartUpload.recoverUpload(
+				s3access,
+				limitExecutor(uploadThreadPool),
+				s3recoverable.uploadId(),
+				s3recoverable.key(),
+				tempKeyPrefixForKey(s3recoverable.key()),
+				s3recoverable.parts(),
+				s3recoverable.numBytesInParts());
+
+		// recover the output stream
+		return S3RecoverableFsDataOutputStream.recoverStream(
+				upload,
+				tempFileCreator,
+				rollingPartSize,
+				streamBufferSize,
+				inProgressPart,
+				s3recoverable.numBytesInParts());
 	}
 
 	@Override
 	public Committer recoverForCommit(CommitRecoverable recoverable) throws IOException {
 		if (!(recoverable instanceof S3Recoverable)) {
 			throw new IllegalArgumentException(
-					"LocalFileSystem cannot recover recoverable for other file system: " + recoverable);
+					"S3 File System cannot recover recoverable for other file system: " + recoverable);
 		}
 
-		final S3Recoverable s3recoverable = (S3Recoverable) recoverable;
-
-		final String uploadId = s3recoverable.uploadId();
-		final String key = s3recoverable.key();
-
-		final List<PartETag> origParts = s3recoverable.parts();
-		final ArrayList<PartETag> parts;
-
-		// convert trailing data object, if present
-		final PartETag trailingPart = s3recover.lastPartObject() == null ?
-				null : convertObjectToPart(s3recover.lastPartObject());
-
-		// same list or parts, defensive copy
-		if (trailingPart == null) {
-			// same list of parts, but we make a defensive copy
-			parts = new ArrayList<>(origParts);
-		}
-		else {
-			parts = new ArrayList<>(origParts.size() + 1);
-			parts.addAll(origParts);
-			parts.add(trailingPart);
-		}
-
-		return new S3RecoverableFsDataOutputStream.S3Committer(
-				writeHelper,
-				uploadId,
-				key,
-
-		);
+		final S3RecoverableFsDataOutputStream recovered = recover((S3Recoverable) recoverable);
+		return recovered.closeForCommit();
 	}
 
 	@Override
 	public SimpleVersionedSerializer<CommitRecoverable> getCommitRecoverableSerializer() {
-		throw new UnsupportedOperationException();
+		@SuppressWarnings("unchecked")
+		SimpleVersionedSerializer<CommitRecoverable> typedSerializer = (SimpleVersionedSerializer<CommitRecoverable>)
+				(SimpleVersionedSerializer<?>) S3RecoverableSerializer.INSTANCE;
+
+		return typedSerializer;
 	}
 
 	@Override
 	public SimpleVersionedSerializer<ResumeRecoverable> getResumeRecoverableSerializer() {
-		throw new UnsupportedOperationException();
+		@SuppressWarnings("unchecked")
+		SimpleVersionedSerializer<ResumeRecoverable> typedSerializer = (SimpleVersionedSerializer<ResumeRecoverable>)
+				(SimpleVersionedSerializer<?>) S3RecoverableSerializer.INSTANCE;
+
+		return typedSerializer;
 	}
 
 	@Override
@@ -171,22 +174,56 @@ public class S3RecoverableWriter implements ResumableWriter {
 	//  Utils
 	// ------------------------------------------------------------------------
 
-	private PartETag convertObjectToPart(String uploadId, String targetKey, String objectKey) throws IOException {
-		final String bucket = s3aFs.getBucket();
+	private File downloadLastDataChunk(String key, long expectedLength) throws IOException {
+		// download the file (simple way)
 
-		final CopyPartRequest copyRequest = new CopyPartRequest();
-		copyRequest.setSourceBucketName(bucket);
-		copyRequest.setSourceKey(objectKey);
-		copyRequest.setDestinationBucketName(bucket);
-		copyRequest.setDestinationKey(targetKey);
+		final byte[] buffer = new byte[32 * 1024];
+		final Tuple2<File, OutputStream> fileAndStream = tempFileCreator.get();
+		final File file = fileAndStream.f0;
 
-		// we should add retries here later
-		final CopyPartResult copyResult = s3client.copyPart(copyRequest);
+		long numBytes = 0L;
 
-		return new PartETag(copyResult.getPartNumber(), copyResult.getETag());
+		try (OutputStream outStream = fileAndStream.f1;
+				org.apache.hadoop.fs.FSDataInputStream inStream =
+						s3aFs.open(new org.apache.hadoop.fs.Path('/' + key))) {
+
+			int numRead;
+			while ((numRead = inStream.read(buffer)) > 0) {
+				outStream.write(buffer, 0, numRead);
+				numBytes += numRead;
+			}
+		}
+
+		// some sanity checks
+		if (numBytes != file.length()) {
+			throw new IOException(String.format("Error recovering writer: " +
+							"Downloading the last data chunk file gives incorrect length. " +
+							"File=%d bytes, Stream=%d bytes",
+									file.length(), numBytes));
+		}
+		if (numBytes != expectedLength) {
+			throw new IOException(String.format("Error recovering writer: " +
+							"Downloading the last data chunk file gives incorrect length." +
+							"File length is %d bytes, RecoveryData indicates %d bytes",
+									numBytes, expectedLength));
+		}
+
+		return file;
 	}
 
 	private String pathToKey(Path path) {
 		return s3aFs.pathToKey(HadoopFileSystem.toHadoopPath(path));
+	}
+
+	private Executor limitExecutor(Executor executor) {
+		return maxConcurrentUploadsPerStream <= 0 ?
+				executor :
+				new BackPressuringExecutor(executor, maxConcurrentUploadsPerStream);
+	}
+
+	private static String tempKeyPrefixForKey(String key) {
+		int lastSlash = key.lastIndexOf('/');
+		String parent = lastSlash == -1 ? "" : key.substring(0, lastSlash + 1);
+		return parent + '_' + key + "_tmp_";
 	}
 }

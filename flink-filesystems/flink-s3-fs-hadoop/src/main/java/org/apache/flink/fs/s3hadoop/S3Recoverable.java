@@ -45,7 +45,7 @@ class S3Recoverable implements ResumeRecoverable {
 
 	private long numBytesInParts;
 
-	private long lastPartObjectLength;
+	private int lastPartObjectLength;
 
 	S3Recoverable(
 			String uploadId,
@@ -62,7 +62,7 @@ class S3Recoverable implements ResumeRecoverable {
 			List<PartETag> parts,
 			long numBytesInParts,
 			@Nullable String lastPartObject,
-			long lastPartObjectLength) {
+			int lastPartObjectLength) {
 
 		checkArgument(numBytesInParts > 0);
 		checkArgument(lastPartObject == null || lastPartObjectLength > 0);
@@ -90,7 +90,7 @@ class S3Recoverable implements ResumeRecoverable {
 		return parts;
 	}
 
-	public long getNumBytesInParts() {
+	public long numBytesInParts() {
 		return numBytesInParts;
 	}
 
@@ -99,7 +99,7 @@ class S3Recoverable implements ResumeRecoverable {
 		return lastPartObject;
 	}
 
-	public long getLastPartObjectLength() {
+	public int lastPartObjectLength() {
 		return lastPartObjectLength;
 	}
 

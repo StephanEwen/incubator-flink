@@ -24,7 +24,6 @@ import com.amazonaws.services.s3.model.PartETag;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.UploadPartRequest;
 import com.amazonaws.services.s3.model.UploadPartResult;
-import org.apache.hadoop.fs.s3a.WriteOperationHelper;
 
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -55,10 +54,10 @@ import static org.apache.flink.util.Preconditions.checkState;
 @NotThreadSafe
 class RecoverableS3MultiPartUpload {
 
-	/** The minimum size of a part in the multipart upload, except for the last part. */
+	/** The minimum size of a part in the multipart upload, except for the last part: 5 MIBytes. */
 	public static final int MIN_PART_SIZE = 5 << 20;
 
-	private final WriteOperationHelper writeHelper;
+	private final S3AccessHelper s3access;
 
 	private final Executor uploadThreadPool;
 
@@ -79,7 +78,7 @@ class RecoverableS3MultiPartUpload {
 	// ------------------------------------------------------------------------
 
 	private RecoverableS3MultiPartUpload (
-			WriteOperationHelper writer,
+			S3AccessHelper s3access,
 			Executor uploadThreadPool,
 			String uploadId,
 			String key,
@@ -89,7 +88,7 @@ class RecoverableS3MultiPartUpload {
 
 		checkArgument(numBytes >= 0);
 
-		this.writeHelper = checkNotNull(writer);
+		this.s3access = checkNotNull(s3access);
 		this.uploadThreadPool = checkNotNull(uploadThreadPool);
 		this.uploadId = checkNotNull(uploadId);
 		this.key = checkNotNull(key);
@@ -135,7 +134,7 @@ class RecoverableS3MultiPartUpload {
 	 *                     should not be used any more, but recovered instead.
 	 */
 	void addLastPart(RefCountedFile file, int length) throws IOException {
-		final UploadPartRequest uploadRequest = writeHelper.newUploadPartRequest(
+		final UploadPartRequest uploadRequest = s3access.newUploadPartRequest(
 				key, uploadId, numParts, length, null, file.getFile(), 0L);
 
 		final CompletableFuture<PartETag> future = new CompletableFuture<>();
@@ -144,8 +143,8 @@ class RecoverableS3MultiPartUpload {
 		numParts++;
 		numBytes += length;
 
-		file.retain();
-		uploadThreadPool.execute(new UploadTask(writeHelper, uploadRequest, file, future));
+		file.retain(); // keep the file while the async upload still runs
+		uploadThreadPool.execute(new UploadTask(s3access, uploadRequest, file, future));
 	}
 
 	/**
@@ -153,8 +152,6 @@ class RecoverableS3MultiPartUpload {
 	 *
 	 * <p>This implementation currently blocks until all part uploads are complete and returns
 	 * a completed future.
-	 *
-	 * @throws IOException Thrown if the snapshot failed.
 	 */
 	CompletableFuture<S3Recoverable> snapshot() throws IOException {
 		// this is currently blocking, to be made non-blocking in the future
@@ -173,24 +170,18 @@ class RecoverableS3MultiPartUpload {
 	 *
 	 * <p>This implementation currently blocks until all part uploads are complete and returns
 	 * a completed future.
-	 * @param file
-	 * @param length
-	 * @return
-	 *
-	 * @throws IOException Thrown if the snapshot failed.
 	 */
 	CompletableFuture<S3Recoverable> snapshotWithTrailingData(RefCountedFile file, long length) throws IOException {
 		// first, upload the trailing data file. during that time, other in-progress uploads may complete.
 		final String trailingDataObjectKey = createTempObjectKey();
 		file.retain();
 		try {
-			final PutObjectRequest putRequest = writeHelper.createPutObjectRequest(
+			final PutObjectRequest putRequest = s3access.createPutObjectRequest(
 					trailingDataObjectKey,
 					Files.newInputStream(file.getFile().toPath(), StandardOpenOption.READ),
 					length);
 
-			writeHelper.retry("put", trailingDataObjectKey, true,
-					() -> writeHelper.putObject(putRequest));
+			s3access.putObject(putRequest);
 		}
 		finally {
 			file.release();
@@ -210,8 +201,8 @@ class RecoverableS3MultiPartUpload {
 		return CompletableFuture.completedFuture(recoverable);
 	}
 
-	WriteOperationHelper getWriteHelper() {
-		return writeHelper;
+	S3AccessHelper getS3AccessHelper() {
+		return s3access;
 	}
 
 	// ------------------------------------------------------------------------
@@ -249,20 +240,20 @@ class RecoverableS3MultiPartUpload {
 	// ------------------------------------------------------------------------
 
 	public static RecoverableS3MultiPartUpload newUpload(
-			WriteOperationHelper writer,
+			S3AccessHelper s3access,
 			Executor uploadThreadPool,
 			String uploadId,
 			String key,
 			String keyPrefixForTempObjects) {
 
 		return new RecoverableS3MultiPartUpload(
-				writer, uploadThreadPool,
+				s3access, uploadThreadPool,
 				uploadId, key, keyPrefixForTempObjects,
 				new ArrayList<>(), 0L);
 	}
 
 	public static RecoverableS3MultiPartUpload recoverUpload(
-			WriteOperationHelper writer,
+			S3AccessHelper s3access,
 			Executor uploadThreadPool,
 			String uploadId,
 			String key,
@@ -271,7 +262,7 @@ class RecoverableS3MultiPartUpload {
 			long numBytesSoFar) {
 
 		return new RecoverableS3MultiPartUpload(
-				writer, uploadThreadPool,
+				s3access, uploadThreadPool,
 				uploadId, key, keyPrefixForTempObjects,
 				new ArrayList<>(partsSoFar), numBytesSoFar);
 
@@ -283,7 +274,7 @@ class RecoverableS3MultiPartUpload {
 
 	private static class UploadTask implements Runnable {
 
-		private final WriteOperationHelper writeHelper;
+		private final S3AccessHelper s3access;
 
 		private final UploadPartRequest uploadRequest;
 
@@ -292,12 +283,12 @@ class RecoverableS3MultiPartUpload {
 		private final CompletableFuture<PartETag> future;
 
 		UploadTask(
-				WriteOperationHelper writeHelper,
+				S3AccessHelper s3access,
 				UploadPartRequest uploadRequest,
 				RefCountedFile file,
 				CompletableFuture<PartETag> future) {
 
-			this.writeHelper = writeHelper;
+			this.s3access = s3access;
 			this.uploadRequest = uploadRequest;
 			this.file = file;
 			this.future = future;
@@ -306,7 +297,7 @@ class RecoverableS3MultiPartUpload {
 		@Override
 		public void run() {
 			try {
-				UploadPartResult result = writeHelper.uploadPart(uploadRequest);
+				UploadPartResult result = s3access.uploadPart(uploadRequest);
 				future.complete(new PartETag(result.getPartNumber(), result.getETag()));
 				file.release();
 			}

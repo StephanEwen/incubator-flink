@@ -18,18 +18,21 @@
 
 package org.apache.flink.fs.s3hadoop.utils;
 
-import java.io.IOException;
+import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.FlinkRuntimeException;
+
 import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- *
- * <p>This class does not implement
+ * An executor decorator that allows only a certain number of concurrent executions.
+ * The {@link #execute(Runnable)} method blocks once that number of executions is exceeded.
  */
-public class LimitedCapacityExecutor {
+public class BackPressuringExecutor implements Executor {
 
 	/** The executor for the actual execution. */
 	private final Executor delegate;
@@ -37,18 +40,34 @@ public class LimitedCapacityExecutor {
 	/** The semaphore to track permits and block until permits are available. */
 	private final Semaphore permits;
 
-	public LimitedCapacityExecutor(Executor delegate, int numConcurrentExecutions) {
+	public BackPressuringExecutor(Executor delegate, int numConcurrentExecutions) {
 		checkArgument(numConcurrentExecutions > 0, "numConcurrentExecutions must be > 0");
 		this.delegate = checkNotNull(delegate, "delegate");
 		this.permits = new Semaphore(numConcurrentExecutions, true);
 	}
 
-	public void enqueue(Runnable command) throws IOException {
+	@Override
+	public void execute(Runnable command) {
+		// To not block interrupts here (faster cancellation) we acquire interruptibly.
+		// Unfortunately, we need to rethrow this as a RuntimeException (suboptimal), because
+		// the method signature does not permit anything else, and we want to maintain the
+		// Executor interface for transparent drop-in.
 		try {
 			permits.acquire();
 		}
+		catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new FlinkRuntimeException("interrupted");
+		}
 
-
+		final SemaphoreReleasingRunnable runnable = new SemaphoreReleasingRunnable(command, permits);
+		try {
+			delegate.execute(runnable);
+		}
+		catch (Throwable t) {
+			runnable.release();
+			ExceptionUtils.rethrow(t, t.getMessage());
+		}
 	}
 
 	// ------------------------------------------------------------------------
@@ -58,6 +77,8 @@ public class LimitedCapacityExecutor {
 		private final Runnable delegate;
 
 		private final Semaphore toRelease;
+
+		private final AtomicBoolean released = new AtomicBoolean();
 
 		SemaphoreReleasingRunnable(Runnable delegate, Semaphore toRelease) {
 			this.delegate = delegate;
@@ -70,6 +91,12 @@ public class LimitedCapacityExecutor {
 				delegate.run();
 			}
 			finally {
+				release();
+			}
+		}
+
+		void release() {
+			if (released.compareAndSet(false, true)) {
 				toRelease.release();
 			}
 		}

@@ -18,17 +18,35 @@
 
 package org.apache.flink.fs.s3hadoop;
 
+import com.amazonaws.SdkBaseException;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.s3a.S3AFileSystem;
+import org.apache.hadoop.fs.s3a.S3AUtils;
 import org.apache.hadoop.fs.s3a.WriteOperationHelper;
+
+import java.io.IOException;
 
 /**
  * Utility class to access the {@link WriteOperationHelper}, which only has
  * a protected constructor.
  */
-class WriteOperationAccessor extends WriteOperationHelper {
+class S3AccessHelper extends WriteOperationHelper {
 
-	WriteOperationAccessor(S3AFileSystem owner, Configuration conf) {
-		super(owner, conf);
+	private final S3AFileSystem s3a;
+
+	S3AccessHelper(S3AFileSystem s3a, Configuration conf) {
+		super(s3a, conf);
+		this.s3a = s3a;
+	}
+
+	public ObjectMetadata getObjectMetadata(String key) throws IOException {
+		try {
+			return s3a.getObjectMetadata(new Path('/' + key));
+		}
+		catch (SdkBaseException e) {
+			throw S3AUtils.translateException("getObjectMetadata", key, e);
+		}
 	}
 }
