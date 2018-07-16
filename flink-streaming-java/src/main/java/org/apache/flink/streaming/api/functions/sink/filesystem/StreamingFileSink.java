@@ -312,13 +312,12 @@ public class StreamingFileSink<IN>
 
 	@Override
 	public void onProcessingTime(long timestamp) throws Exception {
-		long currentProcessingTime = processingTimeService.getCurrentProcessingTime();
 		for (Bucket<IN> bucket : activeBuckets.values()) {
-			if (rollingPolicy.shouldRoll(bucket.getCurrentPartFileInfo(), currentProcessingTime)) {
+			if (rollingPolicy.shouldRoll(bucket.getCurrentPartFileInfo(), timestamp)) {
 				bucket.closePartFile();
 			}
 		}
-		processingTimeService.registerTimer(currentProcessingTime + bucketCheckInterval, this);
+		processingTimeService.registerTimer(timestamp + bucketCheckInterval, this);
 	}
 
 	@Override
