@@ -156,10 +156,14 @@ public class Bucket<IN> {
 	RecoverableWriter.CommitRecoverable closePartFile() throws IOException {
 		RecoverableWriter.CommitRecoverable commitable = null;
 		if (handler.isOpen()) {
-			commitable = handler.close();
+			commitable = handler.closeForCommit();
 			pending.add(commitable);
 		}
 		return commitable;
+	}
+
+	public void dispose() {
+		handler.dispose();
 	}
 
 	public void commitUpToCheckpoint(long checkpointId) throws IOException {

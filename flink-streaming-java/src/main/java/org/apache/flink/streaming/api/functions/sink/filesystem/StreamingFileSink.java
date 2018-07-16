@@ -111,9 +111,19 @@ public class StreamingFileSink<IN>
 		extends RichSinkFunction<IN>
 		implements CheckpointedFunction, CheckpointListener, ProcessingTimeCallback {
 
-	private static final long serialVersionUID = 2544039385174378235L;
+	private static final long serialVersionUID = 1L;
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamingFileSink.class);
+
+	// -------------------------- state descriptors ---------------------------
+
+	private static final ListStateDescriptor<byte[]> BUCKET_STATE_DESC =
+			new ListStateDescriptor<>("bucket-states", BytePrimitiveArraySerializer.INSTANCE);
+
+	private static final ListStateDescriptor<Long> MAX_PART_COUNTER_STATE_DESC =
+			new ListStateDescriptor<>("max-part-counter", LongSerializer.INSTANCE);
+
+	// ------------------------ configuration fields --------------------------
 
 	private final Path basePath;
 
@@ -127,6 +137,8 @@ public class StreamingFileSink<IN>
 
 	private RollingPolicy rollingPolicy;
 
+	// --------------------------- runtime fields -----------------------------
+
 	private transient RecoverableWriter fileSystemWriter;
 
 	private transient ProcessingTimeService processingTimeService;
@@ -137,15 +149,7 @@ public class StreamingFileSink<IN>
 
 	private transient BucketStateSerializer bucketStateSerializer;
 
-	private final ListStateDescriptor<byte[]> bucketStateDesc =
-			new ListStateDescriptor<>("bucket-states",
-					BytePrimitiveArraySerializer.INSTANCE);
-
 	private transient ListState<byte[]> restoredBucketStates;
-
-	private final ListStateDescriptor<Long> maxPartCounterStateDesc =
-			new ListStateDescriptor<>("max-part-counter",
-					LongSerializer.INSTANCE);
 
 	private transient ListState<Long> restoredMaxCounters;
 
@@ -212,9 +216,9 @@ public class StreamingFileSink<IN>
 
 	@Override
 	public void snapshotState(FunctionSnapshotContext context) throws Exception {
-		Preconditions.checkNotNull(restoredBucketStates);
-		Preconditions.checkNotNull(fileSystemWriter);
-		Preconditions.checkNotNull(bucketStateSerializer);
+		Preconditions.checkState(
+				restoredBucketStates != null && fileSystemWriter != null && bucketStateSerializer != null,
+				"sink has not been initialized");
 
 		restoredBucketStates.clear();
 		for (Bucket<IN> bucket : activeBuckets.values()) {
@@ -247,19 +251,19 @@ public class StreamingFileSink<IN>
 
 		final OperatorStateStore stateStore = context.getOperatorStateStore();
 
-		restoredBucketStates = stateStore.getListState(bucketStateDesc);
-		restoredMaxCounters = stateStore.getUnionListState(maxPartCounterStateDesc);
+		restoredBucketStates = stateStore.getListState(BUCKET_STATE_DESC);
+		restoredMaxCounters = stateStore.getUnionListState(MAX_PART_COUNTER_STATE_DESC);
 
 		if (context.isRestored()) {
 			final int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
 
 			LOG.info("Restoring state for the {} (taskIdx={}).", getClass().getSimpleName(), subtaskIndex);
 
+			long maxCounter = 0L;
 			for (long partCounter: restoredMaxCounters.get()) {
-				if (partCounter > initMaxPartCounter) {
-					initMaxPartCounter = partCounter;
-				}
+				maxCounter = Math.max(partCounter, initMaxPartCounter);
 			}
+			initMaxPartCounter = maxCounter;
 
 			for (byte[] recoveredState : restoredBucketStates.get()) {
 				final int version = bucketStateSerializer.getDeserializedVersion(recoveredState);
@@ -346,10 +350,7 @@ public class StreamingFileSink<IN>
 	@Override
 	public void close() throws Exception {
 		if (activeBuckets != null) {
-			// here we cannot "commit" because this is also called in case of failures.
-			for (Bucket<IN> bucket : activeBuckets.values()) {
-				bucket.closePartFile();
-			}
+			activeBuckets.values().forEach(Bucket::dispose);
 		}
 	}
 
@@ -364,9 +365,7 @@ public class StreamingFileSink<IN>
 	}
 
 	private void updateMaxPartCounter(long candidate) {
-		if (candidate > maxPartCounterUsed) {
-			this.maxPartCounterUsed = candidate;
-		}
+		maxPartCounterUsed = Math.max(maxPartCounterUsed, candidate);
 	}
 
 	private Path assembleBucketPath(String bucketId) {

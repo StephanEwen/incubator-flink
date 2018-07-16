@@ -23,6 +23,7 @@ import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.RecoverableWriter;
+import org.apache.flink.util.IOUtils;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
@@ -74,7 +75,7 @@ class CurrentPartFileHandler<IN> implements RollingPolicy.PartFileInfoHandler {
 		return resumable;
 	}
 
-	RecoverableWriter.CommitRecoverable close() throws IOException {
+	RecoverableWriter.CommitRecoverable closeForCommit() throws IOException {
 		RecoverableWriter.CommitRecoverable commitRecoverable = null;
 		if (currentPartStream != null) {
 			commitRecoverable = currentPartStream.closeForCommit().getRecoverable();
@@ -83,6 +84,12 @@ class CurrentPartFileHandler<IN> implements RollingPolicy.PartFileInfoHandler {
 			currentPartStream = null;
 		}
 		return commitRecoverable;
+	}
+
+	void dispose() {
+		// we can suppress exceptions here, because we do not rely on close() to
+		// flush or persist any data
+		IOUtils.closeQuietly(currentPartStream);
 	}
 
 	@Override

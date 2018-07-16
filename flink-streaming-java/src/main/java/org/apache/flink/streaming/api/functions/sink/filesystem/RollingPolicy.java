@@ -31,7 +31,6 @@ import java.io.Serializable;
  * rolls its currently open part file and opens a new one.
  */
 @PublicEvolving
-@FunctionalInterface
 public interface RollingPolicy extends Serializable {
 
 	boolean shouldRoll(final PartFileInfoHandler partFileState, final long currentTime) throws IOException;
