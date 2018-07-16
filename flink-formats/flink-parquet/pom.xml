@@ -17,46 +17,50 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
 		<groupId>org.apache.flink</groupId>
-		<artifactId>flink-parent</artifactId>
+		<artifactId>flink-formats</artifactId>
 		<version>1.7-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
+	<artifactId>flink-parquet</artifactId>
+	<name>flink-parquet</name>
 
-	<artifactId>flink-formats</artifactId>
-	<name>flink-formats</name>
-	<packaging>pom</packaging>
+	<packaging>jar</packaging>
 
-	<modules>
-		<module>flink-avro</module>
-		<module>flink-json</module>
-		<module>flink-avro-confluent-registry</module>
-		<module>flink-parquet</module>
-	</modules>
-
-	<!-- override these root dependencies as 'provided', so they don't end up
-		in the jars-with-dependencies (uber jars) of formats and
-		user programs that depend on the formats -->
+	<properties>
+		<flink.format.parquet.version>1.10.0</flink.format.parquet.version>
+	</properties>
 
 	<dependencies>
-		<dependency>
-			<groupId>org.slf4j</groupId>
-			<artifactId>slf4j-api</artifactId>
-			<scope>provided</scope>
-		</dependency>
+
+		<!-- Flink dependencies -->
 
 		<dependency>
 			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-test-utils-junit</artifactId>
+			<artifactId>flink-core</artifactId>
+			<version>${project.version}</version>
+			<scope>provided</scope>
 		</dependency>
-	</dependencies>
 
+		<!-- Parquet Dependencies -->
+
+		<!-- Optional Parquet Builders for Formats -->
+
+		<dependency>
+			<groupId>org.apache.parquet</groupId>
+			<artifactId>parquet-avro</artifactId>
+			<version>${flink.format.parquet.version}</version>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- test dependencies -->
+
+	</dependencies>
 </project>
