@@ -177,7 +177,7 @@ public class StreamingFileSink<IN>
 		this.basePath = Preconditions.checkNotNull(basePath);
 		this.bucketer = new DateTimeBucketer<>();
 		this.encoder = new SimpleStringEncoder<>();
-		this.rollingPolicy = new DefaultRollingPolicy();
+		this.rollingPolicy = DefaultRollingPolicy.create().build();
 		this.bucketFactory = Preconditions.checkNotNull(bucketFactory);
 	}
 
@@ -265,7 +265,7 @@ public class StreamingFileSink<IN>
 
 			long maxCounter = 0L;
 			for (long partCounter: restoredMaxCounters.get()) {
-				maxCounter = Math.max(partCounter, initMaxPartCounter);
+				maxCounter = Math.max(partCounter, maxCounter);
 			}
 			initMaxPartCounter = maxCounter;
 

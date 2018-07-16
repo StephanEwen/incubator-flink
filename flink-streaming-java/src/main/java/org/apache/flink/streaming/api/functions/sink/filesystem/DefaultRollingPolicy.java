@@ -35,7 +35,7 @@ import java.io.IOException;
  * </ol>
  */
 @PublicEvolving
-public class DefaultRollingPolicy implements RollingPolicy {
+public final class DefaultRollingPolicy implements RollingPolicy {
 
 	private static final long serialVersionUID = 1318929857047767030L;
 
@@ -45,30 +45,23 @@ public class DefaultRollingPolicy implements RollingPolicy {
 
 	private static final long DEFAULT_MAX_PART_SIZE = 1024L * 1024L * 128L;
 
-	private long maxPartSize = DEFAULT_MAX_PART_SIZE;
+	private final long partSize;
 
-	private long rolloverInterval = DEFAULT_ROLLOVER_INTERVAL;
+	private final long rolloverInterval;
 
-	private long inactivityInterval = DEFAULT_INACTIVITY_INTERVAL;
+	private final long inactivityInterval;
 
-	public DefaultRollingPolicy() {}
+	/**
+	 * Private constructor to avoid direct instantiation.
+	 */
+	private DefaultRollingPolicy(long partSize, long rolloverInterval, long inactivityInterval) {
+		Preconditions.checkArgument(partSize > 0L);
+		Preconditions.checkArgument(rolloverInterval > 0L);
+		Preconditions.checkArgument(inactivityInterval > 0L);
 
-	public DefaultRollingPolicy withInactivityInterval(long inactivityTime) {
-		Preconditions.checkState(inactivityTime > 0L);
-		this.inactivityInterval = inactivityTime;
-		return this;
-	}
-
-	public DefaultRollingPolicy withMaxPartSize(long maxPartSize) {
-		Preconditions.checkState(maxPartSize > 0L);
-		this.maxPartSize = maxPartSize;
-		return this;
-	}
-
-	public DefaultRollingPolicy withRolloverInterval(long rolloverTime) {
-		Preconditions.checkState(rolloverTime > 0L);
-		this.rolloverInterval = rolloverTime;
-		return this;
+		this.partSize = partSize;
+		this.rolloverInterval = rolloverInterval;
+		this.inactivityInterval = inactivityInterval;
 	}
 
 	@Override
@@ -77,7 +70,7 @@ public class DefaultRollingPolicy implements RollingPolicy {
 			return true;
 		}
 
-		if (state.getSize() > maxPartSize) {
+		if (state.getSize() > partSize) {
 			return true;
 		}
 
@@ -86,5 +79,63 @@ public class DefaultRollingPolicy implements RollingPolicy {
 		}
 
 		return currentTime - state.getLastUpdateTime() > inactivityInterval;
+	}
+
+	/**
+	 * Initiates the instantiation of a {@link DefaultRollingPolicy}.
+	 * To finalize it and have the actual policy, call {@code .create()}.
+	 */
+	public static PolicyBuilder create() {
+		return new PolicyBuilder();
+	}
+
+	/**
+	 * A helper class that holds the configuration properties for the {@link DefaultRollingPolicy}.
+	 */
+	@PublicEvolving
+	public static class PolicyBuilder {
+
+		private long partSize = DEFAULT_MAX_PART_SIZE;
+
+		private long rolloverInterval = DEFAULT_ROLLOVER_INTERVAL;
+
+		private long inactivityInterval = DEFAULT_INACTIVITY_INTERVAL;
+
+		/**
+		 * Sets the part size above which a part file will have to roll.
+		 * @param size the allowed part size.
+		 */
+		public PolicyBuilder withMaxPartSize(long size) {
+			Preconditions.checkState(size > 0L);
+			this.partSize = size;
+			return this;
+		}
+
+		/**
+		 * Sets the interval of allowed inactivity after which a part file will have to roll.
+		 * @param interval the allowed inactivity interval.
+		 */
+		public PolicyBuilder withInactivityInterval(long interval) {
+			Preconditions.checkState(interval > 0L);
+			this.inactivityInterval = interval;
+			return this;
+		}
+
+		/**
+		 * Sets the max time a part file can stay open before having to roll.
+		 * @param interval the desired rollover interval.
+		 */
+		public PolicyBuilder withRolloverInterval(long interval) {
+			Preconditions.checkState(interval > 0L);
+			this.rolloverInterval = interval;
+			return this;
+		}
+
+		/**
+		 * Creates the actual policy.
+		 */
+		public DefaultRollingPolicy build() {
+			return new DefaultRollingPolicy(partSize, rolloverInterval, inactivityInterval);
+		}
 	}
 }

@@ -597,10 +597,12 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 				})
 				.setEncoder(writer)
 				.setRollingPolicy(
-						new DefaultRollingPolicy()
+						DefaultRollingPolicy
+								.create()
 								.withMaxPartSize(partMaxSize)
 								.withRolloverInterval(inactivityInterval)
-								.withInactivityInterval(inactivityInterval))
+								.withInactivityInterval(inactivityInterval)
+								.build())
 				.setBucketCheckInterval(10L);
 
 		return new OneInputStreamOperatorTestHarness<>(new StreamSink<>(sink), 10, totalParallelism, taskIdx);
