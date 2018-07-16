@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem.bucketers;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -79,7 +78,7 @@ public class DateTimeBucketer<T> implements Bucketer<T> {
 	}
 
 	@Override
-	public String getBucketId(T element, SinkFunction.Context context) {
+	public String getBucketId(T element, Context context) {
 		if (dateFormatter == null) {
 			dateFormatter = new SimpleDateFormat(formatString);
 		}

@@ -21,6 +21,8 @@ package org.apache.flink.streaming.api.functions.sink.filesystem.bucketers;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
+import javax.annotation.Nullable;
+
 import java.io.Serializable;
 
 /**
@@ -47,5 +49,29 @@ public interface Bucketer<T> extends Serializable {
 	 * and the {@code base path} provided during the initialization of the
 	 * {@link org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink sink}.
 	 */
-	String getBucketId(T element, SinkFunction.Context context);
+	String getBucketId(T element, Context context);
+
+	/**
+	 * Context that the {@link Bucketer} can use for getting additional data about
+	 * an input record.
+	 *
+	 * <p>The context is only valid for the duration of a {@link Bucketer#getBucketId(Object, Context)} call.
+	 * Do not store the context and use afterwards!
+	 */
+	@PublicEvolving
+	interface Context {
+
+		/** Returns the current processing time. */
+		long currentProcessingTime();
+
+		/** Returns the current event-time watermark. */
+		long currentWatermark();
+
+		/**
+		 * Returns the timestamp of the current input record or
+		 * {@code null} if the element does not have an assigned timestamp.
+		 */
+		@Nullable
+		Long timestamp();
+	}
 }

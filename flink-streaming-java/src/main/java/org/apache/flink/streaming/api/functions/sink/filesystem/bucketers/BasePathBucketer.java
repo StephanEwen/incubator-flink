@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem.bucketers;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
 /**
  * A {@link Bucketer} that does not perform any
@@ -31,7 +30,7 @@ public class BasePathBucketer<T> implements Bucketer<T> {
 	private static final long serialVersionUID = -6033643155550226022L;
 
 	@Override
-	public String getBucketId(T element, SinkFunction.Context context) {
+	public String getBucketId(T element, Context context) {
 		return "";
 	}
 

@@ -24,7 +24,6 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
-import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
 import org.apache.flink.streaming.api.operators.StreamSink;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -592,7 +591,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 					private static final long serialVersionUID = -3086487303018372007L;
 
 					@Override
-					public String getBucketId(Tuple2<String, Integer> element, SinkFunction.Context context) {
+					public String getBucketId(Tuple2<String, Integer> element, Context context) {
 						return element.f0;
 					}
 				})

@@ -46,6 +46,8 @@ import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -138,6 +140,8 @@ public class StreamingFileSink<IN>
 	private RollingPolicy rollingPolicy;
 
 	// --------------------------- runtime fields -----------------------------
+
+	private transient BucketerContext bucketerContext;
 
 	private transient RecoverableWriter fileSystemWriter;
 
@@ -303,6 +307,7 @@ public class StreamingFileSink<IN>
 		processingTimeService = ((StreamingRuntimeContext) getRuntimeContext()).getProcessingTimeService();
 		long currentProcessingTime = processingTimeService.getCurrentProcessingTime();
 		processingTimeService.registerTimer(currentProcessingTime + bucketCheckInterval, this);
+		this.bucketerContext = new BucketerContext();
 	}
 
 	@Override
@@ -321,7 +326,12 @@ public class StreamingFileSink<IN>
 		final long currentProcessingTime = processingTimeService.getCurrentProcessingTime();
 		final int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
 
-		final String bucketId = bucketer.getBucketId(value, context);
+		// setting the values in the bucketer context
+		bucketerContext.elementTimestamp = context.timestamp();
+		bucketerContext.currentProcessingTime = currentProcessingTime;
+		bucketerContext.currentWatermark = context.currentWatermark();
+
+		final String bucketId = bucketer.getBucketId(value, bucketerContext);
 
 		Bucket<IN> bucket = activeBuckets.get(bucketId);
 		if (bucket == null) {
@@ -370,5 +380,35 @@ public class StreamingFileSink<IN>
 
 	private Path assembleBucketPath(String bucketId) {
 		return new Path(basePath, bucketId);
+	}
+
+	/**
+	 * The {@link Bucketer.Context} exposed to the
+	 * {@link Bucketer#getBucketId(Object, Bucketer.Context)}
+	 * whenever a new incoming element arrives.
+	 */
+	private class BucketerContext implements Bucketer.Context {
+
+		private Long elementTimestamp;
+
+		private long currentWatermark;
+
+		private long currentProcessingTime;
+
+		@Override
+		public long currentProcessingTime() {
+			return currentProcessingTime;
+		}
+
+		@Override
+		public long currentWatermark() {
+			return currentWatermark;
+		}
+
+		@Override
+		@Nullable
+		public Long timestamp() {
+			return elementTimestamp;
+		}
 	}
 }
