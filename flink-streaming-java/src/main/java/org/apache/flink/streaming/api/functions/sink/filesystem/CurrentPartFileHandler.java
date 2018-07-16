@@ -30,10 +30,10 @@ import java.io.IOException;
 
 /**
  * A handler for the currently open part file in a specific {@link Bucket}.
- * This also implements the {@link RollingPolicy.PartFileInfoHandler}.
+ * This also implements the {@link PartFileInfo}.
  */
 @Internal
-class CurrentPartFileHandler<IN> implements RollingPolicy.PartFileInfoHandler {
+class CurrentPartFileHandler<IN> implements PartFileInfo {
 
 	private final String bucketId;
 

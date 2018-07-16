@@ -108,7 +108,7 @@ public class Bucket<IN> {
 		this.handler = new CurrentPartFileHandler<>(bucketId);
 	}
 
-	public RollingPolicy.PartFileInfoHandler getCurrentPartFileInfo() {
+	public PartFileInfo getCurrentPartFileInfo() {
 		return handler;
 	}
 

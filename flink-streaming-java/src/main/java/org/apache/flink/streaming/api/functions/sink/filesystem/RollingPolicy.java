@@ -18,10 +18,7 @@
 
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.streaming.api.functions.sink.SinkFunction;
-import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -33,40 +30,11 @@ import java.io.Serializable;
 @PublicEvolving
 public interface RollingPolicy extends Serializable {
 
-	boolean shouldRoll(final PartFileInfoHandler partFileState, final long currentTime) throws IOException;
-
 	/**
-	 * An interface exposing the information concerning the current (open) part file
-	 * that is necessary to the {@link RollingPolicy} in order to determine if it
-	 * should roll the part file or not.
+	 * Determines if the in-progress part file for a bucket should roll.
+	 * @param partFileState the state of the currently open part file of the bucket.
+	 * @param currentTime the current processing time.
+	 * @return {@code True} if the part file should roll, {@link false} otherwise.
 	 */
-	@Internal
-	interface PartFileInfoHandler {
-
-		/**
-		 * @return {@code True} if there is a currently open part file.
-		 */
-		boolean isOpen();
-
-		/**
-		 * @return The bucket identifier of the current buffer, as returned by the
-		 * {@link Bucketer#getBucketId(Object, SinkFunction.Context)}.
-		 */
-		String getBucketId();
-
-		/**
-		 * @return The creation time (in ms) of the currently open part file.
-		 */
-		long getCreationTime();
-
-		/**
-		 * @return The size of the currently open part file.
-		 */
-		long getSize() throws IOException;
-
-		/**
-		 * @return The last time (in ms) the currently open part file was written to.
-		 */
-		long getLastUpdateTime();
-	}
+	boolean shouldRoll(final PartFileInfo partFileState, final long currentTime) throws IOException;
 }

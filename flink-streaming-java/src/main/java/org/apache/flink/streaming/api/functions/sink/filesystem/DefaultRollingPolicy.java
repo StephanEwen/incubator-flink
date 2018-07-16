@@ -72,7 +72,7 @@ public class DefaultRollingPolicy implements RollingPolicy {
 	}
 
 	@Override
-	public boolean shouldRoll(final PartFileInfoHandler state, final long currentTime) throws IOException {
+	public boolean shouldRoll(final PartFileInfo state, final long currentTime) throws IOException {
 		if (!state.isOpen()) {
 			return true;
 		}
