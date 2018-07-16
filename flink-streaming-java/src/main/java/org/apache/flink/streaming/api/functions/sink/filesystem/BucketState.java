@@ -23,6 +23,7 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
 import org.apache.flink.util.Preconditions;
 
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
 
@@ -48,6 +49,7 @@ public class BucketState {
 	 * A {@link RecoverableWriter.ResumeRecoverable} for the currently open part file, or null
 	 * if there is no currently open part file.
 	 */
+	@Nullable
 	private final RecoverableWriter.ResumeRecoverable inProgress;
 
 	/**
@@ -59,7 +61,7 @@ public class BucketState {
 			final String bucketId,
 			final Path bucketPath,
 			final long creationTime,
-			final RecoverableWriter.ResumeRecoverable inProgress,
+			final @Nullable RecoverableWriter.ResumeRecoverable inProgress,
 			final Map<Long, List<RecoverableWriter.CommitRecoverable>> pendingPerCheckpoint
 	) {
 		this.bucketId = Preconditions.checkNotNull(bucketId);
@@ -81,6 +83,7 @@ public class BucketState {
 		return creationTime;
 	}
 
+	@Nullable
 	public RecoverableWriter.ResumeRecoverable getCurrentInProgress() {
 		return inProgress;
 	}

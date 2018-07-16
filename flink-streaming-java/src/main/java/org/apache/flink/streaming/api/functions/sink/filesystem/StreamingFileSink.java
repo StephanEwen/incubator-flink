@@ -31,6 +31,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
+import org.apache.flink.core.io.SimpleVersionedSerialization;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
@@ -237,7 +238,7 @@ public class StreamingFileSink<IN>
 			}
 
 			final BucketState bucketState = bucket.snapshot(context.getCheckpointId());
-			restoredBucketStates.add(bucketStateSerializer.serialize(bucketState));
+			restoredBucketStates.add(SimpleVersionedSerialization.writeVersionAndSerialize(bucketStateSerializer, bucketState));
 		}
 
 		restoredMaxCounters.clear();
@@ -273,8 +274,8 @@ public class StreamingFileSink<IN>
 			initMaxPartCounter = maxCounter;
 
 			for (byte[] recoveredState : restoredBucketStates.get()) {
-				final int version = bucketStateSerializer.getDeserializedVersion(recoveredState);
-				final BucketState bucketState = bucketStateSerializer.deserialize(version, recoveredState);
+				final BucketState bucketState = SimpleVersionedSerialization.readVersionAndDeSerialize(
+						bucketStateSerializer, recoveredState);
 
 				final String bucketId = bucketState.getBucketId();
 
