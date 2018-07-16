@@ -19,7 +19,7 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.serialization.Writer;
+import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.RecoverableWriter;
@@ -61,8 +61,8 @@ class CurrentPartFileHandler<IN> implements RollingPolicy.PartFileInfoHandler {
 		this.creationTime = currentTime;
 	}
 
-	void write(IN element, Writer<IN> writer, long currentTime) throws IOException {
-		writer.write(element, currentPartStream);
+	void write(IN element, Encoder<IN> encoder, long currentTime) throws IOException {
+		encoder.encode(element, currentPartStream);
 		this.lastUpdateTime = currentTime;
 	}
 

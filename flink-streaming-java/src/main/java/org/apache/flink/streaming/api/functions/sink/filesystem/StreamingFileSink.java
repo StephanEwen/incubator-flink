@@ -20,8 +20,8 @@ package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.serialization.SimpleStringWriter;
-import org.apache.flink.api.common.serialization.Writer;
+import org.apache.flink.api.common.serialization.Encoder;
+import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.OperatorStateStore;
@@ -97,10 +97,10 @@ import java.util.Map;
  *         If checkpointing is not enabled the pending files will never be moved to the finished state.
  *     </li>
  *     <li>
- *         The part files are written using an instance of {@link Writer}. By default, a
- *         {@link SimpleStringWriter} is used, which writes the result of {@code toString()} for
+ *         The part files are written using an instance of {@link Encoder}. By default, a
+ *         {@link SimpleStringEncoder} is used, which writes the result of {@code toString()} for
  *         every element, separated by newlines. You can configure the writer using the
- *         {@link #setWriter(Writer)}.
+ *         {@link #setEncoder(Encoder)}.
  *     </li>
  * </ol>
  *
@@ -123,7 +123,7 @@ public class StreamingFileSink<IN>
 
 	private Bucketer<IN> bucketer;
 
-	private Writer<IN> writer;
+	private Encoder<IN> encoder;
 
 	private RollingPolicy rollingPolicy;
 
@@ -156,7 +156,7 @@ public class StreamingFileSink<IN>
 	/**
 	 * Creates a new {@code StreamingFileSink} that writes files to the given base directory.
 	 *
-	 * <p>This uses a {@link DateTimeBucketer} as {@link Bucketer} and a {@link SimpleStringWriter} as a writer.
+	 * <p>This uses a {@link DateTimeBucketer} as {@link Bucketer} and a {@link SimpleStringEncoder} as a writer.
 	 *
 	 * @param basePath The directory to which to write the bucket files.
 	 */
@@ -168,13 +168,13 @@ public class StreamingFileSink<IN>
 	StreamingFileSink(Path basePath, BucketFactory<IN> bucketFactory) {
 		this.basePath = Preconditions.checkNotNull(basePath);
 		this.bucketer = new DateTimeBucketer<>();
-		this.writer = new SimpleStringWriter<>();
+		this.encoder = new SimpleStringEncoder<>();
 		this.rollingPolicy = new DefaultRollingPolicy();
 		this.bucketFactory = Preconditions.checkNotNull(bucketFactory);
 	}
 
-	public StreamingFileSink<IN> setWriter(Writer<IN> writer) {
-		this.writer = Preconditions.checkNotNull(writer);
+	public StreamingFileSink<IN> setEncoder(Encoder<IN> encoder) {
+		this.encoder = Preconditions.checkNotNull(encoder);
 		return this;
 	}
 
@@ -273,7 +273,7 @@ public class StreamingFileSink<IN>
 						fileSystemWriter,
 						subtaskIndex,
 						initMaxPartCounter,
-						writer,
+						encoder,
 						bucketState
 				);
 
@@ -328,7 +328,7 @@ public class StreamingFileSink<IN>
 					bucketId,
 					bucketPath,
 					initMaxPartCounter,
-					writer);
+					encoder);
 			activeBuckets.put(bucketId, bucket);
 		}
 

@@ -25,13 +25,13 @@ import java.io.OutputStream;
 import java.nio.charset.Charset;
 
 /**
- * A simple {@link Writer} that uses {@code toString()} on the input elements and
+ * A simple {@link Encoder} that uses {@code toString()} on the input elements and
  * writes them to the output bucket file separated by newline.
  *
  * @param <IN> The type of the elements that are being written by the sink.
  */
 @PublicEvolving
-public class SimpleStringWriter<IN> implements Writer<IN> {
+public class SimpleStringEncoder<IN> implements Encoder<IN> {
 
 	private static final long serialVersionUID = -6865107843734614452L;
 
@@ -43,7 +43,7 @@ public class SimpleStringWriter<IN> implements Writer<IN> {
 	 * Creates a new {@code StringWriter} that uses {@code "UTF-8"} charset to convert
 	 * strings to bytes.
 	 */
-	public SimpleStringWriter() {
+	public SimpleStringEncoder() {
 		this("UTF-8");
 	}
 
@@ -53,12 +53,12 @@ public class SimpleStringWriter<IN> implements Writer<IN> {
 	 *
 	 * @param charsetName Name of the charset to be used, must be valid input for {@code Charset.forName(charsetName)}
 	 */
-	public SimpleStringWriter(String charsetName) {
+	public SimpleStringEncoder(String charsetName) {
 		this.charsetName = charsetName;
 	}
 
 	@Override
-	public void write(IN element, OutputStream stream) throws IOException {
+	public void encode(IN element, OutputStream stream) throws IOException {
 		if (charset == null) {
 			charset = Charset.forName(charsetName);
 		}

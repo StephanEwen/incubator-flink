@@ -18,8 +18,8 @@
 
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
-import org.apache.flink.api.common.serialization.SimpleStringWriter;
-import org.apache.flink.api.common.serialization.Writer;
+import org.apache.flink.api.common.serialization.Encoder;
+import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
@@ -501,9 +501,9 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 		try (
 				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = createCustomRescalingTestSink(
-						outDir, 2, 0, 100L, 2L, first, new SimpleStringWriter<>());
+						outDir, 2, 0, 100L, 2L, first, new SimpleStringEncoder<>());
 				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = createCustomRescalingTestSink(
-						outDir, 2, 1, 100L, 2L, second, new SimpleStringWriter<>())
+						outDir, 2, 1, 100L, 2L, second, new SimpleStringEncoder<>())
 		) {
 			testHarness1.setup();
 			testHarness1.open();
@@ -529,9 +529,9 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 		try (
 				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = createCustomRescalingTestSink(
-						outDir, 2, 0, 100L, 2L, firstRecovered, new SimpleStringWriter<>());
+						outDir, 2, 0, 100L, 2L, firstRecovered, new SimpleStringEncoder<>());
 				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = createCustomRescalingTestSink(
-						outDir, 2, 1, 100L, 2L, secondRecovered, new SimpleStringWriter<>())
+						outDir, 2, 1, 100L, 2L, secondRecovered, new SimpleStringEncoder<>())
 		) {
 			testHarness1.setup();
 			testHarness1.initializeState(mergedSnapshot);
@@ -571,7 +571,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 				inactivityInterval,
 				partMaxSize,
 				new DefaultBucketFactory<>(),
-				(Writer<Tuple2<String, Integer>>) (element, stream) -> {
+				(Encoder<Tuple2<String, Integer>>) (element, stream) -> {
 					stream.write((element.f0 + '@' + element.f1).getBytes(StandardCharsets.UTF_8));
 					stream.write('\n');
 				});
@@ -584,7 +584,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			long inactivityInterval,
 			long partMaxSize,
 			BucketFactory<Tuple2<String, Integer>> factory,
-			Writer<Tuple2<String, Integer>> writer) throws Exception {
+			Encoder<Tuple2<String, Integer>> writer) throws Exception {
 
 		StreamingFileSink<Tuple2<String, Integer>> sink = new StreamingFileSink<>(new Path(outDir.toURI()), factory)
 				.setBucketer(new Bucketer<Tuple2<String, Integer>>() {
@@ -596,7 +596,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 						return element.f0;
 					}
 				})
-				.setWriter(writer)
+				.setEncoder(writer)
 				.setRollingPolicy(
 						new DefaultRollingPolicy()
 								.withMaxPartSize(partMaxSize)
@@ -620,7 +620,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 				String bucketId,
 				Path bucketPath,
 				long initialPartCounter,
-				Writer<Tuple2<String, Integer>> writer) throws IOException {
+				Encoder<Tuple2<String, Integer>> writer) throws IOException {
 
 			this.initialCounter = initialPartCounter;
 
@@ -638,7 +638,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 				RecoverableWriter fsWriter,
 				int subtaskIndex,
 				long initialPartCounter,
-				Writer<Tuple2<String, Integer>> writer,
+				Encoder<Tuple2<String, Integer>> writer,
 				BucketState bucketState) throws IOException {
 
 			this.initialCounter = initialPartCounter;

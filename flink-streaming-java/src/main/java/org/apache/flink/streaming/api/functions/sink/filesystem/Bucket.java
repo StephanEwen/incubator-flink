@@ -19,7 +19,7 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.api.common.serialization.Writer;
+import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
 import org.apache.flink.util.Preconditions;
@@ -51,7 +51,7 @@ public class Bucket<IN> {
 
 	private long partCounter;
 
-	private final Writer<IN> outputFormatWriter;
+	private final Encoder<IN> outputFormatWriter;
 
 	private final RecoverableWriter fsWriter;
 
@@ -65,7 +65,7 @@ public class Bucket<IN> {
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			long initialPartCounter,
-			Writer<IN> writer,
+			Encoder<IN> writer,
 			BucketState bucketstate) throws IOException {
 
 		this(fsWriter, subtaskIndex, bucketstate.getBucketId(), bucketstate.getBucketPath(), initialPartCounter, writer);
@@ -97,7 +97,7 @@ public class Bucket<IN> {
 			String bucketId,
 			Path bucketPath,
 			long initialPartCounter,
-			Writer<IN> writer) {
+			Encoder<IN> writer) {
 
 		this.fsWriter = Preconditions.checkNotNull(fsWriter);
 		this.subtaskIndex = subtaskIndex;
