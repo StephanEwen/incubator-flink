@@ -227,7 +227,10 @@ public class StreamingFileSink<IN>
 		restoredBucketStates.clear();
 		for (Bucket<IN> bucket : activeBuckets.values()) {
 
-			if (rollingPolicy.shouldRoll(bucket.getCurrentPartFileInfo(), context.getCheckpointTimestamp())) {
+			final PartFileInfo info = bucket.getInProgressPartInfo();
+			final long checkpointTimestamp = context.getCheckpointTimestamp();
+
+			if (info != null && rollingPolicy.shouldRoll(info, checkpointTimestamp)) {
 				// we also check here so that we do not have to always
 				// wait for the "next" element to arrive.
 				bucket.closePartFile();
@@ -313,7 +316,8 @@ public class StreamingFileSink<IN>
 	@Override
 	public void onProcessingTime(long timestamp) throws Exception {
 		for (Bucket<IN> bucket : activeBuckets.values()) {
-			if (rollingPolicy.shouldRoll(bucket.getCurrentPartFileInfo(), timestamp)) {
+			final PartFileInfo info = bucket.getInProgressPartInfo();
+			if (info != null && rollingPolicy.shouldRoll(info, timestamp)) {
 				bucket.closePartFile();
 			}
 		}
@@ -345,8 +349,9 @@ public class StreamingFileSink<IN>
 			activeBuckets.put(bucketId, bucket);
 		}
 
-		if (rollingPolicy.shouldRoll(bucket.getCurrentPartFileInfo(), currentProcessingTime)) {
-			bucket.rollPartPartFile(currentProcessingTime);
+		final PartFileInfo info = bucket.getInProgressPartInfo();
+		if (info == null || rollingPolicy.shouldRoll(info, currentProcessingTime)) {
+			bucket.rollPartFile(currentProcessingTime);
 		}
 		bucket.write(value, currentProcessingTime);
 

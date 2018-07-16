@@ -55,7 +55,7 @@ public class Bucket<IN> {
 
 	private final RecoverableWriter fsWriter;
 
-	private final CurrentPartFileHandler<IN> handler;
+	private PartFileHandler<IN> handler;
 
 	private List<RecoverableWriter.CommitRecoverable> pending = new ArrayList<>();
 
@@ -78,8 +78,8 @@ public class Bucket<IN> {
 
 		final RecoverableWriter.ResumeRecoverable resumable = bucketstate.getCurrentInProgress();
 		if (resumable != null) {
-			Preconditions.checkNotNull(resumable);
-			handler.resumeFrom(fsWriter.recover(resumable), bucketstate.getCreationTime());
+			handler = PartFileHandler.resumeFrom(
+					bucketId, fsWriter, resumable, bucketstate.getCreationTime());
 		}
 
 		// we commit pending files for previous checkpoints to the last successful one
@@ -105,10 +105,9 @@ public class Bucket<IN> {
 		this.bucketPath = Preconditions.checkNotNull(bucketPath);
 		this.partCounter = initialPartCounter;
 		this.outputFormatWriter = Preconditions.checkNotNull(writer);
-		this.handler = new CurrentPartFileHandler<>(bucketId);
 	}
 
-	public PartFileInfo getCurrentPartFileInfo() {
+	public PartFileInfo getInProgressPartInfo() {
 		return handler;
 	}
 
@@ -125,17 +124,17 @@ public class Bucket<IN> {
 	}
 
 	public boolean isActive() {
-		return handler.isOpen() || !pending.isEmpty() || !pendingPerCheckpoint.isEmpty();
+		return handler != null || !pending.isEmpty() || !pendingPerCheckpoint.isEmpty();
 	}
 
 	void write(IN element, long currentTime) throws IOException {
-		Preconditions.checkState(handler.isOpen());
+		Preconditions.checkState(handler != null);
 		handler.write(element, outputFormatWriter, currentTime);
 	}
 
-	void rollPartPartFile(final long currentTime) throws IOException {
+	void rollPartFile(final long currentTime) throws IOException {
 		closePartFile();
-		handler.open(fsWriter, getNewPartPath(), currentTime);
+		handler = PartFileHandler.openNew(bucketId, fsWriter, getNewPartPath(), currentTime);
 		this.partCounter++;
 	}
 
@@ -155,15 +154,18 @@ public class Bucket<IN> {
 
 	RecoverableWriter.CommitRecoverable closePartFile() throws IOException {
 		RecoverableWriter.CommitRecoverable commitable = null;
-		if (handler.isOpen()) {
+		if (handler != null) {
 			commitable = handler.closeForCommit();
 			pending.add(commitable);
+			handler = null;
 		}
 		return commitable;
 	}
 
 	public void dispose() {
-		handler.dispose();
+		if (handler != null) {
+			handler.dispose();
+		}
 	}
 
 	public void commitUpToCheckpoint(long checkpointId) throws IOException {
@@ -184,12 +186,19 @@ public class Bucket<IN> {
 	}
 
 	public BucketState snapshot(long checkpointId) throws IOException {
-		final RecoverableWriter.ResumeRecoverable resumable = handler.persist();
+		RecoverableWriter.ResumeRecoverable resumable = null;
+		long creationTime = Long.MAX_VALUE;
+
+		if (handler != null) {
+			resumable = handler.persist();
+			creationTime = handler.getCreationTime();
+		}
+
 		if (!pending.isEmpty()) {
 			pendingPerCheckpoint.put(checkpointId, pending);
 			pending = new ArrayList<>();
 		}
-		return new BucketState(bucketId, bucketPath, handler.getCreationTime(), resumable, pendingPerCheckpoint);
+		return new BucketState(bucketId, bucketPath, creationTime, resumable, pendingPerCheckpoint);
 	}
 
 	private Path getNewPartPath() {

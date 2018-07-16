@@ -14,11 +14,6 @@ import java.io.IOException;
 public interface PartFileInfo {
 
 	/**
-	 * @return {@code True} if there is a currently open part file.
-	 */
-	boolean isOpen();
-
-	/**
 	 * @return The bucket identifier of the current buffer, as returned by the
 	 * {@link Bucketer#getBucketId(Object, Bucketer.Context)}.
 	 */

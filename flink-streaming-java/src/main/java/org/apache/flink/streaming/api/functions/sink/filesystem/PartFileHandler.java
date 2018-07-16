@@ -33,33 +33,52 @@ import java.io.IOException;
  * This also implements the {@link PartFileInfo}.
  */
 @Internal
-class CurrentPartFileHandler<IN> implements PartFileInfo {
+class PartFileHandler<IN> implements PartFileInfo {
 
 	private final String bucketId;
 
-	private long creationTime;
+	private final long creationTime;
+
+	private final RecoverableFsDataOutputStream currentPartStream;
 
 	private long lastUpdateTime;
 
-	private RecoverableFsDataOutputStream currentPartStream;
+	private PartFileHandler(
+			final String bucketId,
+			final RecoverableFsDataOutputStream currentPartStream,
+			final long creationTime) {
 
-	CurrentPartFileHandler(final String bucketId) {
+		Preconditions.checkArgument(creationTime >= 0L);
 		this.bucketId = Preconditions.checkNotNull(bucketId);
-		this.creationTime = Long.MAX_VALUE;
-		this.lastUpdateTime = Long.MAX_VALUE;
+		this.currentPartStream = Preconditions.checkNotNull(currentPartStream);
+		this.creationTime = creationTime;
+		this.lastUpdateTime = creationTime;
 	}
 
-	void resumeFrom(RecoverableFsDataOutputStream recoveredStream, long currentTime) {
-		Preconditions.checkState(currentPartStream == null);
-		this.currentPartStream = recoveredStream;
-		this.creationTime = currentTime;
-		this.lastUpdateTime = currentTime;
+	public static <IN> PartFileHandler<IN> resumeFrom(
+			final String bucketId,
+			final RecoverableWriter fileSystemWriter,
+			final RecoverableWriter.ResumeRecoverable resumable,
+			final long creationTime) throws IOException {
+		Preconditions.checkNotNull(bucketId);
+		Preconditions.checkNotNull(fileSystemWriter);
+		Preconditions.checkNotNull(resumable);
+
+		final RecoverableFsDataOutputStream stream = fileSystemWriter.recover(resumable);
+		return new PartFileHandler<>(bucketId, stream, creationTime);
 	}
 
-	void open(RecoverableWriter fsWriter, Path path, long currentTime) throws IOException {
-		Preconditions.checkState(currentPartStream == null);
-		this.currentPartStream = fsWriter.open(path);
-		this.creationTime = currentTime;
+	public static <IN> PartFileHandler<IN> openNew(
+			final String bucketId,
+			final RecoverableWriter fileSystemWriter,
+			final Path path,
+			final long creationTime) throws IOException {
+		Preconditions.checkNotNull(bucketId);
+		Preconditions.checkNotNull(fileSystemWriter);
+		Preconditions.checkNotNull(path);
+
+		final RecoverableFsDataOutputStream stream = fileSystemWriter.open(path);
+		return new PartFileHandler<>(bucketId, stream, creationTime);
 	}
 
 	void write(IN element, Encoder<IN> encoder, long currentTime) throws IOException {
@@ -68,33 +87,17 @@ class CurrentPartFileHandler<IN> implements PartFileInfo {
 	}
 
 	RecoverableWriter.ResumeRecoverable persist() throws IOException {
-		RecoverableWriter.ResumeRecoverable resumable = null;
-		if (currentPartStream != null) {
-			resumable = currentPartStream.persist();
-		}
-		return resumable;
+		return currentPartStream.persist();
 	}
 
 	RecoverableWriter.CommitRecoverable closeForCommit() throws IOException {
-		RecoverableWriter.CommitRecoverable commitRecoverable = null;
-		if (currentPartStream != null) {
-			commitRecoverable = currentPartStream.closeForCommit().getRecoverable();
-			creationTime = Long.MAX_VALUE;
-			lastUpdateTime = Long.MAX_VALUE;
-			currentPartStream = null;
-		}
-		return commitRecoverable;
+		return currentPartStream.closeForCommit().getRecoverable();
 	}
 
 	void dispose() {
 		// we can suppress exceptions here, because we do not rely on close() to
 		// flush or persist any data
 		IOUtils.closeQuietly(currentPartStream);
-	}
-
-	@Override
-	public boolean isOpen() {
-		return currentPartStream != null;
 	}
 
 	@Override

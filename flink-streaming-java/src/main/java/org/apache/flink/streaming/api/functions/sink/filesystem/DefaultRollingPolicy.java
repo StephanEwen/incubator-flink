@@ -66,7 +66,8 @@ public final class DefaultRollingPolicy implements RollingPolicy {
 
 	@Override
 	public boolean shouldRoll(final PartFileInfo state, final long currentTime) throws IOException {
-		if (!state.isOpen()) {
+		if (state == null) {
+			// this means that there is no currently open part file.
 			return true;
 		}
 
