@@ -615,7 +615,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		private long initialCounter = -1L;
 
 		@Override
-		public Bucket<Tuple2<String, Integer>> getBucket(
+		public Bucket<Tuple2<String, Integer>> getNewBucket(
 				RecoverableWriter fsWriter,
 				int subtaskIndex,
 				String bucketId,
@@ -625,7 +625,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 			this.initialCounter = initialPartCounter;
 
-			return super.getBucket(
+			return super.getNewBucket(
 					fsWriter,
 					subtaskIndex,
 					bucketId,
@@ -635,7 +635,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		}
 
 		@Override
-		public Bucket<Tuple2<String, Integer>> getBucket(
+		public Bucket<Tuple2<String, Integer>> restoreBucket(
 				RecoverableWriter fsWriter,
 				int subtaskIndex,
 				long initialPartCounter,
@@ -644,7 +644,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 			this.initialCounter = initialPartCounter;
 
-			return super.getBucket(
+			return super.restoreBucket(
 					fsWriter,
 					subtaskIndex,
 					initialPartCounter,

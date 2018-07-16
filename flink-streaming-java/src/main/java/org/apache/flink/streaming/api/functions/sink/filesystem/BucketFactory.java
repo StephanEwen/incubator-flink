@@ -32,7 +32,7 @@ import java.io.Serializable;
 @Internal
 public interface BucketFactory<IN> extends Serializable {
 
-	Bucket<IN> getBucket(
+	Bucket<IN> getNewBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			String bucketId,
@@ -40,7 +40,7 @@ public interface BucketFactory<IN> extends Serializable {
 			long initialPartCounter,
 			Encoder<IN> writer) throws IOException;
 
-	Bucket<IN> getBucket(
+	Bucket<IN> restoreBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			long initialPartCounter,

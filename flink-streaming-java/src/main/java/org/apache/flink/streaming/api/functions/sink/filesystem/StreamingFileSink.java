@@ -277,7 +277,7 @@ public class StreamingFileSink<IN>
 
 				LOG.info("Recovered bucket for {}", bucketId);
 
-				final Bucket<IN> restoredBucket = bucketFactory.getBucket(
+				final Bucket<IN> restoredBucket = bucketFactory.restoreBucket(
 						fileSystemWriter,
 						subtaskIndex,
 						initMaxPartCounter,
@@ -335,7 +335,7 @@ public class StreamingFileSink<IN>
 		Bucket<IN> bucket = activeBuckets.get(bucketId);
 		if (bucket == null) {
 			final Path bucketPath = assembleBucketPath(bucketId);
-			bucket = bucketFactory.getBucket(
+			bucket = bucketFactory.getNewBucket(
 					fileSystemWriter,
 					subtaskIndex,
 					bucketId,

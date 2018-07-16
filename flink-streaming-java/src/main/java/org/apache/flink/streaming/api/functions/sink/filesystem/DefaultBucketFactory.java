@@ -34,7 +34,7 @@ public class DefaultBucketFactory<IN> implements BucketFactory<IN> {
 	private static final long serialVersionUID = 3372881359208513357L;
 
 	@Override
-	public Bucket<IN> getBucket(
+	public Bucket<IN> getNewBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			String bucketId,
@@ -52,7 +52,7 @@ public class DefaultBucketFactory<IN> implements BucketFactory<IN> {
 	}
 
 	@Override
-	public Bucket<IN> getBucket(
+	public Bucket<IN> restoreBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			long initialPartCounter,
