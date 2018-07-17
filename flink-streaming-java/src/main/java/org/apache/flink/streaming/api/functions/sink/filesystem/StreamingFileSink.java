@@ -30,8 +30,6 @@ import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerial
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.core.fs.RecoverableWriter;
-import org.apache.flink.core.io.SimpleVersionedSerialization;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
@@ -46,13 +44,6 @@ import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nullable;
-
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
 
 /**
  * Sink that emits its input elements to {@link FileSystem} files within buckets. This is
@@ -142,25 +133,15 @@ public class StreamingFileSink<IN>
 
 	// --------------------------- runtime fields -----------------------------
 
-	private transient BucketerContext bucketerContext;
-
-	private transient RecoverableWriter fileSystemWriter;
+	private transient Buckets<IN> buckets;
 
 	private transient ProcessingTimeService processingTimeService;
 
-	private transient Map<String, Bucket<IN>> activeBuckets;
-
 	//////////////////			State Related Fields			/////////////////////
 
-	private transient BucketStateSerializer bucketStateSerializer;
+	private transient ListState<byte[]> bucketStates;
 
-	private transient ListState<byte[]> restoredBucketStates;
-
-	private transient ListState<Long> restoredMaxCounters;
-
-	private transient long initMaxPartCounter;
-
-	private transient long maxPartCounterUsed;
+	private transient ListState<Long> maxPartCountersState;
 
 	/**
 	 * Creates a new {@code StreamingFileSink} that writes files to the given base directory.
@@ -182,6 +163,7 @@ public class StreamingFileSink<IN>
 		this.bucketFactory = Preconditions.checkNotNull(bucketFactory);
 	}
 
+	// TODO: 7/17/18 this should become the first call and static
 	public StreamingFileSink<IN> setEncoder(Encoder<IN> encoder) {
 		this.encoder = Preconditions.checkNotNull(encoder);
 		return this;
@@ -203,223 +185,78 @@ public class StreamingFileSink<IN>
 	}
 
 	@Override
-	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-		final Iterator<Map.Entry<String, Bucket<IN>>> activeBucketIt =
-				activeBuckets.entrySet().iterator();
+	public void initializeState(FunctionInitializationContext context) throws Exception {
+		final int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
 
-		while (activeBucketIt.hasNext()) {
-			Bucket<IN> bucket = activeBucketIt.next().getValue();
-			bucket.commitUpToCheckpoint(checkpointId);
+		final OperatorStateStore stateStore = context.getOperatorStateStore();
+		bucketStates = stateStore.getListState(BUCKET_STATE_DESC);
+		maxPartCountersState = stateStore.getUnionListState(MAX_PART_COUNTER_STATE_DESC);
 
-			if (!bucket.isActive()) {
-				// We've dealt with all the pending files and the writer for this bucket is not currently open.
-				// Therefore this bucket is currently inactive and we can remove it from our state.
-				activeBucketIt.remove();
-			}
+		if (context.isRestored()) {
+			buckets = Buckets.restore(
+					subtaskIndex,
+					basePath,
+					bucketer,
+					bucketFactory,
+					encoder,
+					rollingPolicy,
+					bucketStates,
+					maxPartCountersState
+			);
+		} else {
+			buckets = Buckets.init(
+					subtaskIndex,
+					basePath,
+					bucketer,
+					bucketFactory,
+					encoder,
+					rollingPolicy
+			);
 		}
+	}
+
+	@Override
+	public void notifyCheckpointComplete(long checkpointId) throws Exception {
+		buckets.publishUpToCheckpoint(checkpointId);
 	}
 
 	@Override
 	public void snapshotState(FunctionSnapshotContext context) throws Exception {
-		Preconditions.checkState(
-				restoredBucketStates != null && fileSystemWriter != null && bucketStateSerializer != null,
-				"sink has not been initialized");
+		Preconditions.checkState(bucketStates != null && maxPartCountersState != null, "sink has not been initialized");
 
-		restoredBucketStates.clear();
-		for (Bucket<IN> bucket : activeBuckets.values()) {
+		bucketStates.clear();
+		maxPartCountersState.clear();
 
-			final PartFileInfo info = bucket.getInProgressPartInfo();
-			final long checkpointTimestamp = context.getCheckpointTimestamp();
-
-			if (info != null && rollingPolicy.shouldRoll(info, checkpointTimestamp)) {
-				// we also check here so that we do not have to always
-				// wait for the "next" element to arrive.
-				bucket.closePartFile();
-			}
-
-			final BucketState bucketState = bucket.snapshot(context.getCheckpointId());
-			restoredBucketStates.add(SimpleVersionedSerialization.writeVersionAndSerialize(bucketStateSerializer, bucketState));
-		}
-
-		restoredMaxCounters.clear();
-		restoredMaxCounters.add(maxPartCounterUsed);
-	}
-
-	@Override
-	public void initializeState(FunctionInitializationContext context) throws Exception {
-		initFileSystemWriter();
-
-		this.activeBuckets = new HashMap<>();
-
-		// When resuming after a failure:
-		// 1) we get the max part counter used before in order to make sure that we do not overwrite valid data
-		// 2) we commit any pending files for previous checkpoints (previous to the last successful one)
-		// 3) we resume writing to the previous in-progress file of each bucket, and
-		// 4) if we receive multiple states for the same bucket, we merge them.
-
-		final OperatorStateStore stateStore = context.getOperatorStateStore();
-
-		restoredBucketStates = stateStore.getListState(BUCKET_STATE_DESC);
-		restoredMaxCounters = stateStore.getUnionListState(MAX_PART_COUNTER_STATE_DESC);
-
-		if (context.isRestored()) {
-			final int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
-
-			LOG.info("Restoring state for the {} (taskIdx={}).", getClass().getSimpleName(), subtaskIndex);
-
-			long maxCounter = 0L;
-			for (long partCounter: restoredMaxCounters.get()) {
-				maxCounter = Math.max(partCounter, maxCounter);
-			}
-			initMaxPartCounter = maxCounter;
-
-			for (byte[] recoveredState : restoredBucketStates.get()) {
-				final BucketState bucketState = SimpleVersionedSerialization.readVersionAndDeSerialize(
-						bucketStateSerializer, recoveredState);
-
-				final String bucketId = bucketState.getBucketId();
-
-				LOG.info("Recovered bucket for {}", bucketId);
-
-				final Bucket<IN> restoredBucket = bucketFactory.restoreBucket(
-						fileSystemWriter,
-						subtaskIndex,
-						initMaxPartCounter,
-						encoder,
-						bucketState
-				);
-
-				final Bucket<IN> existingBucket = activeBuckets.get(bucketId);
-				if (existingBucket == null) {
-					activeBuckets.put(bucketId, restoredBucket);
-				} else {
-					existingBucket.merge(restoredBucket);
-				}
-
-				if (LOG.isDebugEnabled()) {
-					LOG.debug("{} idx {} restored state for bucket {}", getClass().getSimpleName(),
-							subtaskIndex, assembleBucketPath(bucketId));
-				}
-			}
-		}
+		buckets.snapshotState(
+				context.getCheckpointId(),
+				context.getCheckpointTimestamp(),
+				bucketStates,
+				maxPartCountersState);
 	}
 
 	@Override
 	public void open(Configuration parameters) throws Exception {
 		super.open(parameters);
-
-		processingTimeService = ((StreamingRuntimeContext) getRuntimeContext()).getProcessingTimeService();
+		this.processingTimeService = ((StreamingRuntimeContext) getRuntimeContext()).getProcessingTimeService();
 		long currentProcessingTime = processingTimeService.getCurrentProcessingTime();
 		processingTimeService.registerTimer(currentProcessingTime + bucketCheckInterval, this);
-		this.bucketerContext = new BucketerContext();
 	}
 
 	@Override
 	public void onProcessingTime(long timestamp) throws Exception {
 		final long currentTime = processingTimeService.getCurrentProcessingTime();
-		for (Bucket<IN> bucket : activeBuckets.values()) {
-			final PartFileInfo info = bucket.getInProgressPartInfo();
-			if (info != null && rollingPolicy.shouldRoll(info, currentTime)) {
-				bucket.closePartFile();
-			}
-		}
-		processingTimeService.registerTimer(timestamp + bucketCheckInterval, this);
+		buckets.onProcessingTime(currentTime);
+		processingTimeService.registerTimer(currentTime + bucketCheckInterval, this);
 	}
+
 
 	@Override
 	public void invoke(IN value, Context context) throws Exception {
-		final long currentProcessingTime = processingTimeService.getCurrentProcessingTime();
-		final int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
-
-		// setting the values in the bucketer context
-		bucketerContext.update(context.timestamp(), currentProcessingTime, context.currentWatermark());
-
-		final String bucketId = bucketer.getBucketId(value, bucketerContext);
-
-		Bucket<IN> bucket = activeBuckets.get(bucketId);
-		if (bucket == null) {
-			final Path bucketPath = assembleBucketPath(bucketId);
-			bucket = bucketFactory.getNewBucket(
-					fileSystemWriter,
-					subtaskIndex,
-					bucketId,
-					bucketPath,
-					initMaxPartCounter,
-					encoder);
-			activeBuckets.put(bucketId, bucket);
-		}
-
-		final PartFileInfo info = bucket.getInProgressPartInfo();
-		if (info == null || rollingPolicy.shouldRoll(info, currentProcessingTime)) {
-			bucket.rollPartFile(currentProcessingTime);
-		}
-		bucket.write(value, currentProcessingTime);
-
-		// we update the counter here because as buckets become inactive and
-		// get removed in the initializeState(), at the time we snapshot they
-		// may not be there to take them into account during checkpointing.
-		updateMaxPartCounter(bucket.getPartCounter());
+		buckets.onElement(value, context);
 	}
 
 	@Override
 	public void close() throws Exception {
-		if (activeBuckets != null) {
-			activeBuckets.values().forEach(Bucket::dispose);
-		}
-	}
-
-	private void initFileSystemWriter() throws IOException {
-		if (fileSystemWriter == null) {
-			fileSystemWriter = FileSystem.get(basePath.toUri()).createRecoverableWriter();
-			bucketStateSerializer = new BucketStateSerializer(
-					fileSystemWriter.getResumeRecoverableSerializer(),
-					fileSystemWriter.getCommitRecoverableSerializer()
-			);
-		}
-	}
-
-	private void updateMaxPartCounter(long candidate) {
-		maxPartCounterUsed = Math.max(maxPartCounterUsed, candidate);
-	}
-
-	private Path assembleBucketPath(String bucketId) {
-		return new Path(basePath, bucketId);
-	}
-
-	/**
-	 * The {@link Bucketer.Context} exposed to the
-	 * {@link Bucketer#getBucketId(Object, Bucketer.Context)}
-	 * whenever a new incoming element arrives.
-	 */
-	private static class BucketerContext implements Bucketer.Context {
-
-		@Nullable
-		private Long elementTimestamp;
-
-		private long currentWatermark;
-
-		private long currentProcessingTime;
-
-		void update(@Nullable Long elementTimestamp, long currentWatermark, long currentProcessingTime) {
-			this.elementTimestamp = elementTimestamp;
-			this.currentWatermark = currentWatermark;
-			this.currentProcessingTime = currentProcessingTime;
-		}
-
-		@Override
-		public long currentProcessingTime() {
-			return currentProcessingTime;
-		}
-
-		@Override
-		public long currentWatermark() {
-			return currentWatermark;
-		}
-
-		@Override
-		@Nullable
-		public Long timestamp() {
-			return elementTimestamp;
-		}
+		buckets.close();
 	}
 }
