@@ -65,21 +65,27 @@ public final class DefaultRollingPolicy implements RollingPolicy {
 	}
 
 	@Override
-	public boolean shouldRoll(final PartFileInfo state, final long currentTime) throws IOException {
-		if (state == null) {
+	public boolean shouldRollOnEvent(PartFileInfo partFileState) throws IOException {
+		if (partFileState == null) {
 			// this means that there is no currently open part file.
 			return true;
 		}
 
-		if (state.getSize() > partSize) {
+		return partFileState.getSize() > partSize;
+	}
+
+	@Override
+	public boolean shouldRollOnProcessingTime(final PartFileInfo partFileState, final long currentTime) throws IOException {
+		if (partFileState == null) {
+			// this means that there is no currently open part file.
 			return true;
 		}
 
-		if (currentTime - state.getCreationTime() > rolloverInterval) {
+		if (currentTime - partFileState.getCreationTime() > rolloverInterval) {
 			return true;
 		}
 
-		return currentTime - state.getLastUpdateTime() > inactivityInterval;
+		return currentTime - partFileState.getLastUpdateTime() > inactivityInterval;
 	}
 
 	/**

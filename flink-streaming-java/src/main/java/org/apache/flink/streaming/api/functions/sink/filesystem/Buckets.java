@@ -200,7 +200,7 @@ public class Buckets<IN> {
 		for (Bucket<IN> bucket : activeBuckets.values()) {
 			final PartFileInfo info = bucket.getInProgressPartInfo();
 
-			if (info != null && rollingPolicy.shouldRoll(info, checkpointTimestamp)) {
+			if (info != null && (rollingPolicy.shouldRollOnEvent(info) || rollingPolicy.shouldRollOnProcessingTime(info, checkpointTimestamp))) {
 				// we also check here so that we do not have to always
 				// wait for the "next" element to arrive.
 				bucket.closePartFile();
@@ -241,7 +241,7 @@ public class Buckets<IN> {
 		}
 
 		final PartFileInfo info = bucket.getInProgressPartInfo();
-		if (info == null || rollingPolicy.shouldRoll(info, currentProcessingTime)) {
+		if (info == null || rollingPolicy.shouldRollOnEvent(info)) {
 			bucket.rollPartFile(currentProcessingTime);
 		}
 		bucket.write(value, currentProcessingTime);
@@ -255,7 +255,7 @@ public class Buckets<IN> {
 	void onProcessingTime(long timestamp) throws Exception {
 		for (Bucket<IN> bucket : activeBuckets.values()) {
 			final PartFileInfo info = bucket.getInProgressPartInfo();
-			if (info != null && rollingPolicy.shouldRoll(info, timestamp)) {
+			if (info != null && rollingPolicy.shouldRollOnProcessingTime(info, timestamp)) {
 				bucket.closePartFile();
 			}
 		}
