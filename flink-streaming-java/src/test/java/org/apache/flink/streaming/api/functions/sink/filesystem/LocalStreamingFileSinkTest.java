@@ -585,8 +585,9 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			BucketFactory<Tuple2<String, Integer>, String> factory,
 			Encoder<Tuple2<String, Integer>> writer) throws Exception {
 
-		StreamingFileSink<Tuple2<String, Integer>, String> sink = StreamingFileSink
-				.createBuilder(new Path(outDir.toURI()))
+		StreamingFileSink<Tuple2<String, Integer>> sink = StreamingFileSink
+				.<Tuple2<String, Integer>>forRowWise(new Path(outDir.toURI()), new SimpleStringEncoder<>())
+				.build();
 //				.withBucketer(
 //
 //					private static final long serialVersionUID = -3086487303018372007L;

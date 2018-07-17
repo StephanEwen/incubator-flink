@@ -50,9 +50,9 @@ import java.util.Date;
  *
  */
 @PublicEvolving
-public class DateTimeBucketer<T> implements Bucketer<T, String> {
+public class DateTimeBucketer<IN> implements Bucketer<IN, String> {
 
-	private static final long serialVersionUID = 3284420879277893804L;
+	private static final long serialVersionUID = 1L;
 
 	private static final String DEFAULT_FORMAT_STRING = "yyyy-MM-dd--HH";
 
@@ -78,7 +78,7 @@ public class DateTimeBucketer<T> implements Bucketer<T, String> {
 	}
 
 	@Override
-	public String getBucketId(T element, Context context) {
+	public String getBucketId(IN element, Context context) {
 		if (dateFormatter == null) {
 			dateFormatter = new SimpleDateFormat(formatString);
 		}

@@ -61,7 +61,7 @@ public class Buckets<IN, BucketID> implements Serializable {
 
 	private final Bucketer<IN, BucketID> bucketer;
 
-	private final Encoder<IN> encoder;
+	private final PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory;
 
 	private final RollingPolicy<BucketID> rollingPolicy;
 
@@ -97,12 +97,12 @@ public class Buckets<IN, BucketID> implements Serializable {
 			Path basePath,
 			Bucketer<IN, BucketID> bucketer,
 			BucketFactory<IN, BucketID> bucketFactory,
-			Encoder<IN> encoder,
-			RollingPolicy<BucketID> rollingPolicy) throws IOException {
+			PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory,
+			RollingPolicy<BucketID> rollingPolicy) {
 		this.basePath = Preconditions.checkNotNull(basePath);
 		this.bucketer = Preconditions.checkNotNull(bucketer);
 		this.bucketFactory = Preconditions.checkNotNull(bucketFactory);
-		this.encoder = Preconditions.checkNotNull(encoder);
+		this.partFileWriterFactory = Preconditions.checkNotNull(partFileWriterFactory);
 		this.rollingPolicy = Preconditions.checkNotNull(rollingPolicy);
 	}
 

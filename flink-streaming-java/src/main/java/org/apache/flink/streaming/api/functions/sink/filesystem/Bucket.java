@@ -50,7 +50,7 @@ public class Bucket<IN, BucketID> {
 
 	private final int subtaskIndex;
 
-	private final Encoder<IN> encoder;
+	private final PartFileHandler.PartFileFactory<IN, BucketID> partFileFactory;
 
 	private final RecoverableWriter fsWriter;
 
@@ -69,7 +69,7 @@ public class Bucket<IN, BucketID> {
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			long initialPartCounter,
-			Encoder<IN> writer,
+			PartFileHandler.PartFileFactory<IN, BucketID> partFileFactory,
 			BucketState<BucketID> bucketstate) throws IOException {
 
 		this(fsWriter, subtaskIndex, bucketstate.getBucketId(), bucketstate.getBucketPath(), initialPartCounter, writer);
@@ -82,7 +82,7 @@ public class Bucket<IN, BucketID> {
 
 		final RecoverableWriter.ResumeRecoverable resumable = bucketstate.getInProgress();
 		if (resumable != null) {
-			currentPart = PartFileHandler.resumeFrom(
+			currentPart = partFileFactory.resumeFrom(
 					bucketId, fsWriter, resumable, bucketstate.getCreationTime());
 		}
 
@@ -138,12 +138,12 @@ public class Bucket<IN, BucketID> {
 
 	void write(IN element, long currentTime) throws IOException {
 		Preconditions.checkState(currentPart != null, "bucket has been closed");
-		currentPart.write(element, encoder, currentTime);
+		currentPart.write(element, currentTime);
 	}
 
 	void rollPartFile(final long currentTime) throws IOException {
 		closePartFile();
-		currentPart = PartFileHandler.openNew(bucketId, fsWriter, getNewPartPath(), currentTime);
+		currentPart = partFileFactory.openNew(bucketId, fsWriter, getNewPartPath(), currentTime);
 		partCounter++;
 	}
 

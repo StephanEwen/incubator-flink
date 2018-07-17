@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.RecoverableWriter;
@@ -33,17 +32,17 @@ import java.io.IOException;
  * This also implements the {@link PartFileInfo}.
  */
 @Internal
-class PartFileHandler<IN, BucketID> implements PartFileInfo<BucketID> {
+abstract class PartFileHandler<IN, BucketID> implements PartFileInfo<BucketID> {
 
 	private final BucketID bucketId;
 
 	private final long creationTime;
 
-	private final RecoverableFsDataOutputStream currentPartStream;
+	protected final RecoverableFsDataOutputStream currentPartStream;
 
 	private long lastUpdateTime;
 
-	private PartFileHandler(
+	protected PartFileHandler(
 			final BucketID bucketId,
 			final RecoverableFsDataOutputStream currentPartStream,
 			final long creationTime) {
@@ -55,36 +54,7 @@ class PartFileHandler<IN, BucketID> implements PartFileInfo<BucketID> {
 		this.lastUpdateTime = creationTime;
 	}
 
-	public static <IN, BucketID> PartFileHandler<IN, BucketID> resumeFrom(
-			final BucketID bucketId,
-			final RecoverableWriter fileSystemWriter,
-			final RecoverableWriter.ResumeRecoverable resumable,
-			final long creationTime) throws IOException {
-		Preconditions.checkNotNull(bucketId);
-		Preconditions.checkNotNull(fileSystemWriter);
-		Preconditions.checkNotNull(resumable);
-
-		final RecoverableFsDataOutputStream stream = fileSystemWriter.recover(resumable);
-		return new PartFileHandler<>(bucketId, stream, creationTime);
-	}
-
-	public static <IN, BucketID> PartFileHandler<IN, BucketID> openNew(
-			final BucketID bucketId,
-			final RecoverableWriter fileSystemWriter,
-			final Path path,
-			final long creationTime) throws IOException {
-		Preconditions.checkNotNull(bucketId);
-		Preconditions.checkNotNull(fileSystemWriter);
-		Preconditions.checkNotNull(path);
-
-		final RecoverableFsDataOutputStream stream = fileSystemWriter.open(path);
-		return new PartFileHandler<>(bucketId, stream, creationTime);
-	}
-
-	void write(IN element, Encoder<IN> encoder, long currentTime) throws IOException {
-		encoder.encode(element, currentPartStream);
-		this.lastUpdateTime = currentTime;
-	}
+	abstract void write(IN element, long currentTime) throws IOException;
 
 	RecoverableWriter.ResumeRecoverable persist() throws IOException {
 		return currentPartStream.persist();
@@ -98,6 +68,10 @@ class PartFileHandler<IN, BucketID> implements PartFileInfo<BucketID> {
 		// we can suppress exceptions here, because we do not rely on close() to
 		// flush or persist any data
 		IOUtils.closeQuietly(currentPartStream);
+	}
+
+	void markWrite(long now) {
+		this.lastUpdateTime = now;
 	}
 
 	@Override
@@ -118,5 +92,22 @@ class PartFileHandler<IN, BucketID> implements PartFileInfo<BucketID> {
 	@Override
 	public long getLastUpdateTime() {
 		return lastUpdateTime;
+	}
+
+	// ------------------------------------------------------------------------
+
+	interface PartFileFactory<IN, BucketID> {
+
+		PartFileHandler<IN, BucketID> resumeFrom(
+			final BucketID bucketId,
+			final RecoverableWriter fileSystemWriter,
+			final RecoverableWriter.ResumeRecoverable resumable,
+			final long creationTime) throws IOException;
+
+		PartFileHandler<IN, BucketID> openNew(
+			final BucketID bucketId,
+			final RecoverableWriter fileSystemWriter,
+			final Path path,
+			final long creationTime) throws IOException;
 	}
 }
