@@ -50,7 +50,7 @@ import java.util.Date;
  *
  */
 @PublicEvolving
-public class DateTimeBucketer<T> implements Bucketer<T> {
+public class DateTimeBucketer<T> implements Bucketer<T, String> {
 
 	private static final long serialVersionUID = 3284420879277893804L;
 

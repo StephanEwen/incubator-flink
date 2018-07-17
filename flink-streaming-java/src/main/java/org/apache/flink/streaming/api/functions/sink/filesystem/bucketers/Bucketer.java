@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem.bucketers;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
 import javax.annotation.Nullable;
@@ -33,9 +34,16 @@ import java.io.Serializable;
  * <p>The {@code StreamingFileSink} can be writing to many buckets at a time, and it is responsible for managing
  * a set of active buckets. Whenever a new element arrives it will ask the {@code Bucketer} for the bucket the
  * element should fall in. The {@code Bucketer} can, for example, determine buckets based on system time.
+ *
+ * @param <IN> The type of input elements.
+ * @param <BucketID> The type of the object returned by the {@link #getBucketId(Object, Context)}. This has to have
+ *                  a correct {@link #hashCode()} and {@link #equals(Object)} method. In addition, the {@link Path}
+ *                  to the created bucket will be the result of the {@link #toString()} of this method, appended to
+ *                  the {@code basePath} specified in the
+ *                  {@link org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink StreamingFileSink}
  */
 @PublicEvolving
-public interface Bucketer<T> extends Serializable {
+public interface Bucketer<IN, BucketID> extends Serializable {
 
 	/**
 	 * Returns the identifier of the bucket the provided element should be put into.
@@ -48,7 +56,7 @@ public interface Bucketer<T> extends Serializable {
 	 * and the {@code base path} provided during the initialization of the
 	 * {@link org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink sink}.
 	 */
-	String getBucketId(T element, Context context);
+	BucketID getBucketId(IN element, Context context);
 
 	/**
 	 * Context that the {@link Bucketer} can use for getting additional data about

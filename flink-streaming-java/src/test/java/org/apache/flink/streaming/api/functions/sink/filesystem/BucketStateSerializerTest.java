@@ -73,7 +73,7 @@ public class BucketStateSerializerTest {
 		final BucketState recoveredState =  SimpleVersionedSerialization.readVersionAndDeSerialize(serializer, bytes);
 
 		Assert.assertEquals(testBucket, recoveredState.getBucketPath());
-		Assert.assertNull(recoveredState.getCurrentInProgress());
+		Assert.assertNull(recoveredState.getInProgress());
 		Assert.assertTrue(recoveredState.getPendingPerCheckpoint().isEmpty());
 	}
 
@@ -233,7 +233,7 @@ public class BucketStateSerializerTest {
 		final BucketState recoveredState =  SimpleVersionedSerialization.readVersionAndDeSerialize(serializer, bytes);
 
 		Assert.assertEquals(bucketPath, recoveredState.getBucketPath());
-		Assert.assertNull(recoveredState.getCurrentInProgress());
+		Assert.assertNull(recoveredState.getInProgress());
 
 		final Map<Long, List<RecoverableWriter.CommitRecoverable>> recoveredRecoverables = recoveredState.getPendingPerCheckpoint();
 		Assert.assertEquals(5L, recoveredRecoverables.size());

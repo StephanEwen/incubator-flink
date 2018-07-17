@@ -42,7 +42,7 @@ import java.util.Map.Entry;
  * A {@code SimpleVersionedSerializer} used to serialize the {@link BucketState BucketState}.
  */
 @Internal
-class BucketStateSerializer implements SimpleVersionedSerializer<BucketState> {
+class BucketStateSerializer<BucketID> implements SimpleVersionedSerializer<BucketState<BucketID>> {
 
 	private static final int MAGIC_NUMBER = 0x1e764b79;
 
@@ -50,7 +50,7 @@ class BucketStateSerializer implements SimpleVersionedSerializer<BucketState> {
 
 	private final SimpleVersionedSerializer<RecoverableWriter.CommitRecoverable> commitableSerializer;
 
-	public BucketStateSerializer(
+	BucketStateSerializer(
 			final SimpleVersionedSerializer<RecoverableWriter.ResumeRecoverable> resumableSerializer,
 			final SimpleVersionedSerializer<RecoverableWriter.CommitRecoverable> commitableSerializer) {
 
@@ -64,7 +64,7 @@ class BucketStateSerializer implements SimpleVersionedSerializer<BucketState> {
 	}
 
 	@Override
-	public byte[] serialize(BucketState state) throws IOException {
+	public byte[] serialize(BucketState<BucketID> state) throws IOException {
 		DataOutputSerializer out = new DataOutputSerializer(256);
 		out.writeInt(MAGIC_NUMBER);
 		serializeV1(state, out);
@@ -72,7 +72,7 @@ class BucketStateSerializer implements SimpleVersionedSerializer<BucketState> {
 	}
 
 	@Override
-	public BucketState deserialize(int version, byte[] serialized) throws IOException {
+	public BucketState<BucketID> deserialize(int version, byte[] serialized) throws IOException {
 		switch (version) {
 			case 1:
 				DataInputDeserializer in = new DataInputDeserializer(serialized);
@@ -84,13 +84,13 @@ class BucketStateSerializer implements SimpleVersionedSerializer<BucketState> {
 	}
 
 	@VisibleForTesting
-	void serializeV1(BucketState state, DataOutputView out) throws IOException {
+	void serializeV1(BucketState<BucketID> state, DataOutputView out) throws IOException {
 		out.writeUTF(state.getBucketId());
 		out.writeUTF(state.getBucketPath().toString());
 		out.writeLong(state.getCreationTime());
 
 		// put the current open part file
-		final RecoverableWriter.ResumeRecoverable currentPart = state.getCurrentInProgress();
+		final RecoverableWriter.ResumeRecoverable currentPart = state.getInProgress();
 		if (currentPart != null) {
 			out.writeBoolean(true);
 			SimpleVersionedSerialization.writeVersionAndSerialize(resumableSerializer, currentPart, out);
@@ -121,8 +121,8 @@ class BucketStateSerializer implements SimpleVersionedSerializer<BucketState> {
 	}
 
 	@VisibleForTesting
-	BucketState deserializeV1(DataInputView in) throws IOException {
-		final String bucketId = in.readUTF();
+	BucketState<BucketID> deserializeV1(DataInputView in) throws IOException {
+		final BucketID bucketId = in.readUTF();
 		final String bucketPathStr = in.readUTF();
 		final long creationTime = in.readLong();
 
@@ -140,7 +140,7 @@ class BucketStateSerializer implements SimpleVersionedSerializer<BucketState> {
 			final long checkpointId = in.readLong();
 			final int noOfResumables = in.readInt();
 
-			final ArrayList<RecoverableWriter.CommitRecoverable> resumables = new ArrayList<>(noOfResumables);
+			final List<RecoverableWriter.CommitRecoverable> resumables = new ArrayList<>(noOfResumables);
 			for (int j = 0; j < noOfResumables; j++) {
 				final byte[] bytes = new byte[in.readInt()];
 				in.readFully(bytes);
@@ -149,7 +149,7 @@ class BucketStateSerializer implements SimpleVersionedSerializer<BucketState> {
 			resumablesPerCheckpoint.put(checkpointId, resumables);
 		}
 
-		return new BucketState(
+		return new BucketState<>(
 				bucketId,
 				new Path(bucketPathStr),
 				creationTime,

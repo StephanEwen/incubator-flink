@@ -25,7 +25,7 @@ import org.apache.flink.annotation.PublicEvolving;
  * bucketing of files. All files are written to the base path.
  */
 @PublicEvolving
-public class BasePathBucketer<T> implements Bucketer<T> {
+public class BasePathBucketer<T> implements Bucketer<T, String> {
 
 	private static final long serialVersionUID = -6033643155550226022L;
 

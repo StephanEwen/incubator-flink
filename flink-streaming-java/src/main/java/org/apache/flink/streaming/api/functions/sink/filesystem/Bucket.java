@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * A bucket is the directory organization of the output of the {@link StreamingFileSink}.
@@ -39,11 +40,11 @@ import java.util.Map;
  * queried to see in which bucket this element should be written to.
  */
 @PublicEvolving
-public class Bucket<IN> {
+public class Bucket<IN, BucketID> {
 
 	private static final String PART_PREFIX = "part";
 
-	private final String bucketId;
+	private final BucketID bucketId;
 
 	private final Path bucketPath;
 
@@ -57,7 +58,7 @@ public class Bucket<IN> {
 
 	private long partCounter;
 
-	private PartFileHandler<IN> currentPart;
+	private PartFileHandler<IN, BucketID> currentPart;
 
 	private List<RecoverableWriter.CommitRecoverable> pending;
 
@@ -69,7 +70,7 @@ public class Bucket<IN> {
 			int subtaskIndex,
 			long initialPartCounter,
 			Encoder<IN> writer,
-			BucketState bucketstate) throws IOException {
+			BucketState<BucketID> bucketstate) throws IOException {
 
 		this(fsWriter, subtaskIndex, bucketstate.getBucketId(), bucketstate.getBucketPath(), initialPartCounter, writer);
 
@@ -79,7 +80,7 @@ public class Bucket<IN> {
 		// we try to resume the previous in-progress file, if the filesystem
 		// supports such operation. If not, we just commit the file and start fresh.
 
-		final RecoverableWriter.ResumeRecoverable resumable = bucketstate.getCurrentInProgress();
+		final RecoverableWriter.ResumeRecoverable resumable = bucketstate.getInProgress();
 		if (resumable != null) {
 			currentPart = PartFileHandler.resumeFrom(
 					bucketId, fsWriter, resumable, bucketstate.getCreationTime());
@@ -100,7 +101,7 @@ public class Bucket<IN> {
 	public Bucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
-			String bucketId,
+			BucketID bucketId,
 			Path bucketPath,
 			long initialPartCounter,
 			Encoder<IN> writer) {
@@ -115,11 +116,11 @@ public class Bucket<IN> {
 		this.pending = new ArrayList<>();
 	}
 
-	public PartFileInfo getInProgressPartInfo() {
+	public PartFileInfo<BucketID> getInProgressPartInfo() {
 		return currentPart;
 	}
 
-	public String getBucketId() {
+	public BucketID getBucketId() {
 		return bucketId;
 	}
 
@@ -146,9 +147,9 @@ public class Bucket<IN> {
 		partCounter++;
 	}
 
-	void merge(final Bucket<IN> bucket) throws IOException {
+	void merge(final Bucket<IN, BucketID> bucket) throws IOException {
 		Preconditions.checkNotNull(bucket);
-		Preconditions.checkState(bucket.getBucketPath().equals(getBucketPath()));
+		Preconditions.checkState(Objects.equals(bucket.getBucketPath(), bucketPath));
 
 		// there should be no pending files in the "to-merge" states.
 		Preconditions.checkState(bucket.pending.isEmpty());
@@ -193,7 +194,7 @@ public class Bucket<IN> {
 		}
 	}
 
-	public BucketState snapshot(long checkpointId) throws IOException {
+	public BucketState<BucketID> snapshot(long checkpointId) throws IOException {
 		RecoverableWriter.ResumeRecoverable resumable = null;
 		long creationTime = Long.MAX_VALUE;
 
@@ -206,7 +207,7 @@ public class Bucket<IN> {
 			pendingPerCheckpoint.put(checkpointId, pending);
 			pending = new ArrayList<>();
 		}
-		return new BucketState(bucketId, bucketPath, creationTime, resumable, pendingPerCheckpoint);
+		return new BucketState<>(bucketId, bucketPath, creationTime, resumable, pendingPerCheckpoint);
 	}
 
 	private Path getNewPartPath() {

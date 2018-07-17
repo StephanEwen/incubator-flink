@@ -582,40 +582,44 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			int taskIdx,
 			long inactivityInterval,
 			long partMaxSize,
-			BucketFactory<Tuple2<String, Integer>> factory,
+			BucketFactory<Tuple2<String, Integer>, String> factory,
 			Encoder<Tuple2<String, Integer>> writer) throws Exception {
 
-		StreamingFileSink<Tuple2<String, Integer>> sink = new StreamingFileSink<>(new Path(outDir.toURI()), factory)
-				.setBucketer(new Bucketer<Tuple2<String, Integer>>() {
-
-					private static final long serialVersionUID = -3086487303018372007L;
-
-					@Override
-					public String getBucketId(Tuple2<String, Integer> element, Context context) {
-						return element.f0;
-					}
-				})
-				.setEncoder(writer)
-				.setRollingPolicy(
+		StreamingFileSink<Tuple2<String, Integer>, String> sink = StreamingFileSink
+				.createBuilder(new Path(outDir.toURI()))
+//				.withBucketer(
+//
+//					private static final long serialVersionUID = -3086487303018372007L;
+//
+//					@Override
+//					public String getBucketId(Tuple2<String, Integer> element, Context context) {
+//						return element.f0;
+//					}
+//				})
+				//.w
+				.withBucketFactory(factory)
+				.withEncoder(writer)
+				.withRollingPolicy(
 						DefaultRollingPolicy
 								.create()
 								.withMaxPartSize(partMaxSize)
 								.withRolloverInterval(inactivityInterval)
 								.withInactivityInterval(inactivityInterval)
 								.build())
-				.setBucketCheckInterval(10L);
+				.withBucketCheckInterval(10L)
+				.build();
 
 		return new OneInputStreamOperatorTestHarness<>(new StreamSink<>(sink), 10, totalParallelism, taskIdx);
 	}
 
-	static class TestBucketFactory extends DefaultBucketFactory<Tuple2<String, Integer>> {
+	static class TestBucketFactory extends DefaultBucketFactory<Tuple2<String, Integer>, String> {
 
 		private static final long serialVersionUID = 2794824980604027930L;
 
 		private long initialCounter = -1L;
 
 		@Override
-		public Bucket<Tuple2<String, Integer>> getNewBucket(
+		public Bucket<Tuple2<String, Integer>, String> getNewBucket(
 				RecoverableWriter fsWriter,
 				int subtaskIndex,
 				String bucketId,
@@ -635,12 +639,12 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		}
 
 		@Override
-		public Bucket<Tuple2<String, Integer>> restoreBucket(
+		public Bucket<Tuple2<String, Integer>, String> restoreBucket(
 				RecoverableWriter fsWriter,
 				int subtaskIndex,
 				long initialPartCounter,
 				Encoder<Tuple2<String, Integer>> writer,
-				BucketState bucketState) throws IOException {
+				BucketState<String> bucketState) throws IOException {
 
 			this.initialCounter = initialPartCounter;
 

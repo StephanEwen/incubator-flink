@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.api.common.state.ListState;
@@ -42,8 +41,7 @@ import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.util.Preconditions;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.io.IOException;
 
 /**
  * Sink that emits its input elements to {@link FileSystem} files within buckets. This is
@@ -101,13 +99,11 @@ import org.slf4j.LoggerFactory;
  * @param <IN> Type of the elements emitted by this sink
  */
 @PublicEvolving
-public class StreamingFileSink<IN>
+public class StreamingFileSink<IN, BucketID>
 		extends RichSinkFunction<IN>
 		implements CheckpointedFunction, CheckpointListener, ProcessingTimeCallback {
 
 	private static final long serialVersionUID = 1L;
-
-	private static final Logger LOG = LoggerFactory.getLogger(StreamingFileSink.class);
 
 	// -------------------------- state descriptors ---------------------------
 
@@ -119,21 +115,11 @@ public class StreamingFileSink<IN>
 
 	// ------------------------ configuration fields --------------------------
 
-	private final Path basePath;
-
-	private final BucketFactory<IN> bucketFactory;
-
-	private long bucketCheckInterval = 60L * 1000L;
-
-	private Bucketer<IN> bucketer;
-
-	private Encoder<IN> encoder;
-
-	private RollingPolicy rollingPolicy;
+	private final long bucketCheckInterval;
 
 	// --------------------------- runtime fields -----------------------------
 
-	private transient Buckets<IN> buckets;
+	private final Buckets<IN, ?> buckets;
 
 	private transient ProcessingTimeService processingTimeService;
 
@@ -147,71 +133,89 @@ public class StreamingFileSink<IN>
 	 * Creates a new {@code StreamingFileSink} that writes files to the given base directory.
 	 *
 	 * <p>This uses a {@link DateTimeBucketer} as {@link Bucketer} and a {@link SimpleStringEncoder} as a writer.
-	 *
-	 * @param basePath The directory to which to write the bucket files.
 	 */
-	public StreamingFileSink(Path basePath) {
-		this(basePath, new DefaultBucketFactory<>());
+	private StreamingFileSink(Buckets<IN, BucketID> buckets, long bucketCheckInterval) {
+		this.buckets = Preconditions.checkNotNull(buckets);
+		this.bucketCheckInterval = bucketCheckInterval;
 	}
 
-	@VisibleForTesting
-	StreamingFileSink(Path basePath, BucketFactory<IN> bucketFactory) {
-		this.basePath = Preconditions.checkNotNull(basePath);
-		this.bucketer = new DateTimeBucketer<>();
-		this.encoder = new SimpleStringEncoder<>();
-		this.rollingPolicy = DefaultRollingPolicy.create().build();
-		this.bucketFactory = Preconditions.checkNotNull(bucketFactory);
+	public static <IN, BucketID> StreamingFileSink.BucketManagerBuilder<IN, BucketID> createBuilder(final Path basePath) {
+		return new StreamingFileSink.BucketManagerBuilder<>(basePath);
 	}
 
-	// TODO: 7/17/18 this should become the first call and static
-	public StreamingFileSink<IN> setEncoder(Encoder<IN> encoder) {
-		this.encoder = Preconditions.checkNotNull(encoder);
-		return this;
-	}
+	/**
+	 * A helper class that holds the configuration properties for the {@link DefaultRollingPolicy}.
+	 */
+	@PublicEvolving
+	public static class BucketManagerBuilder<IN, BucketID> {
 
-	public StreamingFileSink<IN> setBucketer(Bucketer<IN> bucketer) {
-		this.bucketer = Preconditions.checkNotNull(bucketer);
-		return this;
-	}
+		private long bucketCheckInterval = 60L * 1000L;
 
-	public StreamingFileSink<IN> setBucketCheckInterval(long interval) {
-		this.bucketCheckInterval = interval;
-		return this;
-	}
+		private final Path basePath;
 
-	public StreamingFileSink<IN> setRollingPolicy(RollingPolicy policy) {
-		this.rollingPolicy = Preconditions.checkNotNull(policy);
-		return this;
+		private BucketFactory<IN, BucketID> bucketFactory;
+
+		private Bucketer<IN, BucketID> bucketer;
+
+		private Encoder<IN> encoder;
+
+		private RollingPolicy<BucketID> rollingPolicy;
+
+		public BucketManagerBuilder(Path basePath) {
+			this.basePath = Preconditions.checkNotNull(basePath);
+
+			this.bucketFactory = new DefaultBucketFactory<>();
+			this.bucketer = new DateTimeBucketer<>();
+			this.encoder = new SimpleStringEncoder<>();
+			this.rollingPolicy = DefaultRollingPolicy.create().build();
+		}
+
+		public StreamingFileSink.BucketManagerBuilder<IN, BucketID> withBucketFactory(BucketFactory<IN, BucketID> factory) {
+			this.bucketFactory = Preconditions.checkNotNull(factory);
+			return this;
+		}
+
+		public StreamingFileSink.BucketManagerBuilder<IN, BucketID> withBucketCheckInterval(long interval) {
+			this.bucketCheckInterval = interval;
+			return this;
+		}
+
+		public StreamingFileSink.BucketManagerBuilder<IN, BucketID> withEncoder(Encoder<IN> encoder) {
+			this.encoder = Preconditions.checkNotNull(encoder);
+			return this;
+		}
+
+		public StreamingFileSink.BucketManagerBuilder<IN, BucketID> withBucketer(Bucketer<IN, BucketID> bucketer) {
+			this.bucketer = Preconditions.checkNotNull(bucketer);
+			return this;
+		}
+
+		public StreamingFileSink.BucketManagerBuilder<IN, BucketID> withRollingPolicy(RollingPolicy<BucketID> policy) {
+			this.rollingPolicy = Preconditions.checkNotNull(policy);
+			return this;
+		}
+
+		/**
+		 * Creates the actual sink.
+		 */
+		public StreamingFileSink<IN, BucketID> build() throws IOException {
+			final Buckets<IN, BucketID> buckets =
+					new Buckets<>(basePath, bucketer, bucketFactory, encoder, rollingPolicy);
+			return new StreamingFileSink<>(buckets, bucketCheckInterval);
+		}
 	}
 
 	@Override
 	public void initializeState(FunctionInitializationContext context) throws Exception {
 		final int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
+		buckets.setSubtaskIndex(subtaskIndex); // TODO: 7/17/18 ugly
 
 		final OperatorStateStore stateStore = context.getOperatorStateStore();
 		bucketStates = stateStore.getListState(BUCKET_STATE_DESC);
 		maxPartCountersState = stateStore.getUnionListState(MAX_PART_COUNTER_STATE_DESC);
 
 		if (context.isRestored()) {
-			buckets = Buckets.restore(
-					subtaskIndex,
-					basePath,
-					bucketer,
-					bucketFactory,
-					encoder,
-					rollingPolicy,
-					bucketStates,
-					maxPartCountersState
-			);
-		} else {
-			buckets = Buckets.init(
-					subtaskIndex,
-					basePath,
-					bucketer,
-					bucketFactory,
-					encoder,
-					rollingPolicy
-			);
+			buckets.initializeState(bucketStates, maxPartCountersState);
 		}
 	}
 

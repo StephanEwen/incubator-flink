@@ -30,20 +30,20 @@ import java.io.Serializable;
  * A factory able to create {@link Bucket buckets} for the {@link StreamingFileSink}.
  */
 @Internal
-public interface BucketFactory<IN> extends Serializable {
+public interface BucketFactory<IN, BucketID> extends Serializable {
 
-	Bucket<IN> getNewBucket(
+	Bucket<IN, BucketID> getNewBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
-			String bucketId,
+			BucketID bucketId,
 			Path bucketPath,
 			long initialPartCounter,
 			Encoder<IN> writer) throws IOException;
 
-	Bucket<IN> restoreBucket(
+	Bucket<IN, BucketID> restoreBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			long initialPartCounter,
 			Encoder<IN> writer,
-			BucketState bucketstate) throws IOException;
+			BucketState<BucketID> bucketState) throws IOException;
 }

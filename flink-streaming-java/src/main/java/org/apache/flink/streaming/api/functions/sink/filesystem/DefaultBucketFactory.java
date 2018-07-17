@@ -29,15 +29,15 @@ import java.io.IOException;
  * A factory returning {@link Bucket buckets}.
  */
 @Internal
-public class DefaultBucketFactory<IN> implements BucketFactory<IN> {
+public class DefaultBucketFactory<IN, BucketID> implements BucketFactory<IN, BucketID> {
 
 	private static final long serialVersionUID = 3372881359208513357L;
 
 	@Override
-	public Bucket<IN> getNewBucket(
+	public Bucket<IN, BucketID> getNewBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
-			String bucketId,
+			BucketID bucketId,
 			Path bucketPath,
 			long initialPartCounter,
 			Encoder<IN> writer) throws IOException {
@@ -52,12 +52,12 @@ public class DefaultBucketFactory<IN> implements BucketFactory<IN> {
 	}
 
 	@Override
-	public Bucket<IN> restoreBucket(
+	public Bucket<IN, BucketID> restoreBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			long initialPartCounter,
 			Encoder<IN> writer,
-			BucketState bucketState) throws IOException {
+			BucketState<BucketID> bucketState) throws IOException {
 
 		return new Bucket<>(
 				fsWriter,

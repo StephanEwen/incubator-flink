@@ -34,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -46,7 +47,9 @@ import java.util.Map;
  *
  * @param <IN> The type of input elements.
  */
-public class Buckets<IN> {
+public class Buckets<IN, BucketID> implements Serializable {
+
+	private static final long serialVersionUID = 7020432456830926860L;
 
 	private static final Logger LOG = LoggerFactory.getLogger(Buckets.class);
 
@@ -54,36 +57,35 @@ public class Buckets<IN> {
 
 	private final Path basePath;
 
-	private final BucketFactory<IN> bucketFactory;
+	private final BucketFactory<IN, BucketID> bucketFactory;
 
-	private final Bucketer<IN> bucketer;
+	private final Bucketer<IN, BucketID> bucketer;
 
 	private final Encoder<IN> encoder;
 
-	private final RollingPolicy rollingPolicy;
+	private final RollingPolicy<BucketID> rollingPolicy;
 
 	// --------------------------- runtime fields -----------------------------
 
-	private final int subtaskIndex;
+	private int subtaskIndex;
 
-	private final BucketerContext bucketerContext;
+	private transient BucketerContext bucketerContext;
 
-	private final Map<String, Bucket<IN>> activeBuckets;
+	private transient Map<BucketID, Bucket<IN, BucketID>> activeBuckets;
 
-	private RecoverableWriter fileSystemWriter;
+	private transient long initMaxPartCounter;
 
-	private long initMaxPartCounter;
+	private transient long maxPartCounterUsed;
 
-	private long maxPartCounterUsed;
+	private transient RecoverableWriter fileSystemWriter;
 
 	// --------------------------- State Related Fields -----------------------------
 
-	private BucketStateSerializer bucketStateSerializer;
+	private transient BucketStateSerializer<BucketID> bucketStateSerializer;
 
 	/**
 	 * A private constructor creating a new empty bucket manager.
 	 *
-	 * @param subtaskIndex The index of the current subtask.
 	 * @param basePath The base path for our buckets.
 	 * @param bucketer The {@link Bucketer} provided by the user.
 	 * @param bucketFactory The {@link BucketFactory} to be used to create buckets.
@@ -91,30 +93,26 @@ public class Buckets<IN> {
 	 * @param rollingPolicy The {@link RollingPolicy} as specified by the user.
 	 * @throws IOException If something went wrong during accessing the underlying filesystem.
 	 */
-	private Buckets(
-			int subtaskIndex,
+	Buckets(
 			Path basePath,
-			Bucketer<IN> bucketer,
-			BucketFactory<IN> bucketFactory,
+			Bucketer<IN, BucketID> bucketer,
+			BucketFactory<IN, BucketID> bucketFactory,
 			Encoder<IN> encoder,
-			RollingPolicy rollingPolicy) throws IOException {
-
-		this.subtaskIndex = subtaskIndex;
-
+			RollingPolicy<BucketID> rollingPolicy) throws IOException {
 		this.basePath = Preconditions.checkNotNull(basePath);
 		this.bucketer = Preconditions.checkNotNull(bucketer);
 		this.bucketFactory = Preconditions.checkNotNull(bucketFactory);
 		this.encoder = Preconditions.checkNotNull(encoder);
 		this.rollingPolicy = Preconditions.checkNotNull(rollingPolicy);
+	}
 
-		this.initMaxPartCounter = 0L;
-		this.maxPartCounterUsed = 0L;
+	void setSubtaskIndex(int subtaskIndex) {
+		this.subtaskIndex = subtaskIndex;
+	}
 
-		this.activeBuckets = new HashMap<>();
-		this.bucketerContext = new BucketerContext();
-
+	void initializeFileSystemWriter() throws IOException {
 		this.fileSystemWriter = FileSystem.get(basePath.toUri()).createRecoverableWriter();
-		this.bucketStateSerializer = new BucketStateSerializer(
+		this.bucketStateSerializer = new BucketStateSerializer<>(
 				fileSystemWriter.getResumeRecoverableSerializer(),
 				fileSystemWriter.getCommitRecoverableSerializer()
 		);
@@ -126,8 +124,14 @@ public class Buckets<IN> {
 	 * @param partCounterState the state holding the max previously used part counters.
 	 * @throws Exception
 	 */
-	private void initializeState(final ListState<byte[]> bucketStates, final ListState<Long> partCounterState) throws Exception {
-		Preconditions.checkState(fileSystemWriter != null && bucketStateSerializer != null, "sink has not been initialized");
+	void initializeState(final ListState<byte[]> bucketStates, final ListState<Long> partCounterState) throws Exception {
+		initializeFileSystemWriter();
+
+		this.initMaxPartCounter = 0L;
+		this.maxPartCounterUsed = 0L;
+
+		this.activeBuckets = new HashMap<>();
+		this.bucketerContext = new BucketerContext();
 
 		// When resuming after a failure:
 		// 1) we get the max part counter used before in order to make sure that we do not overwrite valid data
@@ -144,14 +148,14 @@ public class Buckets<IN> {
 
 		// get the restored buckets
 		for (byte[] recoveredState : bucketStates.get()) {
-			final BucketState bucketState = SimpleVersionedSerialization.readVersionAndDeSerialize(
+			final BucketState<BucketID> bucketState = SimpleVersionedSerialization.readVersionAndDeSerialize(
 					bucketStateSerializer, recoveredState);
 
-			final String bucketId = bucketState.getBucketId();
+			final BucketID bucketId = bucketState.getBucketId();
 
 			LOG.info("Recovered bucket for {}", bucketId);
 
-			final Bucket<IN> restoredBucket = bucketFactory.restoreBucket(
+			final Bucket<IN, BucketID> restoredBucket = bucketFactory.restoreBucket(
 					fileSystemWriter,
 					subtaskIndex,
 					initMaxPartCounter,
@@ -159,7 +163,7 @@ public class Buckets<IN> {
 					bucketState
 			);
 
-			final Bucket<IN> existingBucket = activeBuckets.get(bucketId);
+			final Bucket<IN, BucketID> existingBucket = activeBuckets.get(bucketId);
 			if (existingBucket == null) {
 				activeBuckets.put(bucketId, restoredBucket);
 			} else {
@@ -174,11 +178,11 @@ public class Buckets<IN> {
 	}
 
 	void publishUpToCheckpoint(long checkpointId) throws IOException {
-		final Iterator<Map.Entry<String, Bucket<IN>>> activeBucketIt =
+		final Iterator<Map.Entry<BucketID, Bucket<IN, BucketID>>> activeBucketIt =
 				activeBuckets.entrySet().iterator();
 
 		while (activeBucketIt.hasNext()) {
-			Bucket<IN> bucket = activeBucketIt.next().getValue();
+			Bucket<IN, BucketID> bucket = activeBucketIt.next().getValue();
 			bucket.commitUpToCheckpoint(checkpointId);
 
 			if (!bucket.isActive()) {
@@ -197,8 +201,8 @@ public class Buckets<IN> {
 
 		Preconditions.checkState(fileSystemWriter != null && bucketStateSerializer != null, "sink has not been initialized");
 
-		for (Bucket<IN> bucket : activeBuckets.values()) {
-			final PartFileInfo info = bucket.getInProgressPartInfo();
+		for (Bucket<IN, BucketID> bucket : activeBuckets.values()) {
+			final PartFileInfo<BucketID> info = bucket.getInProgressPartInfo();
 
 			if (info != null && (rollingPolicy.shouldRollOnEvent(info) || rollingPolicy.shouldRollOnProcessingTime(info, checkpointTimestamp))) {
 				// we also check here so that we do not have to always
@@ -206,7 +210,7 @@ public class Buckets<IN> {
 				bucket.closePartFile();
 			}
 
-			final BucketState bucketState = bucket.snapshot(checkpointId);
+			final BucketState<BucketID> bucketState = bucket.snapshot(checkpointId);
 			bucketStates.add(SimpleVersionedSerialization.writeVersionAndSerialize(bucketStateSerializer, bucketState));
 		}
 
@@ -225,9 +229,9 @@ public class Buckets<IN> {
 		// setting the values in the bucketer context
 		bucketerContext.update(context.timestamp(), currentProcessingTime, context.currentWatermark());
 
-		final String bucketId = bucketer.getBucketId(value, bucketerContext);
+		final BucketID bucketId = bucketer.getBucketId(value, bucketerContext);
 
-		Bucket<IN> bucket = activeBuckets.get(bucketId);
+		Bucket<IN, BucketID> bucket = activeBuckets.get(bucketId);
 		if (bucket == null) {
 			final Path bucketPath = assembleBucketPath(bucketId);
 			bucket = bucketFactory.getNewBucket(
@@ -240,7 +244,7 @@ public class Buckets<IN> {
 			activeBuckets.put(bucketId, bucket);
 		}
 
-		final PartFileInfo info = bucket.getInProgressPartInfo();
+		final PartFileInfo<BucketID> info = bucket.getInProgressPartInfo();
 		if (info == null || rollingPolicy.shouldRollOnEvent(info)) {
 			bucket.rollPartFile(currentProcessingTime);
 		}
@@ -253,8 +257,8 @@ public class Buckets<IN> {
 	}
 
 	void onProcessingTime(long timestamp) throws Exception {
-		for (Bucket<IN> bucket : activeBuckets.values()) {
-			final PartFileInfo info = bucket.getInProgressPartInfo();
+		for (Bucket<IN, BucketID> bucket : activeBuckets.values()) {
+			final PartFileInfo<BucketID> info = bucket.getInProgressPartInfo();
 			if (info != null && rollingPolicy.shouldRollOnProcessingTime(info, timestamp)) {
 				bucket.closePartFile();
 			}
@@ -273,8 +277,8 @@ public class Buckets<IN> {
 	 * @param bucketId the id of the bucket as returned by the {@link Bucketer}.
 	 * @return The resulting path.
 	 */
-	private Path assembleBucketPath(String bucketId) {
-		return new Path(basePath, bucketId);
+	private Path assembleBucketPath(BucketID bucketId) {
+		return new Path(basePath, bucketId.toString());
 	}
 
 	/**
@@ -321,63 +325,5 @@ public class Buckets<IN> {
 		public Long timestamp() {
 			return elementTimestamp;
 		}
-	}
-
-	// ------------------------ Factory Methods to create instances --------------------------
-
-	/**
-	 * Create a new/fresh {@link Buckets bucket manager}.
-	 *
-	 * @param subtaskIdx the index of the current subtask.
-	 * @param path the base path for our buckets.
-	 * @param bucketer the {@link Bucketer} provided by the user.
-	 * @param bucketFactory the {@link BucketFactory} to be used to create buckets.
-	 * @param encoder the {@link Encoder} to be used when writing data.
-	 * @param rollingPolicy the {@link RollingPolicy} as specified by the user.
-	 * @param <INPUT> the type of input elements.
-	 * @return The resulting {@code Bucket Manager}.
-	 * @throws IOException If something went wrong either during accessing the underlying filesystem.
-
-	 */
-	public static <INPUT> Buckets<INPUT> init(
-			final int subtaskIdx,
-			final Path path,
-			final Bucketer<INPUT> bucketer,
-			final BucketFactory<INPUT> bucketFactory,
-			final Encoder<INPUT> encoder,
-			final RollingPolicy rollingPolicy) throws IOException {
-
-		return new Buckets<>(subtaskIdx, path, bucketer, bucketFactory, encoder, rollingPolicy);
-	}
-
-	/**
-	 * Restore the {@link Buckets bucket manager} after a failure or after a savepoint.
-	 *
-	 * @param subtaskIdx the index of the current subtask.
-	 * @param path the base path for our buckets.
-	 * @param bucketer the {@link Bucketer} provided by the user.
-	 * @param bucketFactory the {@link BucketFactory} to be used to create buckets.
-	 * @param encoder the {@link Encoder} to be used when writing data.
-	 * @param rollingPolicy the {@link RollingPolicy} as specified by the user.
-	 * @param bucketStates the restored state to initialize the active buckets from.
-	 * @param partCounterState the restored state to initialize the part counter from.
-	 * @param <INPUT> the type of input elements.
-	 * @return The resulting {@code Bucket Manager}.
-	 * @throws Exception If something went wrong either during state reading or during accessing the underlying filesystem.
-	 */
-	public static <INPUT> Buckets<INPUT> restore(
-			final int subtaskIdx,
-			final Path path,
-			final Bucketer<INPUT> bucketer,
-			final BucketFactory<INPUT> bucketFactory,
-			final Encoder<INPUT> encoder,
-			final RollingPolicy rollingPolicy,
-			final ListState<byte[]> bucketStates,
-			final ListState<Long> partCounterState) throws Exception {
-
-		final Buckets<INPUT> buckets =
-				new Buckets<>(subtaskIdx, path, bucketer, bucketFactory, encoder, rollingPolicy);
-		buckets.initializeState(bucketStates, partCounterState);
-		return buckets;
 	}
 }

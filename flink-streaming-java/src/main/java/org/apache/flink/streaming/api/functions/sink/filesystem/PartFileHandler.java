@@ -33,9 +33,9 @@ import java.io.IOException;
  * This also implements the {@link PartFileInfo}.
  */
 @Internal
-class PartFileHandler<IN> implements PartFileInfo {
+class PartFileHandler<IN, BucketID> implements PartFileInfo<BucketID> {
 
-	private final String bucketId;
+	private final BucketID bucketId;
 
 	private final long creationTime;
 
@@ -44,7 +44,7 @@ class PartFileHandler<IN> implements PartFileInfo {
 	private long lastUpdateTime;
 
 	private PartFileHandler(
-			final String bucketId,
+			final BucketID bucketId,
 			final RecoverableFsDataOutputStream currentPartStream,
 			final long creationTime) {
 
@@ -55,8 +55,8 @@ class PartFileHandler<IN> implements PartFileInfo {
 		this.lastUpdateTime = creationTime;
 	}
 
-	public static <IN> PartFileHandler<IN> resumeFrom(
-			final String bucketId,
+	public static <IN, BucketID> PartFileHandler<IN, BucketID> resumeFrom(
+			final BucketID bucketId,
 			final RecoverableWriter fileSystemWriter,
 			final RecoverableWriter.ResumeRecoverable resumable,
 			final long creationTime) throws IOException {
@@ -68,8 +68,8 @@ class PartFileHandler<IN> implements PartFileInfo {
 		return new PartFileHandler<>(bucketId, stream, creationTime);
 	}
 
-	public static <IN> PartFileHandler<IN> openNew(
-			final String bucketId,
+	public static <IN, BucketID> PartFileHandler<IN, BucketID> openNew(
+			final BucketID bucketId,
 			final RecoverableWriter fileSystemWriter,
 			final Path path,
 			final long creationTime) throws IOException {
@@ -101,7 +101,7 @@ class PartFileHandler<IN> implements PartFileInfo {
 	}
 
 	@Override
-	public String getBucketId() {
+	public BucketID getBucketId() {
 		return bucketId;
 	}
 
