@@ -35,12 +35,12 @@ public class DefaultBucketFactory<IN, BucketID> implements BucketFactory<IN, Buc
 
 	@Override
 	public Bucket<IN, BucketID> getNewBucket(
-			RecoverableWriter fsWriter,
-			int subtaskIndex,
-			BucketID bucketId,
-			Path bucketPath,
-			long initialPartCounter,
-			Encoder<IN> writer) throws IOException {
+			final RecoverableWriter fsWriter,
+			final int subtaskIndex,
+			final BucketID bucketId,
+			final Path bucketPath,
+			final long initialPartCounter,
+			final PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory) throws IOException {
 
 		return new Bucket<>(
 				fsWriter,
@@ -48,22 +48,22 @@ public class DefaultBucketFactory<IN, BucketID> implements BucketFactory<IN, Buc
 				bucketId,
 				bucketPath,
 				initialPartCounter,
-				writer);
+				partFileWriterFactory);
 	}
 
 	@Override
 	public Bucket<IN, BucketID> restoreBucket(
-			RecoverableWriter fsWriter,
-			int subtaskIndex,
-			long initialPartCounter,
-			Encoder<IN> writer,
-			BucketState<BucketID> bucketState) throws IOException {
+			final RecoverableWriter fsWriter,
+			final int subtaskIndex,
+			final long initialPartCounter,
+			final PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory,
+			final BucketState<BucketID> bucketState) throws IOException {
 
 		return new Bucket<>(
 				fsWriter,
 				subtaskIndex,
 				initialPartCounter,
-				writer,
+				partFileWriterFactory,
 				bucketState);
 	}
 }

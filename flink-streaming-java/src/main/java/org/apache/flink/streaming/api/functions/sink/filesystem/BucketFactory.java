@@ -38,12 +38,12 @@ public interface BucketFactory<IN, BucketID> extends Serializable {
 			BucketID bucketId,
 			Path bucketPath,
 			long initialPartCounter,
-			Encoder<IN> writer) throws IOException;
+			PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory) throws IOException;
 
 	Bucket<IN, BucketID> restoreBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			long initialPartCounter,
-			Encoder<IN> writer,
+			PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory,
 			BucketState<BucketID> bucketState) throws IOException;
 }

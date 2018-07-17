@@ -35,7 +35,6 @@ import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
-import org.apache.flink.streaming.api.functions.sink.filesystem.RowWisePartFile.Factory;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.DateTimeBucketer;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
@@ -120,7 +119,7 @@ public class StreamingFileSink<IN>
 
 	private final long bucketCheckInterval;
 
-	private final BucketsBuilder<IN, ?> bucketsBuilder;
+	private final StreamingFileSink.BucketsBuilder<IN, ?> bucketsBuilder;
 
 	// --------------------------- runtime fields -----------------------------
 
@@ -139,37 +138,40 @@ public class StreamingFileSink<IN>
 	 *
 	 * <p>This uses a {@link DateTimeBucketer} as {@link Bucketer} and a {@link SimpleStringEncoder} as a writer.
 	 */
-	private StreamingFileSink(BucketsBuilder<IN, ?> bucketsBuilder, long bucketCheckInterval) {
-		this.buckets = Preconditions.checkNotNull(buckets);
+	private StreamingFileSink(
+			final StreamingFileSink.BucketsBuilder<IN, ?> bucketsBuilder,
+			final long bucketCheckInterval) {
+
+		Preconditions.checkArgument(bucketCheckInterval > 0L);
+
+		this.bucketsBuilder = Preconditions.checkNotNull(bucketsBuilder);
 		this.bucketCheckInterval = bucketCheckInterval;
 	}
 
 	// ------------------------------------------------------------------------
 
-	public static <IN> RowFormatBuilder<IN, String> forRowFormat(
-			final Path basePath,
-			final Encoder<IN> encoder) {
-		return new RowFormatBuilder<>(basePath, encoder, new DateTimeBucketer<>());
+	public static <IN> StreamingFileSink.RowFormatBuilder<IN, String> forRowFormat(
+			final Path basePath, final Encoder<IN> encoder) {
+		return new StreamingFileSink.RowFormatBuilder<>(basePath, encoder, new DateTimeBucketer<>());
 	}
 
-	public static <IN> BulkFormatBuilder<IN, String> forBulkFormat(
-			final Path basePath,
-			final BulkWriter.Factory<IN> writerFactory) {
-		return new BulkFormatBuilder<>(basePath, writerFactory, new DateTimeBucketer<>());
+	public static <IN> StreamingFileSink.BulkFormatBuilder<IN, String> forBulkFormat(
+			final Path basePath, final BulkWriter.Factory<IN> writerFactory) {
+		return new StreamingFileSink.BulkFormatBuilder<>(basePath, writerFactory, new DateTimeBucketer<>());
 	}
 
 	private abstract static class BucketsBuilder<IN, BucketID> implements Serializable {
 
 		private static final long serialVersionUID = 1L;
 
-		abstract Buckets<IN, BucketID> createBuckets(int subtaskIndex);
+		abstract Buckets<IN, BucketID> createBuckets(int subtaskIndex) throws IOException;
 	}
 
 	/**
 	 * A helper class that holds the configuration properties for the {@link DefaultRollingPolicy}.
 	 */
 	@PublicEvolving
-	public static class RowFormatBuilder<IN, BucketID> extends BucketsBuilder<IN, BucketID> {
+	public static class RowFormatBuilder<IN, BucketID> extends StreamingFileSink.BucketsBuilder<IN, BucketID> {
 
 		private static final long serialVersionUID = 1L;
 
@@ -190,47 +192,42 @@ public class StreamingFileSink<IN>
 			this.rollingPolicy = DefaultRollingPolicy.create().build();
 		}
 
-		public RowFormatBuilder<IN, BucketID> withBucketCheckInterval(long interval) {
+		public StreamingFileSink.RowFormatBuilder<IN, BucketID> withBucketCheckInterval(final long interval) {
 			this.bucketCheckInterval = interval;
 			return this;
 		}
 
-		public RowFormatBuilder<IN, BucketID> withBucketer(Bucketer<IN, BucketID> bucketer) {
+		public StreamingFileSink.RowFormatBuilder<IN, BucketID> withBucketer(final Bucketer<IN, BucketID> bucketer) {
 			this.bucketer = Preconditions.checkNotNull(bucketer);
 			return this;
 		}
 
-		public RowFormatBuilder<IN, BucketID> withRollingPolicy(RollingPolicy<BucketID> policy) {
+		public StreamingFileSink.RowFormatBuilder<IN, BucketID> withRollingPolicy(final RollingPolicy<BucketID> policy) {
 			this.rollingPolicy = Preconditions.checkNotNull(policy);
 			return this;
 		}
 
-		public <ID> RowFormatBuilder<IN, ID> withBucketerAndPolicy(
-				Bucketer<IN, ID> bucketer,
-				RollingPolicy<ID> policy) {
-
+		public <ID> StreamingFileSink.RowFormatBuilder<IN, ID> withBucketerAndPolicy(final Bucketer<IN, ID> bucketer, final RollingPolicy<ID> policy) {
 			@SuppressWarnings("unchecked")
-			RowFormatBuilder<IN, ID> reinterpeted = (RowFormatBuilder<IN, ID>) this;
-			reinterpeted.bucketer = Preconditions.checkNotNull(bucketer);
-			reinterpeted.rollingPolicy = Preconditions.checkNotNull(policy);
-
-			return reinterpeted;
+			StreamingFileSink.RowFormatBuilder<IN, ID> reInterpreted = (StreamingFileSink.RowFormatBuilder<IN, ID>) this;
+			reInterpreted.bucketer = Preconditions.checkNotNull(bucketer);
+			reInterpreted.rollingPolicy = Preconditions.checkNotNull(policy);
+			return reInterpreted;
 		}
 
-		/**
-		 * Creates the actual sink.
-		 */
 		public StreamingFileSink<IN> build() {
 			return new StreamingFileSink<>(this, bucketCheckInterval);
 		}
 
-		Buckets<IN, BucketID> createBuckets(int subtaskIndex) {
-			final Buckets<IN, BucketID> buckets = new Buckets<>(
-					basePath, bucketer, new DefaultBucketFactory<>(),
-					new Factory<>(encoder), rollingPolicy);
-			buckets.setSubtaskIndex(subtaskIndex);
-
-			return buckets;
+		@Override
+		Buckets<IN, BucketID> createBuckets(int subtaskIndex) throws IOException {
+			return new Buckets<>(
+					basePath,
+					bucketer,
+					new DefaultBucketFactory<>(),
+					new RowWisePartFile.Factory<>(encoder),
+					rollingPolicy,
+					subtaskIndex);
 		}
 	}
 
@@ -238,7 +235,7 @@ public class StreamingFileSink<IN>
 	 * A helper class that holds the configuration properties for the {@link DefaultRollingPolicy}.
 	 */
 	@PublicEvolving
-	public static class BulkFormatBuilder<IN, BucketID> extends BucketsBuilder<IN, BucketID> {
+	public static class BulkFormatBuilder<IN, BucketID> extends StreamingFileSink.BucketsBuilder<IN, BucketID> {
 
 		private static final long serialVersionUID = 1L;
 
@@ -256,41 +253,41 @@ public class StreamingFileSink<IN>
 			this.bucketer = Preconditions.checkNotNull(bucketer);
 		}
 
-		public BulkFormatBuilder<IN, BucketID> withBucketCheckInterval(long interval) {
+		public StreamingFileSink.BulkFormatBuilder<IN, BucketID> withBucketCheckInterval(long interval) {
 			this.bucketCheckInterval = interval;
 			return this;
 		}
 
-		public <ID> BulkFormatBuilder<IN, ID> withBucketer(Bucketer<IN, ID> bucketer) {
+		public <ID> StreamingFileSink.BulkFormatBuilder<IN, ID> withBucketer(Bucketer<IN, ID> bucketer) {
 			@SuppressWarnings("unchecked")
-			BulkFormatBuilder<IN, ID> reinterpeted = (BulkFormatBuilder<IN, ID>) this;
-			reinterpeted.bucketer = Preconditions.checkNotNull(bucketer);
-
-			return reinterpeted;
+			StreamingFileSink.BulkFormatBuilder<IN, ID> reInterpreted = (StreamingFileSink.BulkFormatBuilder<IN, ID>) this;
+			reInterpreted.bucketer = Preconditions.checkNotNull(bucketer);
+			return reInterpreted;
 		}
 
 		/**
 		 * Creates the actual sink.
 		 */
-		public StreamingFileSink<IN> build() throws IOException {
+		public StreamingFileSink<IN> build() {
 			return new StreamingFileSink<>(this, bucketCheckInterval);
 		}
 
 		@Override
 		Buckets<IN, BucketID> createBuckets(int subtaskIndex) {
-			final Buckets<IN, BucketID> buckets = new Buckets<>(
-					basePath, bucketer, new DefaultBucketFactory<>(),
+			return new Buckets<>(
+					basePath,
+					bucketer,
+					new DefaultBucketFactory<>(), // TODO: 7/17/18 here we should have the part file thing as an arguemnt
 					new BulkWriterPartFile.Factory<>(writerFactory),
-					new OnCheckpointRollingPolicy());
-			buckets.setSubtaskIndex(subtaskIndex);
-			return buckets;
+					new OnCheckpointRollingPolicy(),
+					subtaskIndex);
 		}
 	}
 
 	@Override
 	public void initializeState(FunctionInitializationContext context) throws Exception {
 		final int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
-		buckets = bucketsBuilder.createBuckets(subtaskIndex);
+		this.buckets = bucketsBuilder.createBuckets(subtaskIndex);
 
 		final OperatorStateStore stateStore = context.getOperatorStateStore();
 		bucketStates = stateStore.getListState(BUCKET_STATE_DESC);

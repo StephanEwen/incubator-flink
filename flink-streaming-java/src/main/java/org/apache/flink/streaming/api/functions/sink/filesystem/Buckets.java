@@ -18,7 +18,6 @@
 
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
-import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
@@ -34,7 +33,6 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -47,9 +45,7 @@ import java.util.Map;
  *
  * @param <IN> The type of input elements.
  */
-public class Buckets<IN, BucketID> implements Serializable {
-
-	private static final long serialVersionUID = 7020432456830926860L;
+public class Buckets<IN, BucketID> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(Buckets.class);
 
@@ -67,21 +63,21 @@ public class Buckets<IN, BucketID> implements Serializable {
 
 	// --------------------------- runtime fields -----------------------------
 
-	private int subtaskIndex;
+	private final int subtaskIndex;
 
-	private transient BucketerContext bucketerContext;
+	private final BucketerContext bucketerContext;
 
-	private transient Map<BucketID, Bucket<IN, BucketID>> activeBuckets;
+	private final Map<BucketID, Bucket<IN, BucketID>> activeBuckets;
 
-	private transient long initMaxPartCounter;
+	private long initMaxPartCounter;
 
-	private transient long maxPartCounterUsed;
+	private long maxPartCounterUsed;
 
-	private transient RecoverableWriter fileSystemWriter;
+	private final RecoverableWriter fileSystemWriter;
 
 	// --------------------------- State Related Fields -----------------------------
 
-	private transient BucketStateSerializer<BucketID> bucketStateSerializer;
+	private final BucketStateSerializer<BucketID> bucketStateSerializer;
 
 	/**
 	 * A private constructor creating a new empty bucket manager.
@@ -89,33 +85,35 @@ public class Buckets<IN, BucketID> implements Serializable {
 	 * @param basePath The base path for our buckets.
 	 * @param bucketer The {@link Bucketer} provided by the user.
 	 * @param bucketFactory The {@link BucketFactory} to be used to create buckets.
-	 * @param encoder The {@link Encoder} to be used when writing data.
+	 * @param partFileWriterFactory The {@link PartFileHandler.PartFileFactory} to be used when writing data.
 	 * @param rollingPolicy The {@link RollingPolicy} as specified by the user.
-	 * @throws IOException If something went wrong during accessing the underlying filesystem.
 	 */
 	Buckets(
-			Path basePath,
-			Bucketer<IN, BucketID> bucketer,
-			BucketFactory<IN, BucketID> bucketFactory,
-			PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory,
-			RollingPolicy<BucketID> rollingPolicy) {
+			final Path basePath,
+			final Bucketer<IN, BucketID> bucketer,
+			final BucketFactory<IN, BucketID> bucketFactory,
+			final PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory,
+			final RollingPolicy<BucketID> rollingPolicy,
+			final int subtaskIndex) throws IOException {
+
 		this.basePath = Preconditions.checkNotNull(basePath);
 		this.bucketer = Preconditions.checkNotNull(bucketer);
 		this.bucketFactory = Preconditions.checkNotNull(bucketFactory);
 		this.partFileWriterFactory = Preconditions.checkNotNull(partFileWriterFactory);
 		this.rollingPolicy = Preconditions.checkNotNull(rollingPolicy);
-	}
-
-	void setSubtaskIndex(int subtaskIndex) {
 		this.subtaskIndex = subtaskIndex;
-	}
 
-	void initializeFileSystemWriter() throws IOException {
+		this.activeBuckets = new HashMap<>();
+		this.bucketerContext = new BucketerContext();
+
 		this.fileSystemWriter = FileSystem.get(basePath.toUri()).createRecoverableWriter();
 		this.bucketStateSerializer = new BucketStateSerializer<>(
 				fileSystemWriter.getResumeRecoverableSerializer(),
 				fileSystemWriter.getCommitRecoverableSerializer()
 		);
+
+		this.initMaxPartCounter = 0L;
+		this.maxPartCounterUsed = 0L;
 	}
 
 	/**
@@ -125,13 +123,6 @@ public class Buckets<IN, BucketID> implements Serializable {
 	 * @throws Exception
 	 */
 	void initializeState(final ListState<byte[]> bucketStates, final ListState<Long> partCounterState) throws Exception {
-		initializeFileSystemWriter();
-
-		this.initMaxPartCounter = 0L;
-		this.maxPartCounterUsed = 0L;
-
-		this.activeBuckets = new HashMap<>();
-		this.bucketerContext = new BucketerContext();
 
 		// When resuming after a failure:
 		// 1) we get the max part counter used before in order to make sure that we do not overwrite valid data
@@ -159,7 +150,7 @@ public class Buckets<IN, BucketID> implements Serializable {
 					fileSystemWriter,
 					subtaskIndex,
 					initMaxPartCounter,
-					encoder,
+					partFileWriterFactory,
 					bucketState
 			);
 
@@ -240,7 +231,7 @@ public class Buckets<IN, BucketID> implements Serializable {
 					bucketId,
 					bucketPath,
 					initMaxPartCounter,
-					encoder);
+					partFileWriterFactory);
 			activeBuckets.put(bucketId, bucket);
 		}
 
