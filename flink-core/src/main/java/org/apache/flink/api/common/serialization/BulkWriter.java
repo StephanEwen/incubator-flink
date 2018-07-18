@@ -21,7 +21,6 @@ package org.apache.flink.api.common.serialization;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.core.fs.FSDataOutputStream;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.io.Serializable;
 
@@ -37,7 +36,7 @@ import java.io.Serializable;
  * @param <T> The type of the elements encoded through this encoder.
  */
 @PublicEvolving
-public interface BulkWriter<T> extends Closeable {
+public interface BulkWriter<T> {
 
 	/**
 	 * Adds an element to the encoder. The encoder may temporarily buffer the element,
@@ -60,6 +59,17 @@ public interface BulkWriter<T> extends Closeable {
 	 *                     stream throws an exception.
 	 */
 	void flush() throws IOException;
+
+	/**
+	 * Frees up any resources held by the {@code BulkWriter.Factory}.
+	 *
+	 * @apiNote
+	 * This method MUST NOT close the {@link FSDataOutputStream} provided
+	 * by the {@code BulkWriter.Factory}.
+	 *
+	 * @throws IOException Thrown if something unexpected happens during
+	 */
+	void finish() throws IOException;
 
 	// ------------------------------------------------------------------------
 

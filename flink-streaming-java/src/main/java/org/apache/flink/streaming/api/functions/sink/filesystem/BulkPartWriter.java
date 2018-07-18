@@ -33,7 +33,7 @@ import java.io.IOException;
  * This also implements the {@link PartFileInfo}.
  */
 @Internal
-class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
+final class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 
 	private final BulkWriter<IN> writer;
 
@@ -60,7 +60,7 @@ class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 	@Override
 	RecoverableWriter.CommitRecoverable closeForCommit() throws IOException {
 		writer.flush();
-		writer.close();
+		writer.finish();
 		return super.closeForCommit();
 	}
 

@@ -58,7 +58,7 @@ public class ParquetBulkWriter<T> implements BulkWriter<T> {
 	}
 
 	@Override
-	public void close() throws IOException {
+	public void finish() throws IOException {
 		parquetWriter.close();
 	}
 }

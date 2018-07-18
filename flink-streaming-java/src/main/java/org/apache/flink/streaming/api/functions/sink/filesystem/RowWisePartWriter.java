@@ -33,7 +33,7 @@ import java.io.IOException;
  * This also implements the {@link PartFileInfo}.
  */
 @Internal
-class RowWisePartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
+final class RowWisePartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 
 	private final Encoder<IN> encoder;
 

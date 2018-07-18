@@ -46,7 +46,7 @@ public class BulkWriterTest extends TestLogger {
 	public static final TemporaryFolder TEMP_FOLDER = new TemporaryFolder();
 
 	@Test
-	public void testTruncateAfterRecoveryAndOverwrite() throws Exception {
+	public void testCustomBulkWriter() throws Exception {
 		final File outDir = TEMP_FOLDER.newFolder();
 
 		// we set the max bucket size to small so that we can know when it rolls
@@ -120,13 +120,12 @@ public class BulkWriterTest extends TestLogger {
 
 		@Override
 		public void flush() throws IOException {
-			stream.sync();
 			stream.flush();
 		}
 
 		@Override
-		public void close() throws IOException {
-			// do nothing for now
+		public void finish() throws IOException {
+			flush();
 		}
 	}
 
