@@ -28,9 +28,9 @@ import java.io.IOException;
  * A factory returning {@link Bucket buckets}.
  */
 @Internal
-public class DefaultBucketFactory<IN, BucketID> implements BucketFactory<IN, BucketID> {
+class DefaultBucketFactory<IN, BucketID> implements BucketFactory<IN, BucketID> {
 
-	private static final long serialVersionUID = 3372881359208513357L;
+	private static final long serialVersionUID = 1L;
 
 	@Override
 	public Bucket<IN, BucketID> getNewBucket(
@@ -39,7 +39,7 @@ public class DefaultBucketFactory<IN, BucketID> implements BucketFactory<IN, Buc
 			final BucketID bucketId,
 			final Path bucketPath,
 			final long initialPartCounter,
-			final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory) throws IOException {
+			final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory) {
 
 		return new Bucket<>(
 				fsWriter,

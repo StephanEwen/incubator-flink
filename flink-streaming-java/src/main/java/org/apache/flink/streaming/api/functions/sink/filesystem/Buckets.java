@@ -193,12 +193,19 @@ public class Buckets<IN, BucketID> {
 			final ListState<byte[]> bucketStates,
 			final ListState<Long> partCounterState) throws Exception {
 
-		Preconditions.checkState(fileSystemWriter != null && bucketStateSerializer != null, "sink has not been initialized");
+		Preconditions.checkState(
+				fileSystemWriter != null && bucketStateSerializer != null,
+				"sink has not been initialized"
+		);
 
 		for (Bucket<IN, BucketID> bucket : activeBuckets.values()) {
 			final PartFileInfo<BucketID> info = bucket.getInProgressPartInfo();
 
-			if (info != null && (rollingPolicy.shouldRollOnEvent(info) || rollingPolicy.shouldRollOnProcessingTime(info, checkpointTimestamp))) {
+			if (info != null &&
+					(rollingPolicy.shouldRollOnCheckpoint() ||
+					rollingPolicy.shouldRollOnEvent(info) ||
+					rollingPolicy.shouldRollOnProcessingTime(info, checkpointTimestamp))
+			) {
 				// we also check here so that we do not have to always
 				// wait for the "next" element to arrive.
 				bucket.closePartFile();

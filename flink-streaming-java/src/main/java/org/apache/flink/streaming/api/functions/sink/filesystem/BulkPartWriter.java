@@ -23,12 +23,13 @@ import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.RecoverableWriter;
-import org.apache.flink.core.fs.RecoverableWriter.ResumeRecoverable;
+import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
+import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
 
 /**
- * A handler for the currently open part file in a specific {@link Bucket}.
+ * A {@link PartFileWriter} for bulk-encoding formats that use an {@link BulkPartWriter}.
  * This also implements the {@link PartFileInfo}.
  */
 @Internal
@@ -37,14 +38,12 @@ class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 	private final BulkWriter<IN> writer;
 
 	private BulkPartWriter(
-			final BulkWriter<IN> writer,
 			final BucketID bucketId,
 			final RecoverableFsDataOutputStream currentPartStream,
+			final BulkWriter<IN> writer,
 			final long creationTime) {
-
 		super(bucketId, currentPartStream, creationTime);
-
-		this.writer = writer;
+		this.writer = Preconditions.checkNotNull(writer);
 	}
 
 	@Override
@@ -53,15 +52,22 @@ class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 		markWrite(currentTime);
 	}
 
+	@Override
 	RecoverableWriter.ResumeRecoverable persist() throws IOException {
-		throw new UnsupportedOperationException();
+		throw new UnsupportedOperationException("Bulk Part Writers do not support \"pause and resume\" operations.");
 	}
 
+	@Override
 	RecoverableWriter.CommitRecoverable closeForCommit() throws IOException {
 		writer.close();
 		return super.closeForCommit();
 	}
 
+	/**
+	 * A factory that creates {@link BulkPartWriter BulkPartWriters}.
+	 * @param <IN> The type of input elements.
+	 * @param <BucketID> The type of ids for the buckets, as returned by the {@link Bucketer}.
+	 */
 	static class Factory<IN, BucketID> implements PartFileFactory<IN, BucketID> {
 
 		private final BulkWriter.Factory<IN> writerFactory;
@@ -72,25 +78,32 @@ class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 
 		@Override
 		public PartFileWriter<IN, BucketID> resumeFrom(
-				BucketID bucketId,
-				RecoverableWriter fileSystemWriter,
-				ResumeRecoverable resumable,
-				long creationTime) throws IOException {
+				final BucketID bucketId,
+				final RecoverableWriter fileSystemWriter,
+				final RecoverableWriter.ResumeRecoverable resumable,
+				final long creationTime) throws IOException {
 
-			return null;
+			Preconditions.checkNotNull(fileSystemWriter);
+			Preconditions.checkNotNull(resumable);
+
+			final RecoverableFsDataOutputStream stream = fileSystemWriter.recover(resumable);
+			final BulkWriter<IN> writer = writerFactory.create(stream);
+			return new BulkPartWriter<>(bucketId, stream, writer, creationTime);
 		}
 
 		@Override
 		public PartFileWriter<IN, BucketID> openNew(
-				BucketID bucketId,
-				RecoverableWriter fileSystemWriter,
-				Path path,
-				long creationTime) throws IOException {
+				final BucketID bucketId,
+				final RecoverableWriter fileSystemWriter,
+				final Path path,
+				final long creationTime) throws IOException {
 
-			RecoverableFsDataOutputStream stream = fileSystemWriter.open(path);
-			BulkWriter<IN> writer = writerFactory.create(stream);
+			Preconditions.checkNotNull(fileSystemWriter);
+			Preconditions.checkNotNull(path);
 
-			return new BulkPartWriter<>(writer, bucketId, stream, creationTime);
+			final RecoverableFsDataOutputStream stream = fileSystemWriter.open(path);
+			final BulkWriter<IN> writer = writerFactory.create(stream);
+			return new BulkPartWriter<>(bucketId, stream, writer, creationTime);
 		}
 	}
 }

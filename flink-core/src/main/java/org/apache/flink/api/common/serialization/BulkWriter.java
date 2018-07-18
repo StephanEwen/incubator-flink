@@ -23,6 +23,7 @@ import org.apache.flink.core.fs.FSDataOutputStream;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.Serializable;
 
 /**
  * An encoder that encodes data in a bulk fashion, encoding many records together at a time.
@@ -63,7 +64,7 @@ public interface BulkWriter<T> extends Closeable {
 	// ------------------------------------------------------------------------
 
 	@FunctionalInterface
-	interface Factory<T> extends java.io.Serializable {
+	interface Factory<T> extends Serializable {
 
 		/**
 		 * Creates a writer that writes to the given stream.
