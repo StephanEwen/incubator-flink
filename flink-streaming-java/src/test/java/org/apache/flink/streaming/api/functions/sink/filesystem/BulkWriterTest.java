@@ -68,14 +68,14 @@ public class BulkWriterTest extends TestLogger {
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 1), 1L));
 			TestUtils.checkLocalFs(outDir, 1, 0);
 
-			// we take a checkpoint so that we keep the in-progress file offset.
+			// we take a checkpoint so we roll.
 			testHarness.snapshot(1L, 1L);
 
 			// these will close part-0-0 and open part-0-1
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 2), 2L));
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 3), 3L));
 
-			// we take a checkpoint so that we keep the in-progress file offset.
+			// we take a checkpoint so we roll again.
 			testHarness.snapshot(2L, 2L);
 
 			TestUtils.checkLocalFs(outDir, 2, 0);
@@ -85,13 +85,17 @@ public class BulkWriterTest extends TestLogger {
 			for (Map.Entry<File, String> fileContents : contents.entrySet()) {
 				if (fileContents.getKey().getName().contains(".part-0-0.inprogress")) {
 					fileCounter++;
-					Assert.assertEquals("test1@1\ntest1@2\n", fileContents.getValue());
+					Assert.assertEquals("test1@1\n", fileContents.getValue());
 				} else if (fileContents.getKey().getName().contains(".part-0-1.inprogress")) {
 					fileCounter++;
-					Assert.assertEquals("test1@3\n", fileContents.getValue());
+					Assert.assertEquals("test1@2\ntest1@3\n", fileContents.getValue());
 				}
 			}
 			Assert.assertEquals(2L, fileCounter);
+
+			// we acknowledge the latest checkpoint, so everything should be published.
+			testHarness.notifyOfCompletedCheckpoint(2L);
+			TestUtils.checkLocalFs(outDir, 0, 2);
 		}
 	}
 
@@ -107,7 +111,7 @@ public class BulkWriterTest extends TestLogger {
 
 		@Override
 		public void addElement(Tuple2<String, Integer> element) throws IOException {
-			stream.write((element.f0 + element.f1).getBytes(CHARSET));
+			stream.write((element.f0 + '@' + element.f1 + '\n').getBytes(CHARSET));
 		}
 
 		@Override
@@ -119,7 +123,6 @@ public class BulkWriterTest extends TestLogger {
 		@Override
 		public void close() throws IOException {
 			// do nothing for now
-			stream.close();
 		}
 	}
 
