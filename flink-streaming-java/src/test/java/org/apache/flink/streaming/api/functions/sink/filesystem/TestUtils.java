@@ -18,6 +18,7 @@
 
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
+import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.Path;
@@ -126,6 +127,25 @@ public class TestUtils {
 				.forRowFormat(new Path(outDir.toURI()), writer)
 				.withBucketer(bucketer)
 				.withRollingPolicy(rollingPolicy)
+				.withBucketCheckInterval(bucketCheckInterval)
+				.withBucketFactory(bucketFactory)
+				.build();
+
+		return new OneInputStreamOperatorTestHarness<>(new StreamSink<>(sink), 10, totalParallelism, taskIdx);
+	}
+
+	static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createTestSinkWithBulkEncoder(
+			final File outDir,
+			final int totalParallelism,
+			final int taskIdx,
+			final long bucketCheckInterval,
+			final Bucketer<Tuple2<String, Integer>, String> bucketer,
+			final BulkWriter.Factory<Tuple2<String, Integer>> writer,
+			final BucketFactory<Tuple2<String, Integer>, String> bucketFactory) throws Exception {
+
+		StreamingFileSink<Tuple2<String, Integer>> sink = StreamingFileSink
+				.forBulkFormat(new Path(outDir.toURI()), writer)
+				.withBucketer(bucketer)
 				.withBucketCheckInterval(bucketCheckInterval)
 				.withBucketFactory(bucketFactory)
 				.build();
