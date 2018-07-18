@@ -51,26 +51,6 @@ public class TestUtils {
 			long inactivityInterval,
 			long partMaxSize) throws Exception {
 
-		return createCustomRescalingTestSink(
-				outDir,
-				totalParallelism,
-				taskIdx,
-				inactivityInterval,
-				partMaxSize,
-				(Encoder<Tuple2<String, Integer>>) (element, stream) -> {
-					stream.write((element.f0 + '@' + element.f1).getBytes(StandardCharsets.UTF_8));
-					stream.write('\n');
-				});
-	}
-
-	static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createCustomRescalingTestSink(
-			final File outDir,
-			final int totalParallelism,
-			final int taskIdx,
-			final long inactivityInterval,
-			final long partMaxSize,
-			final Encoder<Tuple2<String, Integer>> writer) throws Exception {
-
 		final RollingPolicy<String> rollingPolicy =
 				DefaultRollingPolicy
 						.create()
@@ -79,36 +59,20 @@ public class TestUtils {
 						.withInactivityInterval(inactivityInterval)
 						.build();
 
-		return createCustomRescalingTestSink(outDir, totalParallelism, taskIdx, writer, rollingPolicy);
-	}
+		final Bucketer<Tuple2<String, Integer>, String> bucketer = new TupleToStringBucketer();
 
-	static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createCustomRescalingTestSink(
-			final File outDir,
-			final int totalParallelism,
-			final int taskIdx,
-			final Encoder<Tuple2<String, Integer>> writer,
-			final RollingPolicy<String> rollingPolicy) throws Exception {
+		final Encoder<Tuple2<String, Integer>> encoder = (element, stream) -> {
+			stream.write((element.f0 + '@' + element.f1).getBytes(StandardCharsets.UTF_8));
+			stream.write('\n');
+		};
 
 		return createCustomRescalingTestSink(
 				outDir,
 				totalParallelism,
 				taskIdx,
 				10L,
-				new Bucketer<Tuple2<String, Integer>, String>() {
-
-					private static final long serialVersionUID = 1L;
-
-					@Override
-					public String getBucketId(Tuple2<String, Integer> element, Context context) {
-						return element.f0;
-					}
-
-					@Override
-					public SimpleVersionedSerializer<String> getSerializer() {
-						return SimpleVersionedStringSerializer.INSTANCE;
-					}
-				},
-				writer,
+				bucketer,
+				encoder,
 				rollingPolicy,
 				new DefaultBucketFactory<>());
 	}
