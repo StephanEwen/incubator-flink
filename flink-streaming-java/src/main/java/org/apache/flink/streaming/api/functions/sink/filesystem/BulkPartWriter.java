@@ -59,7 +59,8 @@ class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 
 	@Override
 	RecoverableWriter.CommitRecoverable closeForCommit() throws IOException {
-		writer.close();
+		writer.flush();
+		//writer.close();
 		return super.closeForCommit();
 	}
 

@@ -128,7 +128,7 @@ public class BulkWriterTest extends TestLogger {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public BulkWriter<Tuple2<String, Integer>> create(FSDataOutputStream out) throws IOException {
+		public BulkWriter<Tuple2<String, Integer>> create(FSDataOutputStream out) {
 			return new TestBulkWriter(out);
 		}
 	}
