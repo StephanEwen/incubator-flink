@@ -16,9 +16,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.streaming.api.functions.sink.filesystem;
+package org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policies;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.streaming.api.functions.sink.filesystem.PartFileInfo;
+import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.RollingPolicy;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
@@ -37,7 +39,7 @@ import java.io.IOException;
 @PublicEvolving
 public final class DefaultRollingPolicy<BucketID> implements RollingPolicy<BucketID> {
 
-	private static final long serialVersionUID = 1318929857047767030L;
+	private static final long serialVersionUID = 1L;
 
 	private static final long DEFAULT_INACTIVITY_INTERVAL = 60L * 1000L;
 
@@ -62,6 +64,11 @@ public final class DefaultRollingPolicy<BucketID> implements RollingPolicy<Bucke
 		this.partSize = partSize;
 		this.rolloverInterval = rolloverInterval;
 		this.inactivityInterval = inactivityInterval;
+	}
+
+	@Override
+	public boolean shouldRollOnCheckpoint() throws IOException {
+		return false;
 	}
 
 	@Override

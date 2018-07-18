@@ -21,7 +21,6 @@ package org.apache.flink.streaming.api.functions.sink.filesystem;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.api.common.serialization.Encoder;
-import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.OperatorStateStore;
@@ -37,6 +36,8 @@ import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.DateTimeBucketer;
+import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.RollingPolicy;
+import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policies.DefaultRollingPolicy;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
@@ -60,7 +61,9 @@ import java.io.Serializable;
  * be written to inside the base directory. The {@code Bucketer} can, for example, use time or
  * a property of the element to determine the bucket directory. The default {@code Bucketer} is a
  * {@link DateTimeBucketer} which will create one new bucket every hour. You can specify
- * a custom {@code Bucketer} using {@link #setBucketer(Bucketer)}.
+ * a custom {@code Bucketer} using the {@code setBucketer(Bucketer)} method, after calling
+ * {@link StreamingFileSink#forRowFormat(Path, Encoder)} or
+ * {@link StreamingFileSink#forBulkFormat(Path, BulkWriter.Factory)}.
  *
  *
  * <p>The filenames of the part files contain the part prefix, "part-", the parallel subtask index of the sink
@@ -84,19 +87,6 @@ import java.io.Serializable;
  * had when that last successful checkpoint occurred. To this end, when restoring, the restored files in {@code pending}
  * state are transferred into the {@code finished} state while any {@code in-progress} files are rolled back, so that
  * they do not contain data that arrived after the checkpoint from which we restore.
- *
- * <p><b>NOTE:</b>
- * <ol>
- *     <li>
- *         If checkpointing is not enabled the pending files will never be moved to the finished state.
- *     </li>
- *     <li>
- *         The part files are written using an instance of {@link Encoder}. By default, a
- *         {@link SimpleStringEncoder} is used, which writes the result of {@code toString()} for
- *         every element, separated by newlines. You can configure the writer using the
- *         {@link #setEncoder(Encoder)}.
- *     </li>
- * </ol>
  *
  * @param <IN> Type of the elements emitted by this sink
  */
@@ -135,8 +125,6 @@ public class StreamingFileSink<IN>
 
 	/**
 	 * Creates a new {@code StreamingFileSink} that writes files to the given base directory.
-	 *
-	 * <p>This uses a {@link DateTimeBucketer} as {@link Bucketer} and a {@link SimpleStringEncoder} as a writer.
 	 */
 	private StreamingFileSink(
 			final StreamingFileSink.BucketsBuilder<IN, ?> bucketsBuilder,
@@ -160,15 +148,18 @@ public class StreamingFileSink<IN>
 		return new StreamingFileSink.BulkFormatBuilder<>(basePath, writerFactory, new DateTimeBucketer<>());
 	}
 
+	/**
+	 * The base abstract class for the {@link RowFormatBuilder} and {@link BulkFormatBuilder}.
+	 */
 	private abstract static class BucketsBuilder<IN, BucketID> implements Serializable {
 
 		private static final long serialVersionUID = 1L;
 
-		abstract Buckets<IN, BucketID> createBuckets(int subtaskIndex) throws IOException;
+		abstract Buckets<IN, BucketID> createBuckets(final int subtaskIndex) throws IOException;
 	}
 
 	/**
-	 * A helper class that holds the configuration properties for the {@link DefaultRollingPolicy}.
+	 * A builder for configuring the sink for row-wise encoding formats.
 	 */
 	@PublicEvolving
 	public static class RowFormatBuilder<IN, BucketID> extends StreamingFileSink.BucketsBuilder<IN, BucketID> {
@@ -215,6 +206,7 @@ public class StreamingFileSink<IN>
 			return reInterpreted;
 		}
 
+		/** Creates the actual sink. */
 		public StreamingFileSink<IN> build() {
 			return new StreamingFileSink<>(this, bucketCheckInterval);
 		}
@@ -232,7 +224,7 @@ public class StreamingFileSink<IN>
 	}
 
 	/**
-	 * A helper class that holds the configuration properties for the {@link DefaultRollingPolicy}.
+	 * A builder for configuring the sink for bulk-encoding formats, e.g. Parquet/ORC.
 	 */
 	@PublicEvolving
 	public static class BulkFormatBuilder<IN, BucketID> extends StreamingFileSink.BucketsBuilder<IN, BucketID> {
@@ -265,9 +257,7 @@ public class StreamingFileSink<IN>
 			return reInterpreted;
 		}
 
-		/**
-		 * Creates the actual sink.
-		 */
+		/** Creates the actual sink. */
 		public StreamingFileSink<IN> build() {
 			return new StreamingFileSink<>(this, bucketCheckInterval);
 		}

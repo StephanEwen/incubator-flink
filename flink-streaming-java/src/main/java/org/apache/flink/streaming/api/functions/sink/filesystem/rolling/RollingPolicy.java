@@ -16,9 +16,12 @@
  * limitations under the License.
  */
 
-package org.apache.flink.streaming.api.functions.sink.filesystem;
+package org.apache.flink.streaming.api.functions.sink.filesystem.rolling;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.streaming.api.functions.sink.filesystem.Bucket;
+import org.apache.flink.streaming.api.functions.sink.filesystem.PartFileInfo;
+import org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -29,6 +32,11 @@ import java.io.Serializable;
  */
 @PublicEvolving
 public interface RollingPolicy<BucketID> extends Serializable {
+
+	/**
+	 * Determines if the in-progress part file for a bucket should roll on every checkpoint.
+	 */
+	boolean shouldRollOnCheckpoint() throws IOException;
 
 	/**
 	 * Determines if the in-progress part file for a bucket should roll based on its current state, e.g. its size.
