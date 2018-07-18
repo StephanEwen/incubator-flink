@@ -41,7 +41,7 @@ class PositionOutputStreamAdapter extends PositionOutputStream {
 	 *
 	 * @param out The Flink stream written to.
 	 */
-	public PositionOutputStreamAdapter(FSDataOutputStream out) {
+	PositionOutputStreamAdapter(FSDataOutputStream out) {
 		this.out = checkNotNull(out, "out");
 	}
 
@@ -55,6 +55,7 @@ class PositionOutputStreamAdapter extends PositionOutputStream {
 		out.write(b);
 	}
 
+	@Override
 	public void write(byte[] buffer, int off, int len) throws IOException {
 		out.write(buffer, off, len);
 	}

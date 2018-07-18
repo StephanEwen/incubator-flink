@@ -30,8 +30,8 @@ import java.io.IOException;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- *
- * @param <T>
+ * A builder to create a {@link ParquetWriter}.
+ * @param <T> The type of input elements.
  */
 public class ParquetAvroWriterFactory<T> implements ParquetBuilder<T> {
 

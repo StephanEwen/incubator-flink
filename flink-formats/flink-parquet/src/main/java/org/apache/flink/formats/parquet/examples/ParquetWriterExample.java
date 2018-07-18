@@ -18,15 +18,23 @@
 
 package org.apache.flink.formats.parquet.examples;
 
-import org.apache.avro.specific.SpecificData;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.formats.parquet.ParquetBuilder;
 import org.apache.flink.formats.parquet.ParquetWriterFactory;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink;
-import org.apache.parquet.avro.AvroParquetWriter;
 
+import org.apache.avro.specific.SpecificData;
+import org.apache.parquet.avro.AvroParquetWriter;
+import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.io.OutputFile;
+
+import java.io.IOException;
+
+/**
+ * Javadoc.
+ */
 public class ParquetWriterExample {
 
 	public static void main(String... args) throws Exception {
@@ -35,10 +43,18 @@ public class ParquetWriterExample {
 
 		DataStream<String> stream = env.fromElements("a", "b", "c");
 
-		ParquetBuilder<String> parquetBuilder = (out) -> AvroParquetWriter
-					.<String>builder(out)
-					.withSchema(SpecificData.get().getSchema(String.class))
-					.build();
+		ParquetBuilder<String> parquetBuilder = new ParquetBuilder<String>() {
+
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public ParquetWriter<String> createWriter(OutputFile out) throws IOException {
+				return AvroParquetWriter
+						.<String>builder(out)
+						.withSchema(SpecificData.get().getSchema(String.class))
+						.build();
+			}
+		};
 
 		stream.addSink(
 				StreamingFileSink.forBulkFormat(

@@ -24,6 +24,10 @@ import org.apache.parquet.io.OutputFile;
 import java.io.IOException;
 import java.io.Serializable;
 
+/**
+ * A builder to create a {@link ParquetWriter}.
+ * @param <T> The type of input elements.
+ */
 @FunctionalInterface
 public interface ParquetBuilder<T> extends Serializable {
 

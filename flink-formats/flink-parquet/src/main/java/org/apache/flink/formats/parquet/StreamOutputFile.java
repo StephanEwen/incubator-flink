@@ -24,7 +24,6 @@ import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.parquet.io.OutputFile;
 import org.apache.parquet.io.PositionOutputStream;
 
-import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -33,11 +32,13 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * An implementation of Parquet's {@link OutputFile} interface that goes against
  * a Flink {@link FSDataOutputStream}.
  *
- * <p>Because the implementatiom goes against an open stream, rather than open its
+ * <p>Because the implementation goes against an open stream, rather than open its
  * own streams against a file, instances can create one stream only.
  */
 @Internal
 class StreamOutputFile implements OutputFile {
+
+	private static final long DEFAULT_BLOCK_SIZE = 64L * 1024L * 1024L;
 
 	private final FSDataOutputStream stream;
 
@@ -49,13 +50,13 @@ class StreamOutputFile implements OutputFile {
 	 *
 	 * @param stream The stream to write to.
 	 */
-	public StreamOutputFile(FSDataOutputStream stream) {
+	StreamOutputFile(FSDataOutputStream stream) {
 		this.stream = checkNotNull(stream);
 		this.used = new AtomicBoolean(false);
 	}
 
 	@Override
-	public PositionOutputStream create(long blockSizeHint) throws IOException {
+	public PositionOutputStream create(long blockSizeHint) {
 		if (used.compareAndSet(false, true)) {
 			return new PositionOutputStreamAdapter(stream);
 		}
@@ -65,7 +66,7 @@ class StreamOutputFile implements OutputFile {
 	}
 
 	@Override
-	public PositionOutputStream createOrOverwrite(long blockSizeHint) throws IOException {
+	public PositionOutputStream createOrOverwrite(long blockSizeHint) {
 		return create(blockSizeHint);
 	}
 
@@ -76,6 +77,6 @@ class StreamOutputFile implements OutputFile {
 
 	@Override
 	public long defaultBlockSize() {
-		return 64 * 1024 * 1024;
+		return DEFAULT_BLOCK_SIZE;
 	}
 }
