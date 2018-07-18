@@ -67,7 +67,7 @@ public final class DefaultRollingPolicy<BucketID> implements RollingPolicy<Bucke
 	}
 
 	@Override
-	public boolean shouldRollOnCheckpoint() throws IOException {
+	public boolean shouldRollOnCheckpoint(PartFileInfo<BucketID> partFileState) throws IOException {
 		return false;
 	}
 

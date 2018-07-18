@@ -20,6 +20,7 @@ package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policies.DefaultRollingPolicy;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policies.OnCheckpointRollingPolicy;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
@@ -31,10 +32,73 @@ import org.junit.rules.TemporaryFolder;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Tests for different {@link RollingPolicy rolling policies}.
+ */
 public class RollingPolicyTest {
 
 	@ClassRule
 	public static final TemporaryFolder TEMP_FOLDER = new TemporaryFolder();
+
+	@Test
+	public void testDefaultRollingPolicy() throws Exception {
+		final File outDir = TEMP_FOLDER.newFolder();
+
+		final RollingPolicy<String> rollingPolicy = DefaultRollingPolicy
+				.create()
+				.withMaxPartSize(10L)
+				.withInactivityInterval(4L)
+				.withRolloverInterval(11L)
+				.build();
+
+		try (
+				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = TestUtils.createCustomRescalingTestSink(
+						outDir,
+						1,
+						0,
+						1L,
+						new TestUtils.TupleToStringBucketer(),
+						new SimpleStringEncoder<>(),
+						rollingPolicy,
+						new DefaultBucketFactory<>())
+		) {
+			testHarness.setup();
+			testHarness.open();
+			
+			testHarness.setProcessingTime(0L);
+
+			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 1), 1L));
+			TestUtils.checkLocalFs(outDir, 1, 0);
+
+			// roll due to size
+			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 2), 2L));
+			TestUtils.checkLocalFs(outDir, 1, 0);
+
+			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 3), 3L));
+			TestUtils.checkLocalFs(outDir, 2, 0);
+
+			// roll due to inactivity
+			testHarness.setProcessingTime(7L);
+
+			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 4), 4L));
+			TestUtils.checkLocalFs(outDir, 3, 0);
+
+			// roll due to rollover interval
+			testHarness.setProcessingTime(20L);
+
+			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 5), 5L));
+			TestUtils.checkLocalFs(outDir, 4, 0);
+
+			// we take a checkpoint but we should not roll.
+			testHarness.snapshot(1L, 1L);
+
+			TestUtils.checkLocalFs(outDir, 4, 0);
+
+			// acknowledge the checkpoint, so publish the 3 closed files, but not the open one.
+			testHarness.notifyOfCompletedCheckpoint(1L);
+			TestUtils.checkLocalFs(outDir, 1, 3);
+		}
+	}
 
 	@Test
 	public void testRollOnCheckpointPolicy() throws Exception {
@@ -47,6 +111,7 @@ public class RollingPolicyTest {
 						outDir,
 						1,
 						0,
+						10L,
 						new TestUtils.TupleToStringBucketer(),
 						new SimpleStringEncoder<>(),
 						rollingPolicy,
@@ -99,7 +164,7 @@ public class RollingPolicyTest {
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public boolean shouldRollOnCheckpoint() {
+			public boolean shouldRollOnCheckpoint(PartFileInfo<String> partFileState) {
 				return true;
 			}
 
@@ -120,6 +185,7 @@ public class RollingPolicyTest {
 						outDir,
 						1,
 						0,
+						10L,
 						new TestUtils.TupleToStringBucketer(),
 						new SimpleStringEncoder<>(),
 						rollingPolicy,

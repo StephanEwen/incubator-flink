@@ -147,8 +147,7 @@ public class StreamingFileSink<IN>
 	 * @param encoder the {@link Encoder} to be used when writing elements in the buckets.
 	 * @param <IN> the type of incoming elements
 	 * @return The builder where the remaining of the configuration parameters for the sink can be configured.
-	 *
-	 * <p>In order to instantiate the sink, call {@link RowFormatBuilder#build()} after specifying the desired parameters.
+	 * In order to instantiate the sink, call {@link RowFormatBuilder#build()} after specifying the desired parameters.
 	 */
 	public static <IN> StreamingFileSink.RowFormatBuilder<IN, String> forRowFormat(
 			final Path basePath, final Encoder<IN> encoder) {
@@ -161,8 +160,7 @@ public class StreamingFileSink<IN>
 	 * @param writerFactory the {@link BulkWriter.Factory} to be used when writing elements in the buckets.
 	 * @param <IN> the type of incoming elements
 	 * @return The builder where the remaining of the configuration parameters for the sink can be configured.
-	 *
-	 * <p>In order to instantiate the sink, call {@link RowFormatBuilder#build()} after specifying the desired parameters.
+	 * In order to instantiate the sink, call {@link RowFormatBuilder#build()} after specifying the desired parameters.
 	 */
 	public static <IN> StreamingFileSink.BulkFormatBuilder<IN, String> forBulkFormat(
 			final Path basePath, final BulkWriter.Factory<IN> writerFactory) {
@@ -360,7 +358,6 @@ public class StreamingFileSink<IN>
 		buckets.onProcessingTime(currentTime);
 		processingTimeService.registerTimer(currentTime + bucketCheckInterval, this);
 	}
-
 
 	@Override
 	public void invoke(IN value, Context context) throws Exception {

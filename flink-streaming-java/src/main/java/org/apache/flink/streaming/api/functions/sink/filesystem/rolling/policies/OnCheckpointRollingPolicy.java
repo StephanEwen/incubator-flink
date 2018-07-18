@@ -21,8 +21,6 @@ package org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policie
 import org.apache.flink.streaming.api.functions.sink.filesystem.PartFileInfo;
 import org.apache.flink.streaming.api.functions.sink.filesystem.RollingPolicy;
 
-import java.io.IOException;
-
 /**
  * A {@link RollingPolicy} which rolls on every checkpoint.
  */
@@ -31,17 +29,17 @@ public class OnCheckpointRollingPolicy<BucketID> implements RollingPolicy<Bucket
 	private static final long serialVersionUID = 1L;
 
 	@Override
-	public boolean shouldRollOnCheckpoint() throws IOException {
+	public boolean shouldRollOnCheckpoint(PartFileInfo<BucketID> partFileState) {
 		return true;
 	}
 
 	@Override
-	public boolean shouldRollOnEvent(PartFileInfo<BucketID> partFileState) throws IOException {
+	public boolean shouldRollOnEvent(PartFileInfo<BucketID> partFileState) {
 		return false;
 	}
 
 	@Override
-	public boolean shouldRollOnProcessingTime(PartFileInfo<BucketID> partFileState, long currentTime) throws IOException {
+	public boolean shouldRollOnProcessingTime(PartFileInfo<BucketID> partFileState, long currentTime) {
 		return false;
 	}
 }

@@ -50,12 +50,13 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 	public void testClosingWithoutInput() throws Exception {
 		final File outDir = TEMP_FOLDER.newFolder();
 
-		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness =
-				TestUtils.createRescalingTestSink(outDir, 1, 0, 100L, 124L);
-		testHarness.setup();
-		testHarness.open();
-
-		testHarness.close();
+		try (
+			OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness =
+					TestUtils.createRescalingTestSink(outDir, 1, 0, 100L, 124L);
+		) {
+			testHarness.setup();
+			testHarness.open();
+		}
 	}
 
 	@Test
@@ -361,9 +362,10 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 	public void testClosingOnSnapshot() throws Exception {
 		final File outDir = TEMP_FOLDER.newFolder();
 
-		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness =
-					 TestUtils.createRescalingTestSink(outDir, 1, 0, 100L, 2L)) {
-
+		try (
+				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness =
+						TestUtils.createRescalingTestSink(outDir, 1, 0, 100L, 2L)
+		) {
 			testHarness.setup();
 			testHarness.open();
 
@@ -501,9 +503,9 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 		try (
 				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = TestUtils.createCustomRescalingTestSink(
-						outDir, 2, 0, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, first);
+						outDir, 2, 0, 10L, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, first);
 				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = TestUtils.createCustomRescalingTestSink(
-						outDir, 2, 1, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, second)
+						outDir, 2, 1, 10L, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, second)
 		) {
 			testHarness1.setup();
 			testHarness1.open();
@@ -529,9 +531,9 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 		try (
 				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = TestUtils.createCustomRescalingTestSink(
-						outDir, 2, 0, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, firstRecovered);
+						outDir, 2, 0, 10L, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, firstRecovered);
 				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = TestUtils.createCustomRescalingTestSink(
-						outDir, 2, 1, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, secondRecovered)
+						outDir, 2, 1, 10L, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, secondRecovered)
 		) {
 			testHarness1.setup();
 			testHarness1.initializeState(mergedSnapshot);
@@ -555,11 +557,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		}
 	}
 
-
-	
 	//////////////////////			Helper Methods			//////////////////////
-
-
 
 	static class TestBucketFactory extends DefaultBucketFactory<Tuple2<String, Integer>, String> {
 

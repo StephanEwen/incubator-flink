@@ -38,6 +38,9 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Utilities for the {@link StreamingFileSink} tests.
+ */
 public class TestUtils {
 
 	static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createRescalingTestSink(
@@ -89,6 +92,7 @@ public class TestUtils {
 				outDir,
 				totalParallelism,
 				taskIdx,
+				10L,
 				new Bucketer<Tuple2<String, Integer>, String>() {
 
 					private static final long serialVersionUID = 1L;
@@ -112,6 +116,7 @@ public class TestUtils {
 			final File outDir,
 			final int totalParallelism,
 			final int taskIdx,
+			final long bucketCheckInterval,
 			final Bucketer<Tuple2<String, Integer>, String> bucketer,
 			final Encoder<Tuple2<String, Integer>> writer,
 			final RollingPolicy<String> rollingPolicy,
@@ -121,7 +126,7 @@ public class TestUtils {
 				.forRowFormat(new Path(outDir.toURI()), writer)
 				.withBucketer(bucketer)
 				.withRollingPolicy(rollingPolicy)
-				.withBucketCheckInterval(10L)
+				.withBucketCheckInterval(bucketCheckInterval)
 				.withBucketFactory(bucketFactory)
 				.build();
 

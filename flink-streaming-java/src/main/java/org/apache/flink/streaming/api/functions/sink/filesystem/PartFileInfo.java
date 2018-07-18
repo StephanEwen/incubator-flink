@@ -20,7 +20,6 @@ package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
-import org.apache.flink.streaming.api.functions.sink.filesystem.RollingPolicy;
 
 import java.io.IOException;
 

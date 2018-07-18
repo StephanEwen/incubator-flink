@@ -32,6 +32,9 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 
+/**
+ * Tests for {@link Buckets}.
+ */
 public class BucketsTest {
 
 	@ClassRule

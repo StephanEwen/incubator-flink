@@ -202,7 +202,7 @@ public class Buckets<IN, BucketID> {
 			final PartFileInfo<BucketID> info = bucket.getInProgressPartInfo();
 
 			if (info != null &&
-					(rollingPolicy.shouldRollOnCheckpoint() ||
+					(rollingPolicy.shouldRollOnCheckpoint(info) ||
 					rollingPolicy.shouldRollOnEvent(info) ||
 					rollingPolicy.shouldRollOnProcessingTime(info, checkpointTimestamp))
 			) {
