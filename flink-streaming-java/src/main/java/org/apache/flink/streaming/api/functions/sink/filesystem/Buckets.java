@@ -228,7 +228,10 @@ public class Buckets<IN, BucketID> {
 		final long currentProcessingTime = context.currentProcessingTime();
 
 		// setting the values in the bucketer context
-		bucketerContext.update(context.timestamp(), currentProcessingTime, context.currentWatermark());
+		bucketerContext.update(
+				context.timestamp(),
+				context.currentWatermark(),
+				currentProcessingTime);
 
 		final BucketID bucketId = bucketer.getBucketId(value, bucketerContext);
 

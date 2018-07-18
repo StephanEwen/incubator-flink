@@ -63,6 +63,10 @@ public interface BulkWriter<T> extends Closeable {
 
 	// ------------------------------------------------------------------------
 
+	/**
+	 * A factory that creates a {@link BulkWriter}.
+	 * @param <T> The type of record to write.
+	 */
 	@FunctionalInterface
 	interface Factory<T> extends Serializable {
 

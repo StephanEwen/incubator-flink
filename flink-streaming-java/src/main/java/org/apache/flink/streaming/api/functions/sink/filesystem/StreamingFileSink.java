@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.common.state.ListState;
@@ -196,6 +197,8 @@ public class StreamingFileSink<IN>
 
 		private RollingPolicy<BucketID> rollingPolicy;
 
+		private BucketFactory<IN, BucketID> bucketFactory = new DefaultBucketFactory<>();
+
 		RowFormatBuilder(Path basePath, Encoder<IN> encoder, Bucketer<IN, BucketID> bucketer) {
 			this.basePath = Preconditions.checkNotNull(basePath);
 			this.encoder = Preconditions.checkNotNull(encoder);
@@ -226,6 +229,12 @@ public class StreamingFileSink<IN>
 			return reInterpreted;
 		}
 
+		@VisibleForTesting
+		StreamingFileSink.RowFormatBuilder<IN, BucketID> withBucketFactory(final BucketFactory<IN, BucketID> factory) {
+			this.bucketFactory = Preconditions.checkNotNull(factory);
+			return this;
+		}
+
 		/** Creates the actual sink. */
 		public StreamingFileSink<IN> build() {
 			return new StreamingFileSink<>(this, bucketCheckInterval);
@@ -236,7 +245,7 @@ public class StreamingFileSink<IN>
 			return new Buckets<>(
 					basePath,
 					bucketer,
-					new DefaultBucketFactory<>(),
+					bucketFactory,
 					new RowWisePartWriter.Factory<>(encoder),
 					rollingPolicy,
 					subtaskIndex);
@@ -259,6 +268,8 @@ public class StreamingFileSink<IN>
 
 		private Bucketer<IN, BucketID> bucketer;
 
+		private BucketFactory<IN, BucketID> bucketFactory = new DefaultBucketFactory<>();
+
 		BulkFormatBuilder(Path basePath, BulkWriter.Factory<IN> writerFactory, Bucketer<IN, BucketID> bucketer) {
 			this.basePath = Preconditions.checkNotNull(basePath);
 			this.writerFactory = Preconditions.checkNotNull(writerFactory);
@@ -277,6 +288,12 @@ public class StreamingFileSink<IN>
 			return reInterpreted;
 		}
 
+		@VisibleForTesting
+		StreamingFileSink.BulkFormatBuilder<IN, BucketID> withBucketFactory(final BucketFactory<IN, BucketID> factory) {
+			this.bucketFactory = Preconditions.checkNotNull(factory);
+			return this;
+		}
+
 		/** Creates the actual sink. */
 		public StreamingFileSink<IN> build() {
 			return new StreamingFileSink<>(this, bucketCheckInterval);
@@ -287,7 +304,7 @@ public class StreamingFileSink<IN>
 			return new Buckets<>(
 					basePath,
 					bucketer,
-					new DefaultBucketFactory<>(), // TODO: 7/17/18 here we should have the part file thing as an argument
+					bucketFactory,
 					new BulkPartWriter.Factory<>(writerFactory),
 					new OnCheckpointRollingPolicy<>(),
 					subtaskIndex);
