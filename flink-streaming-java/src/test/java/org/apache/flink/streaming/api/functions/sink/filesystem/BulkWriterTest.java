@@ -59,7 +59,8 @@ public class BulkWriterTest extends TestLogger {
 								10L,
 								new TestUtils.TupleToStringBucketer(),
 								new TestBulkWriterFactory(),
-								new DefaultBucketFactory<>())) {
+								new DefaultBucketFactory<>())
+		) {
 
 			testHarness.setup();
 			testHarness.open();
@@ -99,6 +100,9 @@ public class BulkWriterTest extends TestLogger {
 		}
 	}
 
+	/**
+	 * A {@link BulkWriter} used for the tests.
+	 */
 	private static class TestBulkWriter implements BulkWriter<Tuple2<String, Integer>> {
 
 		private static final Charset CHARSET = StandardCharsets.UTF_8;
@@ -126,6 +130,9 @@ public class BulkWriterTest extends TestLogger {
 		}
 	}
 
+	/**
+	 * A {@link BulkWriter.Factory} used for the tests.
+	 */
 	private static class TestBulkWriterFactory implements BulkWriter.Factory<Tuple2<String, Integer>> {
 
 		private static final long serialVersionUID = 1L;
