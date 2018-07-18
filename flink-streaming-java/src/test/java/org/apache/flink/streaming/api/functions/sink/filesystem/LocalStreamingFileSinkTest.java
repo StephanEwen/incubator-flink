@@ -18,23 +18,17 @@
 
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
-import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
-import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
-import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
-import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.SimpleVersionedStringSerializer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policies.DefaultRollingPolicy;
-import org.apache.flink.streaming.api.operators.StreamSink;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.AbstractStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.util.TestLogger;
 
-import org.apache.commons.io.FileUtils;
 import org.junit.Assert;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -42,9 +36,6 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -60,7 +51,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		final File outDir = TEMP_FOLDER.newFolder();
 
 		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness =
-				createRescalingTestSink(outDir, 1, 0, 100L, 124L);
+				TestUtils.createRescalingTestSink(outDir, 1, 0, 100L, 124L);
 		testHarness.setup();
 		testHarness.open();
 
@@ -73,7 +64,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		OperatorSubtaskState snapshot;
 
 		// we set the max bucket size to small so that we can know when it rolls
-		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = createRescalingTestSink(
+		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = TestUtils.createRescalingTestSink(
 				outDir, 1, 0, 100L, 10L)) {
 
 			testHarness.setup();
@@ -81,7 +72,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 			// this creates a new bucket "test1" and part-0-0
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 1), 1L));
-			checkLocalFs(outDir, 1, 0);
+			TestUtils.checkLocalFs(outDir, 1, 0);
 
 			// we take a checkpoint so that we keep the in-progress file offset.
 			snapshot = testHarness.snapshot(1L, 1L);
@@ -90,9 +81,9 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 2), 2L));
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 3), 3L));
 
-			checkLocalFs(outDir, 2, 0);
+			TestUtils.checkLocalFs(outDir, 2, 0);
 
-			Map<File, String> contents = getFileContentByPath(outDir);
+			Map<File, String> contents = TestUtils.getFileContentByPath(outDir);
 			int fileCounter = 0;
 			for (Map.Entry<File, String> fileContents : contents.entrySet()) {
 				if (fileContents.getKey().getName().contains(".part-0-0.inprogress")) {
@@ -106,7 +97,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			Assert.assertEquals(2L, fileCounter);
 		}
 
-		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = createRescalingTestSink(
+		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = TestUtils.createRescalingTestSink(
 				outDir, 1, 0, 100L, 10L)) {
 
 			testHarness.setup();
@@ -114,11 +105,11 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness.open();
 
 			// the in-progress is the not cleaned up one and the pending is truncated and finalized
-			checkLocalFs(outDir, 2, 0);
+			TestUtils.checkLocalFs(outDir, 2, 0);
 
 			// now we go back to the first checkpoint so it should truncate part-0-0 and restart part-0-1
 			int fileCounter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				if (fileContents.getKey().getName().contains(".part-0-0.inprogress")) {
 					// truncated
 					fileCounter++;
@@ -135,7 +126,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 4), 4L));
 
 			fileCounter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				if (fileContents.getKey().getName().contains(".part-0-0.inprogress")) {
 					fileCounter++;
 					Assert.assertEquals("test1@1\ntest1@4\n", fileContents.getValue());
@@ -148,16 +139,16 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			Assert.assertEquals(2L, fileCounter);
 
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 5), 5L));
-			checkLocalFs(outDir, 3, 0); // the previous part-0-1 in progress is simply ignored (random extension)
+			TestUtils.checkLocalFs(outDir, 3, 0); // the previous part-0-1 in progress is simply ignored (random extension)
 
 			testHarness.snapshot(2L, 2L);
 
 			// this will close the new part-0-1
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 6), 6L));
-			checkLocalFs(outDir, 3, 0);
+			TestUtils.checkLocalFs(outDir, 3, 0);
 
 			fileCounter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				if (fileContents.getKey().getName().contains(".part-0-0.inprogress")) {
 					fileCounter++;
 					Assert.assertEquals("test1@1\ntest1@4\n", fileContents.getValue());
@@ -172,10 +163,10 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 			// this will publish part-0-0
 			testHarness.notifyOfCompletedCheckpoint(2L);
-			checkLocalFs(outDir, 2, 1);
+			TestUtils.checkLocalFs(outDir, 2, 1);
 
 			fileCounter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				if (fileContents.getKey().getName().equals("part-0-0")) {
 					fileCounter++;
 					Assert.assertEquals("test1@1\ntest1@4\n", fileContents.getValue());
@@ -195,7 +186,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		final File outDir = TEMP_FOLDER.newFolder();
 
 		// we set the max bucket size to small so that we can know when it rolls
-		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = createRescalingTestSink(
+		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = TestUtils.createRescalingTestSink(
 				outDir, 1, 0, 100L, 10L)) {
 
 			testHarness.setup();
@@ -206,11 +197,11 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			// these 2 create a new bucket "test1", with a .part-0-0.inprogress and also fill it
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 1), 1L));
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 2), 2L));
-			checkLocalFs(outDir, 1, 0);
+			TestUtils.checkLocalFs(outDir, 1, 0);
 
 			// this will open .part-0-1.inprogress
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 3), 3L));
-			checkLocalFs(outDir, 2, 0);
+			TestUtils.checkLocalFs(outDir, 2, 0);
 
 			// we take a checkpoint so that we keep the in-progress file offset.
 			testHarness.snapshot(1L, 1L);
@@ -221,13 +212,13 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			// and open and fill .part-0-2.inprogress
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 5), 5L));
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 6), 6L));
-			checkLocalFs(outDir, 3, 0);                    // nothing committed yet
+			TestUtils.checkLocalFs(outDir, 3, 0);                    // nothing committed yet
 
 			testHarness.snapshot(2L, 2L);
 
 			// open .part-0-3.inprogress
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 7), 7L));
-			checkLocalFs(outDir, 4, 0);
+			TestUtils.checkLocalFs(outDir, 4, 0);
 
 			// this will close the part file (time)
 			testHarness.setProcessingTime(101L);
@@ -235,10 +226,10 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness.snapshot(3L, 3L);
 
 			testHarness.notifyOfCompletedCheckpoint(1L);							// the pending for checkpoint 1 are committed
-			checkLocalFs(outDir, 3, 1);
+			TestUtils.checkLocalFs(outDir, 3, 1);
 
 			int fileCounter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				if (fileContents.getKey().getName().equals("part-0-0")) {
 					fileCounter++;
 					Assert.assertEquals("test1@1\ntest1@2\n", fileContents.getValue());
@@ -256,10 +247,10 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			Assert.assertEquals(4L, fileCounter);
 
 			testHarness.notifyOfCompletedCheckpoint(3L);							// all the pending for checkpoint 2 and 3 are committed
-			checkLocalFs(outDir, 0, 4);
+			TestUtils.checkLocalFs(outDir, 0, 4);
 
 			fileCounter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				if (fileContents.getKey().getName().equals("part-0-0")) {
 					fileCounter++;
 					Assert.assertEquals("test1@1\ntest1@2\n", fileContents.getValue());
@@ -283,7 +274,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		final File outDir = TEMP_FOLDER.newFolder();
 
 		// we set a big bucket size so that it does not close by size, but by timers.
-		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = createRescalingTestSink(
+		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = TestUtils.createRescalingTestSink(
 				outDir, 1, 0, 100L, 124L)) {
 
 			testHarness.setup();
@@ -293,10 +284,10 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 1), 1L));
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test2", 1), 1L));
-			checkLocalFs(outDir, 2, 0);
+			TestUtils.checkLocalFs(outDir, 2, 0);
 
 			int bucketCounter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				if (fileContents.getKey().getParentFile().getName().equals("test1")) {
 					bucketCounter++;
 				} else if (fileContents.getKey().getParentFile().getName().equals("test2")) {
@@ -306,10 +297,10 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			Assert.assertEquals(2L, bucketCounter);					// verifies that we have 2 buckets, "test1" and "test2"
 
 			testHarness.setProcessingTime(101L);                                // put them in pending
-			checkLocalFs(outDir, 2, 0);
+			TestUtils.checkLocalFs(outDir, 2, 0);
 
 			testHarness.snapshot(0L, 0L);                // put them in pending for 0
-			checkLocalFs(outDir, 2, 0);
+			TestUtils.checkLocalFs(outDir, 2, 0);
 
 			// create another 2 buckets with 1 inprogress file each
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test3", 1), 1L));
@@ -318,13 +309,13 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness.setProcessingTime(202L);                                // put them in pending
 
 			testHarness.snapshot(1L, 0L);                // put them in pending for 1
-			checkLocalFs(outDir, 4, 0);
+			TestUtils.checkLocalFs(outDir, 4, 0);
 
 			testHarness.notifyOfCompletedCheckpoint(0L);            // put the pending for 0 to the "committed" state
-			checkLocalFs(outDir, 2, 2);
+			TestUtils.checkLocalFs(outDir, 2, 2);
 
 			bucketCounter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				if (fileContents.getKey().getParentFile().getName().equals("test1")) {
 					bucketCounter++;
 					Assert.assertEquals("part-0-0", fileContents.getKey().getName());
@@ -342,10 +333,10 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			Assert.assertEquals(4L, bucketCounter);
 
 			testHarness.notifyOfCompletedCheckpoint(1L);            // put the pending for 1 to the "committed" state
-			checkLocalFs(outDir, 0, 4);
+			TestUtils.checkLocalFs(outDir, 0, 4);
 
 			bucketCounter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				if (fileContents.getKey().getParentFile().getName().equals("test1")) {
 					bucketCounter++;
 					Assert.assertEquals("test1@1\n", fileContents.getValue());
@@ -371,7 +362,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		final File outDir = TEMP_FOLDER.newFolder();
 
 		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness =
-					createRescalingTestSink(outDir, 1, 0, 100L, 2L)) {
+					 TestUtils.createRescalingTestSink(outDir, 1, 0, 100L, 2L)) {
 
 			testHarness.setup();
 			testHarness.open();
@@ -380,29 +371,29 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 1), 1L));
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test2", 1), 1L));
-			checkLocalFs(outDir, 2, 0);
+			TestUtils.checkLocalFs(outDir, 2, 0);
 
 			// this is to check the inactivity threshold
 			testHarness.setProcessingTime(101L);
-			checkLocalFs(outDir, 2, 0);
+			TestUtils.checkLocalFs(outDir, 2, 0);
 
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test3", 1), 1L));
-			checkLocalFs(outDir, 3, 0);
+			TestUtils.checkLocalFs(outDir, 3, 0);
 
 			testHarness.snapshot(0L, 1L);
-			checkLocalFs(outDir, 3, 0);
+			TestUtils.checkLocalFs(outDir, 3, 0);
 
 			testHarness.notifyOfCompletedCheckpoint(0L);
-			checkLocalFs(outDir, 0, 3);
+			TestUtils.checkLocalFs(outDir, 0, 3);
 
 			testHarness.snapshot(1L, 0L);
 
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test4", 10), 10L));
-			checkLocalFs(outDir, 1, 3);
+			TestUtils.checkLocalFs(outDir, 1, 3);
 		}
 
 		// at close it is not moved to final.
-		checkLocalFs(outDir, 1, 3);
+		TestUtils.checkLocalFs(outDir, 1, 3);
 	}
 
 	@Test
@@ -411,11 +402,11 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 		OperatorSubtaskState mergedSnapshot;
 
-		// we set small file size so that the part file rolls.
+		// we set small file size so that the part file rolls on every element.
 		try (
-				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = createRescalingTestSink(
+				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = TestUtils.createRescalingTestSink(
 						outDir, 2, 0, 100L, 10L);
-				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = createRescalingTestSink(
+				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = TestUtils.createRescalingTestSink(
 						outDir, 2, 1, 100L, 10L)
 		) {
 			testHarness1.setup();
@@ -425,16 +416,16 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness2.open();
 
 			testHarness1.processElement(new StreamRecord<>(Tuple2.of("test1", 0), 0L));
-			checkLocalFs(outDir, 1, 0);
+			TestUtils.checkLocalFs(outDir, 1, 0);
 
 			testHarness2.processElement(new StreamRecord<>(Tuple2.of("test1", 1), 1L));
 			testHarness2.processElement(new StreamRecord<>(Tuple2.of("test2", 1), 1L));
 
 			// all the files are in-progress
-			checkLocalFs(outDir, 3, 0);
+			TestUtils.checkLocalFs(outDir, 3, 0);
 
 			int counter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				final String parentFilename = fileContents.getKey().getParentFile().getName();
 				final String inProgressFilename = fileContents.getKey().getName();
 
@@ -459,7 +450,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		}
 
 		try (
-				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = createRescalingTestSink(
+				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = TestUtils.createRescalingTestSink(
 						outDir, 1, 0, 100L, 10L)
 		) {
 			testHarness.setup();
@@ -467,13 +458,13 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness.open();
 
 			// still everything in-progress but the in-progress for prev task 1 should be put in pending now
-			checkLocalFs(outDir, 3, 0);
+			TestUtils.checkLocalFs(outDir, 3, 0);
 
 			testHarness.snapshot(2L, 2L);
 			testHarness.notifyOfCompletedCheckpoint(2L);
 
 			int counter = 0;
-			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
+			for (Map.Entry<File, String> fileContents : TestUtils.getFileContentByPath(outDir).entrySet()) {
 				final String parentFilename = fileContents.getKey().getParentFile().getName();
 				final String filename = fileContents.getKey().getName();
 
@@ -493,95 +484,6 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 	}
 
 	@Test
-	public void testRollOnCheckpointPolicy() throws Exception {
-//
-//		final File outDir = TEMP_FOLDER.newFolder();
-//
-//		// we set the max bucket size to small so that we can know when it rolls
-//		try (OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness = createRescalingTestSink(
-//				outDir, 1, 0, 100L, 10L)) {
-//
-//			testHarness.setup();
-//			testHarness.open();
-//
-//			testHarness.setProcessingTime(0L);
-//
-//			// these 2 create a new bucket "test1", with a .part-0-0.inprogress and also fill it
-//			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 1), 1L));
-//			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 2), 2L));
-//			checkLocalFs(outDir, 1, 0);
-//
-//			// this will open .part-0-1.inprogress
-//			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 3), 3L));
-//			checkLocalFs(outDir, 2, 0);
-//
-//			// we take a checkpoint so that we keep the in-progress file offset.
-//			testHarness.snapshot(1L, 1L);
-//
-//			// this will close .part-0-1.inprogress
-//			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 4), 4L));
-//
-//			// and open and fill .part-0-2.inprogress
-//			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 5), 5L));
-//			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 6), 6L));
-//			checkLocalFs(outDir, 3, 0);                    // nothing committed yet
-//
-//			testHarness.snapshot(2L, 2L);
-//
-//			// open .part-0-3.inprogress
-//			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 7), 7L));
-//			checkLocalFs(outDir, 4, 0);
-//
-//			// this will close the part file (time)
-//			testHarness.setProcessingTime(101L);
-//
-//			testHarness.snapshot(3L, 3L);
-//
-//			testHarness.notifyOfCompletedCheckpoint(1L);							// the pending for checkpoint 1 are committed
-//			checkLocalFs(outDir, 3, 1);
-//
-//			int fileCounter = 0;
-//			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
-//				if (fileContents.getKey().getName().equals("part-0-0")) {
-//					fileCounter++;
-//					Assert.assertEquals("test1@1\ntest1@2\n", fileContents.getValue());
-//				} else if (fileContents.getKey().getName().contains(".part-0-1.inprogress")) {
-//					fileCounter++;
-//					Assert.assertEquals("test1@3\ntest1@4\n", fileContents.getValue());
-//				} else if (fileContents.getKey().getName().contains(".part-0-2.inprogress")) {
-//					fileCounter++;
-//					Assert.assertEquals("test1@5\ntest1@6\n", fileContents.getValue());
-//				} else if (fileContents.getKey().getName().contains(".part-0-3.inprogress")) {
-//					fileCounter++;
-//					Assert.assertEquals("test1@7\n", fileContents.getValue());
-//				}
-//			}
-//			Assert.assertEquals(4L, fileCounter);
-//
-//			testHarness.notifyOfCompletedCheckpoint(3L);							// all the pending for checkpoint 2 and 3 are committed
-//			checkLocalFs(outDir, 0, 4);
-//
-//			fileCounter = 0;
-//			for (Map.Entry<File, String> fileContents : getFileContentByPath(outDir).entrySet()) {
-//				if (fileContents.getKey().getName().equals("part-0-0")) {
-//					fileCounter++;
-//					Assert.assertEquals("test1@1\ntest1@2\n", fileContents.getValue());
-//				} else if (fileContents.getKey().getName().equals("part-0-1")) {
-//					fileCounter++;
-//					Assert.assertEquals("test1@3\ntest1@4\n", fileContents.getValue());
-//				} else if (fileContents.getKey().getName().equals("part-0-2")) {
-//					fileCounter++;
-//					Assert.assertEquals("test1@5\ntest1@6\n", fileContents.getValue());
-//				} else if (fileContents.getKey().getName().equals("part-0-3")) {
-//					fileCounter++;
-//					Assert.assertEquals("test1@7\n", fileContents.getValue());
-//				}
-//			}
-//			Assert.assertEquals(4L, fileCounter);
-//		}
-	}
-
-	@Test
 	public void testMaxCounterUponRecovery() throws Exception {
 		final File outDir = TEMP_FOLDER.newFolder();
 
@@ -589,21 +491,6 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 
 		final TestBucketFactory first = new TestBucketFactory();
 		final TestBucketFactory second = new TestBucketFactory();
-
-		final Bucketer<Tuple2<String, Integer>, String> bucketer = new Bucketer<Tuple2<String, Integer>, String>() {
-
-			private static final long serialVersionUID = 1L;
-
-			@Override
-			public String getBucketId(Tuple2<String, Integer> element, Context context) {
-				return element.f0;
-			}
-
-			@Override
-			public SimpleVersionedSerializer<String> getSerializer() {
-				return SimpleVersionedStringSerializer.INSTANCE;
-			}
-		};
 
 		final RollingPolicy<String> rollingPolicy = DefaultRollingPolicy
 				.create()
@@ -613,10 +500,10 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 				.build();
 
 		try (
-				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = createCustomRescalingTestSink(
-						outDir, 2, 0, bucketer, new SimpleStringEncoder<>(), rollingPolicy, first);
-				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = createCustomRescalingTestSink(
-						outDir, 2, 1, bucketer, new SimpleStringEncoder<>(), rollingPolicy, second)
+				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = TestUtils.createCustomRescalingTestSink(
+						outDir, 2, 0, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, first);
+				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = TestUtils.createCustomRescalingTestSink(
+						outDir, 2, 1, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, second)
 		) {
 			testHarness1.setup();
 			testHarness1.open();
@@ -628,7 +515,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness1.processElement(new StreamRecord<>(Tuple2.of("test1", 0), 0L));
 			testHarness1.processElement(new StreamRecord<>(Tuple2.of("test1", 0), 0L));
 			testHarness1.processElement(new StreamRecord<>(Tuple2.of("test1", 0), 0L));
-			checkLocalFs(outDir, 3, 0);
+			TestUtils.checkLocalFs(outDir, 3, 0);
 
 			// intentionally we snapshot them in the reverse order so that the states are shuffled
 			mergedSnapshot = AbstractStreamOperatorTestHarness.repackageState(
@@ -641,10 +528,10 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		final TestBucketFactory secondRecovered = new TestBucketFactory();
 
 		try (
-				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = createCustomRescalingTestSink(
-						outDir, 2, 0, bucketer, new SimpleStringEncoder<>(), rollingPolicy, firstRecovered);
-				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = createCustomRescalingTestSink(
-						outDir, 2, 1, bucketer, new SimpleStringEncoder<>(), rollingPolicy, secondRecovered)
+				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness1 = TestUtils.createCustomRescalingTestSink(
+						outDir, 2, 0, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, firstRecovered);
+				OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> testHarness2 = TestUtils.createCustomRescalingTestSink(
+						outDir, 2, 1, new TestUtils.TupleToStringBucketer(), new SimpleStringEncoder<>(), rollingPolicy, secondRecovered)
 		) {
 			testHarness1.setup();
 			testHarness1.initializeState(mergedSnapshot);
@@ -654,7 +541,7 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness1.processElement(new StreamRecord<>(Tuple2.of("test4", 0), 0L));
 
 			Assert.assertEquals(3L, firstRecovered.getInitialCounter());
-			checkLocalFs(outDir, 1, 3);
+			TestUtils.checkLocalFs(outDir, 1, 3);
 
 			testHarness2.setup();
 			testHarness2.initializeState(mergedSnapshot);
@@ -664,99 +551,15 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 			testHarness2.processElement(new StreamRecord<>(Tuple2.of("test2", 0), 0L));
 
 			Assert.assertEquals(3L, secondRecovered.getInitialCounter());
-			checkLocalFs(outDir, 2, 3);
+			TestUtils.checkLocalFs(outDir, 2, 3);
 		}
 	}
 
+
+	
 	//////////////////////			Helper Methods			//////////////////////
 
-	private OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createRescalingTestSink(
-			File outDir,
-			int totalParallelism,
-			int taskIdx,
-			long inactivityInterval,
-			long partMaxSize) throws Exception {
 
-		return createCustomRescalingTestSink(
-				outDir,
-				totalParallelism,
-				taskIdx,
-				inactivityInterval,
-				partMaxSize,
-				(Encoder<Tuple2<String, Integer>>) (element, stream) -> {
-					stream.write((element.f0 + '@' + element.f1).getBytes(StandardCharsets.UTF_8));
-					stream.write('\n');
-				});
-	}
-
-	private OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createCustomRescalingTestSink(
-			final File outDir,
-			final int totalParallelism,
-			final int taskIdx,
-			final long inactivityInterval,
-			final long partMaxSize,
-			final Encoder<Tuple2<String, Integer>> writer) throws Exception {
-
-		final RollingPolicy<String> rollingPolicy =
-				DefaultRollingPolicy
-						.create()
-						.withMaxPartSize(partMaxSize)
-						.withRolloverInterval(inactivityInterval)
-						.withInactivityInterval(inactivityInterval)
-						.build();
-
-		return createCustomRescalingTestSink(outDir, totalParallelism, taskIdx, writer, rollingPolicy);
-	}
-
-	private OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createCustomRescalingTestSink(
-			final File outDir,
-			final int totalParallelism,
-			final int taskIdx,
-			final Encoder<Tuple2<String, Integer>> writer,
-			final RollingPolicy<String> rollingPolicy) throws Exception {
-
-		return createCustomRescalingTestSink(
-				outDir,
-				totalParallelism,
-				taskIdx,
-				new Bucketer<Tuple2<String, Integer>, String>() {
-
-					private static final long serialVersionUID = 1L;
-
-					@Override
-					public String getBucketId(Tuple2<String, Integer> element, Context context) {
-						return element.f0;
-					}
-
-					@Override
-					public SimpleVersionedSerializer<String> getSerializer() {
-						return SimpleVersionedStringSerializer.INSTANCE;
-					}
-				},
-				writer,
-				rollingPolicy,
-				new DefaultBucketFactory<>());
-	}
-
-	private OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createCustomRescalingTestSink(
-			final File outDir,
-			final int totalParallelism,
-			final int taskIdx,
-			final Bucketer<Tuple2<String, Integer>, String> bucketer,
-			final Encoder<Tuple2<String, Integer>> writer,
-			final RollingPolicy<String> rollingPolicy,
-			final BucketFactory<Tuple2<String, Integer>, String> bucketFactory) throws Exception {
-
-		StreamingFileSink<Tuple2<String, Integer>> sink = StreamingFileSink
-				.forRowFormat(new Path(outDir.toURI()), writer)
-				.withBucketer(bucketer)
-				.withRollingPolicy(rollingPolicy)
-				.withBucketCheckInterval(10L)
-				.withBucketFactory(bucketFactory)
-				.build();
-
-		return new OneInputStreamOperatorTestHarness<>(new StreamSink<>(sink), 10, totalParallelism, taskIdx);
-	}
 
 	static class TestBucketFactory extends DefaultBucketFactory<Tuple2<String, Integer>, String> {
 
@@ -805,35 +608,5 @@ public class LocalStreamingFileSinkTest extends TestLogger {
 		public long getInitialCounter() {
 			return initialCounter;
 		}
-	}
-
-	private static void checkLocalFs(File outDir, int expectedInProgress, int expectedCompleted) {
-		int inProgress = 0;
-		int finished = 0;
-
-		for (File file: FileUtils.listFiles(outDir, null, true)) {
-			if (file.getAbsolutePath().endsWith("crc")) {
-				continue;
-			}
-
-			if (file.toPath().getFileName().toString().startsWith(".")) {
-				inProgress++;
-			} else {
-				finished++;
-			}
-		}
-
-		Assert.assertEquals(expectedInProgress, inProgress);
-		Assert.assertEquals(expectedCompleted, finished);
-	}
-
-	private static Map<File, String> getFileContentByPath(File directory) throws IOException {
-		Map<File, String> contents = new HashMap<>(4);
-
-		final Collection<File> filesInBucket = FileUtils.listFiles(directory, null, true);
-		for (File file : filesInBucket) {
-			contents.put(file, FileUtils.readFileToString(file));
-		}
-		return contents;
 	}
 }
