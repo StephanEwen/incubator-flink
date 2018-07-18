@@ -20,7 +20,7 @@ package org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policie
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.functions.sink.filesystem.PartFileInfo;
-import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.RollingPolicy;
+import org.apache.flink.streaming.api.functions.sink.filesystem.RollingPolicy;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;

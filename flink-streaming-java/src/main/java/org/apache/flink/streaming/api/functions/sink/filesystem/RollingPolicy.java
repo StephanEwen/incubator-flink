@@ -16,12 +16,9 @@
  * limitations under the License.
  */
 
-package org.apache.flink.streaming.api.functions.sink.filesystem.rolling;
+package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.streaming.api.functions.sink.filesystem.Bucket;
-import org.apache.flink.streaming.api.functions.sink.filesystem.PartFileInfo;
-import org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink;
 
 import java.io.IOException;
 import java.io.Serializable;

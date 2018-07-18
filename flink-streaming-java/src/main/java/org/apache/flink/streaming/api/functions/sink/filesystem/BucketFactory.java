@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
 
@@ -38,12 +37,12 @@ public interface BucketFactory<IN, BucketID> extends Serializable {
 			BucketID bucketId,
 			Path bucketPath,
 			long initialPartCounter,
-			PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory) throws IOException;
+			PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory) throws IOException;
 
 	Bucket<IN, BucketID> restoreBucket(
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			long initialPartCounter,
-			PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory,
+			PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory,
 			BucketState<BucketID> bucketState) throws IOException;
 }

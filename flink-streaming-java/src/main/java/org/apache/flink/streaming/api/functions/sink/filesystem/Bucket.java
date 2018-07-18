@@ -49,7 +49,7 @@ public class Bucket<IN, BucketID> {
 
 	private final int subtaskIndex;
 
-	private final PartFileHandler.PartFileFactory<IN, BucketID> partFileFactory;
+	private final PartFileWriter.PartFileFactory<IN, BucketID> partFileFactory;
 
 	private final RecoverableWriter fsWriter;
 
@@ -57,7 +57,7 @@ public class Bucket<IN, BucketID> {
 
 	private long partCounter;
 
-	private PartFileHandler<IN, BucketID> currentPart;
+	private PartFileWriter<IN, BucketID> currentPart;
 
 	private List<RecoverableWriter.CommitRecoverable> pending;
 
@@ -68,7 +68,7 @@ public class Bucket<IN, BucketID> {
 			RecoverableWriter fsWriter,
 			int subtaskIndex,
 			long initialPartCounter,
-			PartFileHandler.PartFileFactory<IN, BucketID> partFileFactory,
+			PartFileWriter.PartFileFactory<IN, BucketID> partFileFactory,
 			BucketState<BucketID> bucketstate) throws IOException {
 
 		this(fsWriter, subtaskIndex, bucketstate.getBucketId(), bucketstate.getBucketPath(), initialPartCounter, partFileFactory);
@@ -103,7 +103,7 @@ public class Bucket<IN, BucketID> {
 			BucketID bucketId,
 			Path bucketPath,
 			long initialPartCounter,
-			PartFileHandler.PartFileFactory<IN, BucketID> partFileFactory) {
+			PartFileWriter.PartFileFactory<IN, BucketID> partFileFactory) {
 
 		this.fsWriter = Preconditions.checkNotNull(fsWriter);
 		this.subtaskIndex = subtaskIndex;
@@ -176,7 +176,7 @@ public class Bucket<IN, BucketID> {
 		}
 	}
 
-	public void commitUpToCheckpoint(long checkpointId) throws IOException {
+	public void onCheckpointAcknowledgment(long checkpointId) throws IOException {
 		Preconditions.checkNotNull(fsWriter);
 
 		Iterator<Map.Entry<Long, List<RecoverableWriter.CommitRecoverable>>> it =
@@ -193,7 +193,7 @@ public class Bucket<IN, BucketID> {
 		}
 	}
 
-	public BucketState<BucketID> snapshot(long checkpointId) throws IOException {
+	public BucketState<BucketID> onCheckpoint(long checkpointId) throws IOException {
 		RecoverableWriter.ResumeRecoverable resumable = null;
 		long creationTime = Long.MAX_VALUE;
 

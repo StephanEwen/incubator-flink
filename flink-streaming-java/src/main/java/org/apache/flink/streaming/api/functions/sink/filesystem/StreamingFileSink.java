@@ -36,8 +36,8 @@ import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.DateTimeBucketer;
-import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.RollingPolicy;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policies.DefaultRollingPolicy;
+import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policies.OnCheckpointRollingPolicy;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
@@ -117,7 +117,7 @@ public class StreamingFileSink<IN>
 
 	private transient ProcessingTimeService processingTimeService;
 
-	//////////////////			State Related Fields			/////////////////////
+	// --------------------------- State Related Fields -----------------------------
 
 	private transient ListState<byte[]> bucketStates;
 
@@ -138,11 +138,31 @@ public class StreamingFileSink<IN>
 
 	// ------------------------------------------------------------------------
 
+	// --------------------------- Sink Builders  -----------------------------
+
+	/**
+	 * Creates the builder for a {@link StreamingFileSink} with row-encoding format.
+	 * @param basePath the base path where all the buckets are going to be created as sub-directories.
+	 * @param encoder the {@link Encoder} to be used when writing elements in the buckets.
+	 * @param <IN> the type of incoming elements
+	 * @return The builder where the remaining of the configuration parameters for the sink can be configured.
+	 *
+	 * <p>In order to instantiate the sink, call {@link RowFormatBuilder#build()} after specifying the desired parameters.
+	 */
 	public static <IN> StreamingFileSink.RowFormatBuilder<IN, String> forRowFormat(
 			final Path basePath, final Encoder<IN> encoder) {
 		return new StreamingFileSink.RowFormatBuilder<>(basePath, encoder, new DateTimeBucketer<>());
 	}
 
+	/**
+	 * Creates the builder for a {@link StreamingFileSink} with row-encoding format.
+	 * @param basePath the base path where all the buckets are going to be created as sub-directories.
+	 * @param writerFactory the {@link BulkWriter.Factory} to be used when writing elements in the buckets.
+	 * @param <IN> the type of incoming elements
+	 * @return The builder where the remaining of the configuration parameters for the sink can be configured.
+	 *
+	 * <p>In order to instantiate the sink, call {@link RowFormatBuilder#build()} after specifying the desired parameters.
+	 */
 	public static <IN> StreamingFileSink.BulkFormatBuilder<IN, String> forBulkFormat(
 			final Path basePath, final BulkWriter.Factory<IN> writerFactory) {
 		return new StreamingFileSink.BulkFormatBuilder<>(basePath, writerFactory, new DateTimeBucketer<>());
@@ -217,7 +237,7 @@ public class StreamingFileSink<IN>
 					basePath,
 					bucketer,
 					new DefaultBucketFactory<>(),
-					new RowWisePartFile.Factory<>(encoder),
+					new RowWisePartWriter.Factory<>(encoder),
 					rollingPolicy,
 					subtaskIndex);
 		}
@@ -263,16 +283,18 @@ public class StreamingFileSink<IN>
 		}
 
 		@Override
-		Buckets<IN, BucketID> createBuckets(int subtaskIndex) {
+		Buckets<IN, BucketID> createBuckets(int subtaskIndex) throws IOException {
 			return new Buckets<>(
 					basePath,
 					bucketer,
-					new DefaultBucketFactory<>(), // TODO: 7/17/18 here we should have the part file thing as an arguemnt
-					new BulkWriterPartFile.Factory<>(writerFactory),
-					new OnCheckpointRollingPolicy(),
+					new DefaultBucketFactory<>(), // TODO: 7/17/18 here we should have the part file thing as an argument
+					new BulkPartWriter.Factory<>(writerFactory),
+					new OnCheckpointRollingPolicy<>(),
 					subtaskIndex);
 		}
 	}
+
+	// --------------------------- Sink Methods -----------------------------
 
 	@Override
 	public void initializeState(FunctionInitializationContext context) throws Exception {

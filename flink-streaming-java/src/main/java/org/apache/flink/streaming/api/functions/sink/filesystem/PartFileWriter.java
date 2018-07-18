@@ -28,11 +28,18 @@ import org.apache.flink.util.Preconditions;
 import java.io.IOException;
 
 /**
- * A handler for the currently open part file in a specific {@link Bucket}.
- * This also implements the {@link PartFileInfo}.
+ * An abstract writer for the currently open part file in a specific {@link Bucket}.
+ *
+ * <p>Currently, there are two subclasses, of this class:
+ * <ol>
+ *     <li>One for row-wise formats: the {@link RowWisePartWriter}.</li>
+ *     <li>One for bulk encoding formats: the {@link BulkPartWriter}.</li>
+ * </ol>
+ *
+ * <p>This also implements the {@link PartFileInfo}.
  */
 @Internal
-abstract class PartFileHandler<IN, BucketID> implements PartFileInfo<BucketID> {
+abstract class PartFileWriter<IN, BucketID> implements PartFileInfo<BucketID> {
 
 	private final BucketID bucketId;
 
@@ -42,7 +49,7 @@ abstract class PartFileHandler<IN, BucketID> implements PartFileInfo<BucketID> {
 
 	private long lastUpdateTime;
 
-	protected PartFileHandler(
+	protected PartFileWriter(
 			final BucketID bucketId,
 			final RecoverableFsDataOutputStream currentPartStream,
 			final long creationTime) {
@@ -96,15 +103,36 @@ abstract class PartFileHandler<IN, BucketID> implements PartFileInfo<BucketID> {
 
 	// ------------------------------------------------------------------------
 
+	/**
+	 * An interface for factories that create the different {@link PartFileWriter writers}.
+	 */
 	interface PartFileFactory<IN, BucketID> {
 
-		PartFileHandler<IN, BucketID> resumeFrom(
+		/**
+		 * Used upon recovery from a failure to recover a {@link PartFileWriter writer}.
+		 * @param bucketId the id of the bucket this writer is writing to.
+		 * @param fileSystemWriter the filesystem-specific writer to use when writing to the filesystem.
+		 * @param resumable the state of the stream we are resurrecting.
+		 * @param creationTime the creation time of the stream.
+		 * @return the recovered {@link PartFileWriter writer}.
+		 * @throws IOException
+		 */
+		PartFileWriter<IN, BucketID> resumeFrom(
 			final BucketID bucketId,
 			final RecoverableWriter fileSystemWriter,
 			final RecoverableWriter.ResumeRecoverable resumable,
 			final long creationTime) throws IOException;
 
-		PartFileHandler<IN, BucketID> openNew(
+		/**
+		 * Used to create a new {@link PartFileWriter writer}.
+		 * @param bucketId the id of the bucket this writer is writing to.
+		 * @param fileSystemWriter the filesystem-specific writer to use when writing to the filesystem.
+		 * @param path the part this writer will write to.
+		 * @param creationTime the creation time of the stream.
+		 * @return the new {@link PartFileWriter writer}.
+		 * @throws IOException
+		 */
+		PartFileWriter<IN, BucketID> openNew(
 			final BucketID bucketId,
 			final RecoverableWriter fileSystemWriter,
 			final Path path,

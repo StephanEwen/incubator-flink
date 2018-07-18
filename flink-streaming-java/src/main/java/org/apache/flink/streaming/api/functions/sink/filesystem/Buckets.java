@@ -25,7 +25,6 @@ import org.apache.flink.core.fs.RecoverableWriter;
 import org.apache.flink.core.io.SimpleVersionedSerialization;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
-import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.RollingPolicy;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
@@ -39,12 +38,14 @@ import java.util.Iterator;
 import java.util.Map;
 
 /**
- * The manager of the different active buckets in the sink.
- * This class is responsible for all bucket-related operations and the actual
- * {@link StreamingFileSink} is responsible for plugging in the functionality offered by
- * the {@code Buckets} to the lifecycle of the operator.
+ * The manager of the different active buckets in the {@link StreamingFileSink}.
+ *
+ * <p>This class is responsible for all bucket-related operations and the actual
+ * {@link StreamingFileSink} is just plugging in the functionality offered by
+ * this class to the lifecycle of the operator.
  *
  * @param <IN> The type of input elements.
+ * @param <BucketID> The type of ids for the buckets, as returned by the {@link Bucketer}.
  */
 public class Buckets<IN, BucketID> {
 
@@ -58,7 +59,7 @@ public class Buckets<IN, BucketID> {
 
 	private final Bucketer<IN, BucketID> bucketer;
 
-	private final PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory;
+	private final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory;
 
 	private final RollingPolicy<BucketID> rollingPolicy;
 
@@ -86,14 +87,14 @@ public class Buckets<IN, BucketID> {
 	 * @param basePath The base path for our buckets.
 	 * @param bucketer The {@link Bucketer} provided by the user.
 	 * @param bucketFactory The {@link BucketFactory} to be used to create buckets.
-	 * @param partFileWriterFactory The {@link PartFileHandler.PartFileFactory} to be used when writing data.
+	 * @param partFileWriterFactory The {@link PartFileWriter.PartFileFactory} to be used when writing data.
 	 * @param rollingPolicy The {@link RollingPolicy} as specified by the user.
 	 */
 	Buckets(
 			final Path basePath,
 			final Bucketer<IN, BucketID> bucketer,
 			final BucketFactory<IN, BucketID> bucketFactory,
-			final PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory,
+			final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory,
 			final RollingPolicy<BucketID> rollingPolicy,
 			final int subtaskIndex) throws IOException {
 
@@ -176,7 +177,7 @@ public class Buckets<IN, BucketID> {
 
 		while (activeBucketIt.hasNext()) {
 			Bucket<IN, BucketID> bucket = activeBucketIt.next().getValue();
-			bucket.commitUpToCheckpoint(checkpointId);
+			bucket.onCheckpointAcknowledgment(checkpointId);
 
 			if (!bucket.isActive()) {
 				// We've dealt with all the pending files and the writer for this bucket is not currently open.
@@ -203,7 +204,7 @@ public class Buckets<IN, BucketID> {
 				bucket.closePartFile();
 			}
 
-			final BucketState<BucketID> bucketState = bucket.snapshot(checkpointId);
+			final BucketState<BucketID> bucketState = bucket.onCheckpoint(checkpointId);
 			bucketStates.add(SimpleVersionedSerialization.writeVersionAndSerialize(bucketStateSerializer, bucketState));
 		}
 

@@ -39,7 +39,7 @@ public class DefaultBucketFactory<IN, BucketID> implements BucketFactory<IN, Buc
 			final BucketID bucketId,
 			final Path bucketPath,
 			final long initialPartCounter,
-			final PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory) throws IOException {
+			final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory) throws IOException {
 
 		return new Bucket<>(
 				fsWriter,
@@ -55,7 +55,7 @@ public class DefaultBucketFactory<IN, BucketID> implements BucketFactory<IN, Buc
 			final RecoverableWriter fsWriter,
 			final int subtaskIndex,
 			final long initialPartCounter,
-			final PartFileHandler.PartFileFactory<IN, BucketID> partFileWriterFactory,
+			final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory,
 			final BucketState<BucketID> bucketState) throws IOException {
 
 		return new Bucket<>(

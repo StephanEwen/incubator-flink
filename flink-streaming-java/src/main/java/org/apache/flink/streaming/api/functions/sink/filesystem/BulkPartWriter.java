@@ -32,11 +32,11 @@ import java.io.IOException;
  * This also implements the {@link PartFileInfo}.
  */
 @Internal
-class BulkWriterPartFile<IN, BucketID> extends PartFileHandler<IN, BucketID> {
+class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 
 	private final BulkWriter<IN> writer;
 
-	private BulkWriterPartFile(
+	private BulkPartWriter(
 			final BulkWriter<IN> writer,
 			final BucketID bucketId,
 			final RecoverableFsDataOutputStream currentPartStream,
@@ -71,7 +71,7 @@ class BulkWriterPartFile<IN, BucketID> extends PartFileHandler<IN, BucketID> {
 		}
 
 		@Override
-		public PartFileHandler<IN, BucketID> resumeFrom(
+		public PartFileWriter<IN, BucketID> resumeFrom(
 				BucketID bucketId,
 				RecoverableWriter fileSystemWriter,
 				ResumeRecoverable resumable,
@@ -81,7 +81,7 @@ class BulkWriterPartFile<IN, BucketID> extends PartFileHandler<IN, BucketID> {
 		}
 
 		@Override
-		public PartFileHandler<IN, BucketID> openNew(
+		public PartFileWriter<IN, BucketID> openNew(
 				BucketID bucketId,
 				RecoverableWriter fileSystemWriter,
 				Path path,
@@ -90,7 +90,7 @@ class BulkWriterPartFile<IN, BucketID> extends PartFileHandler<IN, BucketID> {
 			RecoverableFsDataOutputStream stream = fileSystemWriter.open(path);
 			BulkWriter<IN> writer = writerFactory.create(stream);
 
-			return new BulkWriterPartFile<>(writer, bucketId, stream, creationTime);
+			return new BulkPartWriter<>(writer, bucketId, stream, creationTime);
 		}
 	}
 }

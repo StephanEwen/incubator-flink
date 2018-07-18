@@ -23,28 +23,27 @@ import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.RecoverableWriter;
-import org.apache.flink.core.fs.RecoverableWriter.ResumeRecoverable;
+import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
+import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
 
 /**
- * A handler for the currently open part file in a specific {@link Bucket}.
+ * A {@link PartFileWriter} for row-wise formats that use an {@link Encoder}.
  * This also implements the {@link PartFileInfo}.
  */
 @Internal
-class RowWisePartFile<IN, BucketID> extends PartFileHandler<IN, BucketID> {
+class RowWisePartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 
 	private final Encoder<IN> encoder;
 
-	private RowWisePartFile(
-			final Encoder<IN> encoder,
+	private RowWisePartWriter(
 			final BucketID bucketId,
 			final RecoverableFsDataOutputStream currentPartStream,
+			final Encoder<IN> encoder,
 			final long creationTime) {
-
 		super(bucketId, currentPartStream, creationTime);
-
-		this.encoder = encoder;
+		this.encoder = Preconditions.checkNotNull(encoder);
 	}
 
 	@Override
@@ -53,7 +52,12 @@ class RowWisePartFile<IN, BucketID> extends PartFileHandler<IN, BucketID> {
 		markWrite(currentTime);
 	}
 
-	static class Factory<IN, BucketID> implements PartFileFactory<IN, BucketID> {
+	/**
+	 * A factory that creates {@link RowWisePartWriter RowWisePartWriters}.
+	 * @param <IN> The type of input elements.
+	 * @param <BucketID> The type of ids for the buckets, as returned by the {@link Bucketer}.
+	 */
+	static class Factory<IN, BucketID> implements PartFileWriter.PartFileFactory<IN, BucketID> {
 
 		private final Encoder<IN> encoder;
 
@@ -62,21 +66,31 @@ class RowWisePartFile<IN, BucketID> extends PartFileHandler<IN, BucketID> {
 		}
 
 		@Override
-		public PartFileHandler<IN, BucketID> resumeFrom(
-				BucketID bucketId,
-				RecoverableWriter fileSystemWriter,
-				ResumeRecoverable resumable,
-				long creationTime) throws IOException {
-			return null;
+		public PartFileWriter<IN, BucketID> resumeFrom(
+				final BucketID bucketId,
+				final RecoverableWriter fileSystemWriter,
+				final RecoverableWriter.ResumeRecoverable resumable,
+				final long creationTime) throws IOException {
+
+			Preconditions.checkNotNull(fileSystemWriter);
+			Preconditions.checkNotNull(resumable);
+
+			final RecoverableFsDataOutputStream stream = fileSystemWriter.recover(resumable);
+			return new RowWisePartWriter<>(bucketId, stream, encoder, creationTime);
 		}
 
 		@Override
-		public PartFileHandler<IN, BucketID> openNew(
-				BucketID bucketId,
-				RecoverableWriter fileSystemWriter,
-				Path path,
-				long creationTime) throws IOException {
-			return null;
+		public PartFileWriter<IN, BucketID> openNew(
+				final BucketID bucketId,
+				final RecoverableWriter fileSystemWriter,
+				final Path path,
+				final long creationTime) throws IOException {
+
+			Preconditions.checkNotNull(fileSystemWriter);
+			Preconditions.checkNotNull(path);
+
+			final RecoverableFsDataOutputStream stream = fileSystemWriter.open(path);
+			return new RowWisePartWriter<>(bucketId, stream, encoder, creationTime);
 		}
 	}
 }
