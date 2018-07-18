@@ -50,12 +50,16 @@ class BucketStateSerializer<BucketID> implements SimpleVersionedSerializer<Bucke
 
 	private final SimpleVersionedSerializer<RecoverableWriter.CommitRecoverable> commitableSerializer;
 
+	private final SimpleVersionedSerializer<BucketID> bucketIdSerializer;
+
 	BucketStateSerializer(
 			final SimpleVersionedSerializer<RecoverableWriter.ResumeRecoverable> resumableSerializer,
-			final SimpleVersionedSerializer<RecoverableWriter.CommitRecoverable> commitableSerializer) {
-
+			final SimpleVersionedSerializer<RecoverableWriter.CommitRecoverable> commitableSerializer,
+			final SimpleVersionedSerializer<BucketID> bucketIdSerializer
+	) {
 		this.resumableSerializer = Preconditions.checkNotNull(resumableSerializer);
 		this.commitableSerializer = Preconditions.checkNotNull(commitableSerializer);
+		this.bucketIdSerializer = Preconditions.checkNotNull(bucketIdSerializer);
 	}
 
 	@Override
@@ -85,7 +89,7 @@ class BucketStateSerializer<BucketID> implements SimpleVersionedSerializer<Bucke
 
 	@VisibleForTesting
 	void serializeV1(BucketState<BucketID> state, DataOutputView out) throws IOException {
-		out.writeUTF(state.getBucketId());
+		SimpleVersionedSerialization.writeVersionAndSerialize(bucketIdSerializer, state.getBucketId(), out);
 		out.writeUTF(state.getBucketPath().toString());
 		out.writeLong(state.getCreationTime());
 
@@ -122,7 +126,7 @@ class BucketStateSerializer<BucketID> implements SimpleVersionedSerializer<Bucke
 
 	@VisibleForTesting
 	BucketState<BucketID> deserializeV1(DataInputView in) throws IOException {
-		final BucketID bucketId = in.readUTF();
+		final BucketID bucketId = SimpleVersionedSerialization.readVersionAndDeSerialize(bucketIdSerializer, in);
 		final String bucketPathStr = in.readUTF();
 		final long creationTime = in.readLong();
 

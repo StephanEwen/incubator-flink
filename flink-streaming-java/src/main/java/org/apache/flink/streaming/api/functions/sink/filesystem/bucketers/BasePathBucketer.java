@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem.bucketers;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 /**
  * A {@link Bucketer} that does not perform any
@@ -32,6 +33,13 @@ public class BasePathBucketer<T> implements Bucketer<T, String> {
 	@Override
 	public String getBucketId(T element, Context context) {
 		return "";
+	}
+
+	@Override
+	public SimpleVersionedSerializer<String> getSerializer() {
+		// TODO: 7/18/18 in the future this could
+		// be optimized as it is the empty string.
+		return SimpleVersionedStringSerializer.INSTANCE;
 	}
 
 	@Override

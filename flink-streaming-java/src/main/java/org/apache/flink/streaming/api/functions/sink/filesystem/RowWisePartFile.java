@@ -24,8 +24,6 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.RecoverableWriter;
 import org.apache.flink.core.fs.RecoverableWriter.ResumeRecoverable;
-import org.apache.flink.util.IOUtils;
-import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
 

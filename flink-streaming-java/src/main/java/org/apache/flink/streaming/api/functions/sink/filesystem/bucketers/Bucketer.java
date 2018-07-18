@@ -20,6 +20,7 @@ package org.apache.flink.streaming.api.functions.sink.filesystem.bucketers;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
 import javax.annotation.Nullable;
@@ -57,6 +58,13 @@ public interface Bucketer<IN, BucketID> extends Serializable {
 	 * {@link org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink sink}.
 	 */
 	BucketID getBucketId(IN element, Context context);
+
+	/**
+	 * @return A {@link SimpleVersionedSerializer} capable of serializing/deserializing the elements
+	 * of type {@code BucketID}. That is the type of the objects returned by the
+	 * {@link #getBucketId(Object, Context)}.
+	 */
+	SimpleVersionedSerializer<BucketID> getSerializer();
 
 	/**
 	 * Context that the {@link Bucketer} can use for getting additional data about

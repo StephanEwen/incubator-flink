@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem.bucketers;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -83,6 +84,11 @@ public class DateTimeBucketer<IN> implements Bucketer<IN, String> {
 			dateFormatter = new SimpleDateFormat(formatString);
 		}
 		return dateFormatter.format(new Date(context.currentProcessingTime()));
+	}
+
+	@Override
+	public SimpleVersionedSerializer<String> getSerializer() {
+		return SimpleVersionedStringSerializer.INSTANCE;
 	}
 
 	@Override

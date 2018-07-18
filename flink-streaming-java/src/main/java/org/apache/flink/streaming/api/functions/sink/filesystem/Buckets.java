@@ -109,7 +109,8 @@ public class Buckets<IN, BucketID> {
 		this.fileSystemWriter = FileSystem.get(basePath.toUri()).createRecoverableWriter();
 		this.bucketStateSerializer = new BucketStateSerializer<>(
 				fileSystemWriter.getResumeRecoverableSerializer(),
-				fileSystemWriter.getCommitRecoverableSerializer()
+				fileSystemWriter.getCommitRecoverableSerializer(),
+				bucketer.getSerializer()
 		);
 
 		this.initMaxPartCounter = 0L;
