@@ -64,7 +64,7 @@ public class RollingPolicyTest {
 		) {
 			testHarness.setup();
 			testHarness.open();
-			
+
 			testHarness.setProcessingTime(0L);
 
 			testHarness.processElement(new StreamRecord<>(Tuple2.of("test1", 1), 1L));
