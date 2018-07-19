@@ -22,7 +22,6 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
-import org.apache.flink.core.fs.RecoverableWriter.CommitRecoverable;
 import org.apache.flink.core.io.SimpleVersionedSerialization;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.core.memory.DataInputDeserializer;
@@ -104,19 +103,19 @@ class BucketStateSerializer<BucketID> implements SimpleVersionedSerializer<Bucke
 		}
 
 		// put the map of pending files per checkpoint
-		final Map<Long, List<CommitRecoverable>> pendingCommitters = state.getPendingPerCheckpoint();
+		final Map<Long, List<RecoverableWriter.CommitRecoverable>> pendingCommitters = state.getPendingPerCheckpoint();
 
 		// manually keep the version here to safe some bytes
 		out.writeInt(commitableSerializer.getVersion());
 
 		out.writeInt(pendingCommitters.size());
-		for (Entry<Long, List<CommitRecoverable>> resumablesForCheckpoint : pendingCommitters.entrySet()) {
-			List<CommitRecoverable> resumables = resumablesForCheckpoint.getValue();
+		for (Entry<Long, List<RecoverableWriter.CommitRecoverable>> resumablesForCheckpoint : pendingCommitters.entrySet()) {
+			List<RecoverableWriter.CommitRecoverable> resumables = resumablesForCheckpoint.getValue();
 
 			out.writeLong(resumablesForCheckpoint.getKey());
 			out.writeInt(resumables.size());
 
-			for (CommitRecoverable resumable : resumables) {
+			for (RecoverableWriter.CommitRecoverable resumable : resumables) {
 				byte[] serialized = commitableSerializer.serialize(resumable);
 				out.writeInt(serialized.length);
 				out.write(serialized);

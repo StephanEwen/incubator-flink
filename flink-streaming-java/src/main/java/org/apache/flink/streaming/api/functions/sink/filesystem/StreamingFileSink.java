@@ -35,6 +35,7 @@ import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.DateTimeBucketer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rolling.policies.DefaultRollingPolicy;
@@ -142,7 +143,7 @@ public class StreamingFileSink<IN>
 	// --------------------------- Sink Builders  -----------------------------
 
 	/**
-	 * Creates the builder for a {@link StreamingFileSink} with row-encoding format.
+	 * Creates the builder for a {@code StreamingFileSink} with row-encoding format.
 	 * @param basePath the base path where all the buckets are going to be created as sub-directories.
 	 * @param encoder the {@link Encoder} to be used when writing elements in the buckets.
 	 * @param <IN> the type of incoming elements
@@ -360,7 +361,7 @@ public class StreamingFileSink<IN>
 	}
 
 	@Override
-	public void invoke(IN value, Context context) throws Exception {
+	public void invoke(IN value, SinkFunction.Context context) throws Exception {
 		buckets.onElement(value, context);
 	}
 

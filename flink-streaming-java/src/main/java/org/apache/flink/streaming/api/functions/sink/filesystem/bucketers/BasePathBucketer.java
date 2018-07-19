@@ -31,14 +31,13 @@ public class BasePathBucketer<T> implements Bucketer<T, String> {
 	private static final long serialVersionUID = -6033643155550226022L;
 
 	@Override
-	public String getBucketId(T element, Context context) {
+	public String getBucketId(T element, Bucketer.Context context) {
 		return "";
 	}
 
 	@Override
 	public SimpleVersionedSerializer<String> getSerializer() {
-		// TODO: 7/18/18 in the future this could
-		// be optimized as it is the empty string.
+		// in the future this could be optimized as it is the empty string.
 		return SimpleVersionedStringSerializer.INSTANCE;
 	}
 

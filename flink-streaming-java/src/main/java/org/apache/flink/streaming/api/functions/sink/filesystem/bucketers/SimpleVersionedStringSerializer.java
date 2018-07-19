@@ -41,7 +41,7 @@ public final class SimpleVersionedStringSerializer implements SimpleVersionedSer
 	}
 
 	@Override
-	public byte[] serialize(String value) throws IOException {
+	public byte[] serialize(String value) {
 		final byte[] serialized = value.getBytes(StandardCharsets.UTF_8);
 		final byte[] targetBytes = new byte[Integer.BYTES + serialized.length];
 

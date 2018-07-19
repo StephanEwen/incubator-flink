@@ -53,7 +53,7 @@ final class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 	}
 
 	@Override
-	RecoverableWriter.ResumeRecoverable persist() throws IOException {
+	RecoverableWriter.ResumeRecoverable persist() {
 		throw new UnsupportedOperationException("Bulk Part Writers do not support \"pause and resume\" operations.");
 	}
 
@@ -69,7 +69,7 @@ final class BulkPartWriter<IN, BucketID> extends PartFileWriter<IN, BucketID> {
 	 * @param <IN> The type of input elements.
 	 * @param <BucketID> The type of ids for the buckets, as returned by the {@link Bucketer}.
 	 */
-	static class Factory<IN, BucketID> implements PartFileFactory<IN, BucketID> {
+	static class Factory<IN, BucketID> implements PartFileWriter.PartFileFactory<IN, BucketID> {
 
 		private final BulkWriter.Factory<IN> writerFactory;
 

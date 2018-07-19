@@ -63,9 +63,8 @@ public interface BulkWriter<T> {
 	/**
 	 * Frees up any resources held by the {@code BulkWriter.Factory}.
 	 *
-	 * @apiNote
-	 * This method MUST NOT close the {@link FSDataOutputStream} provided
-	 * by the {@code BulkWriter.Factory}.
+	 * <p><p><b>NOTE TO IMPLEMENTERS: </b>
+	 * This method MUST NOT close the stream provided by the {@code BulkWriter.Factory}.
 	 *
 	 * @throws IOException Thrown if something unexpected happens during
 	 */

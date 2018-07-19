@@ -79,7 +79,7 @@ public class DateTimeBucketer<IN> implements Bucketer<IN, String> {
 	}
 
 	@Override
-	public String getBucketId(IN element, Context context) {
+	public String getBucketId(IN element, Bucketer.Context context) {
 		if (dateFormatter == null) {
 			dateFormatter = new SimpleDateFormat(formatString);
 		}

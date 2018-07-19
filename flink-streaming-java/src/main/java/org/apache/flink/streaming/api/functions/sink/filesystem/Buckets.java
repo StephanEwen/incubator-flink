@@ -67,7 +67,7 @@ public class Buckets<IN, BucketID> {
 
 	private final int subtaskIndex;
 
-	private final BucketerContext bucketerContext;
+	private final Buckets.BucketerContext bucketerContext;
 
 	private final Map<BucketID, Bucket<IN, BucketID>> activeBuckets;
 
@@ -106,7 +106,7 @@ public class Buckets<IN, BucketID> {
 		this.subtaskIndex = subtaskIndex;
 
 		this.activeBuckets = new HashMap<>();
-		this.bucketerContext = new BucketerContext();
+		this.bucketerContext = new Buckets.BucketerContext();
 
 		this.fileSystemWriter = FileSystem.get(basePath.toUri()).createRecoverableWriter();
 		this.bucketStateSerializer = new BucketStateSerializer<>(
@@ -299,7 +299,7 @@ public class Buckets<IN, BucketID> {
 	 * {@link Bucketer#getBucketId(Object, Bucketer.Context)}
 	 * whenever a new incoming element arrives.
 	 */
-	private static class BucketerContext implements Bucketer.Context {
+	private static final class BucketerContext implements Bucketer.Context {
 
 		@Nullable
 		private Long elementTimestamp;
@@ -307,6 +307,12 @@ public class Buckets<IN, BucketID> {
 		private long currentWatermark;
 
 		private long currentProcessingTime;
+
+		private BucketerContext() {
+			this.elementTimestamp = null;
+			this.currentWatermark = Long.MIN_VALUE;
+			this.currentProcessingTime = Long.MIN_VALUE;
+		}
 
 		void update(@Nullable Long element, long watermark, long processingTime) {
 			this.elementTimestamp = element;

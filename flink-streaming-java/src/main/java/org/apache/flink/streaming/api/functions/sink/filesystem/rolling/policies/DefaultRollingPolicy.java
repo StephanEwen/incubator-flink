@@ -67,7 +67,7 @@ public final class DefaultRollingPolicy<BucketID> implements RollingPolicy<Bucke
 	}
 
 	@Override
-	public boolean shouldRollOnCheckpoint(PartFileInfo<BucketID> partFileState) throws IOException {
+	public boolean shouldRollOnCheckpoint(PartFileInfo<BucketID> partFileState) {
 		return false;
 	}
 
@@ -82,7 +82,7 @@ public final class DefaultRollingPolicy<BucketID> implements RollingPolicy<Bucke
 	}
 
 	@Override
-	public boolean shouldRollOnProcessingTime(final PartFileInfo<BucketID> partFileState, final long currentTime) throws IOException {
+	public boolean shouldRollOnProcessingTime(final PartFileInfo<BucketID> partFileState, final long currentTime) {
 		if (partFileState == null) {
 			// this means that there is no currently open part file.
 			return true;
@@ -96,7 +96,7 @@ public final class DefaultRollingPolicy<BucketID> implements RollingPolicy<Bucke
 	}
 
 	/**
-	 * Initiates the instantiation of a {@link DefaultRollingPolicy}.
+	 * Initiates the instantiation of a {@code DefaultRollingPolicy}.
 	 * To finalize it and have the actual policy, call {@code .create()}.
 	 */
 	public static DefaultRollingPolicy.PolicyBuilder create() {

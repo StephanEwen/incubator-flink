@@ -37,7 +37,7 @@ import java.io.Serializable;
  * element should fall in. The {@code Bucketer} can, for example, determine buckets based on system time.
  *
  * @param <IN> The type of input elements.
- * @param <BucketID> The type of the object returned by the {@link #getBucketId(Object, Context)}. This has to have
+ * @param <BucketID> The type of the object returned by the {@link #getBucketId(Object, Bucketer.Context)}. This has to have
  *                  a correct {@link #hashCode()} and {@link #equals(Object)} method. In addition, the {@link Path}
  *                  to the created bucket will be the result of the {@link #toString()} of this method, appended to
  *                  the {@code basePath} specified in the
@@ -57,12 +57,12 @@ public interface Bucketer<IN, BucketID> extends Serializable {
 	 * and the {@code base path} provided during the initialization of the
 	 * {@link org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink sink}.
 	 */
-	BucketID getBucketId(IN element, Context context);
+	BucketID getBucketId(IN element, Bucketer.Context context);
 
 	/**
 	 * @return A {@link SimpleVersionedSerializer} capable of serializing/deserializing the elements
 	 * of type {@code BucketID}. That is the type of the objects returned by the
-	 * {@link #getBucketId(Object, Context)}.
+	 * {@link #getBucketId(Object, Bucketer.Context)}.
 	 */
 	SimpleVersionedSerializer<BucketID> getSerializer();
 
@@ -70,7 +70,7 @@ public interface Bucketer<IN, BucketID> extends Serializable {
 	 * Context that the {@link Bucketer} can use for getting additional data about
 	 * an input record.
 	 *
-	 * <p>The context is only valid for the duration of a {@link Bucketer#getBucketId(Object, Context)} call.
+	 * <p>The context is only valid for the duration of a {@link Bucketer#getBucketId(Object, Bucketer.Context)} call.
 	 * Do not store the context and use afterwards!
 	 */
 	@PublicEvolving

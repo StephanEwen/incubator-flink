@@ -69,9 +69,9 @@ public class Bucket<IN, BucketID> {
 			int subtaskIndex,
 			long initialPartCounter,
 			PartFileWriter.PartFileFactory<IN, BucketID> partFileFactory,
-			BucketState<BucketID> bucketstate) throws IOException {
+			BucketState<BucketID> bucketState) throws IOException {
 
-		this(fsWriter, subtaskIndex, bucketstate.getBucketId(), bucketstate.getBucketPath(), initialPartCounter, partFileFactory);
+		this(fsWriter, subtaskIndex, bucketState.getBucketId(), bucketState.getBucketPath(), initialPartCounter, partFileFactory);
 
 		// the constructor must have already initialized the filesystem writer
 		Preconditions.checkState(fsWriter != null);
@@ -79,15 +79,15 @@ public class Bucket<IN, BucketID> {
 		// we try to resume the previous in-progress file, if the filesystem
 		// supports such operation. If not, we just commit the file and start fresh.
 
-		final RecoverableWriter.ResumeRecoverable resumable = bucketstate.getInProgress();
+		final RecoverableWriter.ResumeRecoverable resumable = bucketState.getInProgress();
 		if (resumable != null) {
 			currentPart = partFileFactory.resumeFrom(
-					bucketId, fsWriter, resumable, bucketstate.getCreationTime());
+					bucketId, fsWriter, resumable, bucketState.getCreationTime());
 		}
 
 		// we commit pending files for previous checkpoints to the last successful one
 		// (from which we are recovering from)
-		for (List<RecoverableWriter.CommitRecoverable> commitables: bucketstate.getPendingPerCheckpoint().values()) {
+		for (List<RecoverableWriter.CommitRecoverable> commitables: bucketState.getPendingPerCheckpoint().values()) {
 			for (RecoverableWriter.CommitRecoverable commitable: commitables) {
 				fsWriter.recoverForCommit(commitable).commitAfterRecovery();
 			}
