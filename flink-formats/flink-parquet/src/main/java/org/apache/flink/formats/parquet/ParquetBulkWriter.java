@@ -54,7 +54,7 @@ public class ParquetBulkWriter<T> implements BulkWriter<T> {
 
 	@Override
 	public void flush() {
-		throw new UnsupportedOperationException("ParquetBulkWriter does not support intermediate flushing");
+		// nothing we can do here
 	}
 
 	@Override

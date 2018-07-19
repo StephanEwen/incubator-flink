@@ -61,12 +61,16 @@ public interface BulkWriter<T> {
 	void flush() throws IOException;
 
 	/**
-	 * Frees up any resources held by the {@code BulkWriter.Factory}.
+	 * Finishes the writing. This must flush all internal buffer, finish encoding, and write
+	 * footers.
 	 *
-	 * <p><p><b>NOTE TO IMPLEMENTERS: </b>
-	 * This method MUST NOT close the stream provided by the {@code BulkWriter.Factory}.
+	 * <p>The writer is not expected to handle any more records via {@link #addElement(Object)} after
+	 * this method is called.
 	 *
-	 * @throws IOException Thrown if something unexpected happens during
+	 * <p><b>Important:</b> This method MUST NOT close the stream that the writer writes to.
+	 * Closing the stream is expected to happen through the invoker of this method afterwards.
+	 *
+	 * @throws IOException Thrown if the finalization fails.
 	 */
 	void finish() throws IOException;
 

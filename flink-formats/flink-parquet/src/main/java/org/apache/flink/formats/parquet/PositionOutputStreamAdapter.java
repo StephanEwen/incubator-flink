@@ -66,7 +66,8 @@ class PositionOutputStreamAdapter extends PositionOutputStream {
 	}
 
 	@Override
-	public void close() throws IOException {
-		out.close();
+	public void close() {
+		// we do not actually close the internal stream here, to prevent that the finishing
+		// of the Parquet Writer closes the target output stream
 	}
 }
