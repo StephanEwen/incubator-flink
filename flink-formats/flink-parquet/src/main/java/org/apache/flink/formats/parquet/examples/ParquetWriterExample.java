@@ -29,6 +29,8 @@ import org.apache.avro.specific.SpecificData;
 import org.apache.parquet.avro.AvroParquetWriter;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.io.OutputFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
@@ -38,6 +40,8 @@ import java.io.IOException;
 public class ParquetWriterExample {
 
 	public static void main(String... args) throws Exception {
+
+		Logger log = LoggerFactory.getLogger(ParquetWriterExample.class);
 
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
@@ -58,8 +62,9 @@ public class ParquetWriterExample {
 
 		stream.addSink(
 				StreamingFileSink.forBulkFormat(
-						new Path("file:///tmp/test"),
+						new Path("file:///Users/kkloudas/Desktop/test"),
 						new ParquetWriterFactory<>(parquetBuilder))
-				.build());
+		.build());
+		env.execute();
 	}
 }
