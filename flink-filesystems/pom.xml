@@ -40,6 +40,7 @@ under the License.
 
 	<modules>
 		<module>flink-hadoop-fs</module>
+		<module>flink-gcs-fs</module>
 		<module>flink-mapr-fs</module>
 		<module>flink-fs-hadoop-shaded</module>
 		<module>flink-s3-fs-base</module>

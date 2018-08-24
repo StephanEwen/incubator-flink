@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+  http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>org.apache.flink</groupId>
+		<artifactId>flink-filesystems</artifactId>
+		<version>1.8-SNAPSHOT</version>
+		<relativePath>..</relativePath>
+	</parent>
+
+	<artifactId>flink-gcs-fs</artifactId>
+	<name>flink-gcs-fs</name>
+
+	<packaging>jar</packaging>
+
+	<dependencies>
+
+		<!-- Flink core, for the File System abstraction -->
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-core</artifactId>
+			<version>${project.version}</version>
+			<scope>provided</scope>
+		</dependency>
+
+		<!-- The GCS connector itself (pulls various transitive dependencies) -->
+		<dependency>
+			<groupId>com.google.cloud.bigdataoss</groupId>
+			<artifactId>gcs-connector</artifactId>
+			<version>1.9.4-hadoop3</version>
+		</dependency>
+
+		<!-- GCS connector builds on Hadoop FileSystem abstraction -->
+		<!-- We pull the shaded Hadoop FS abstraction and provide the unshaded for compilation -->
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-hadoop-fs</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-fs-hadoop-shaded</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+
+		<!-- Test dependencies -->
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-test-utils-junit</artifactId>
+			<version>${project.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-fs-hadoop-shaded</artifactId>
+			<version>${project.version}</version>
+			<scope>test</scope>
+			<type>test-jar</type>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>shade-flink</id>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+						<configuration>
+							<shadeTestJar>false</shadeTestJar>
+							<artifactSet>
+								<includes>
+									<include>*:*</include>
+								</includes>
+							</artifactSet>
+							<relocations>
+								<!-- relocate the Hadoop and Commons classes -->
+								<relocation>
+									<pattern>org.apache.hadoop</pattern>
+									<shadedPattern>org.apache.flink.fs.gcs.shaded.org.apache.hadoop</shadedPattern>
+								</relocation>
+								<relocation>
+									<pattern>org.apache.commons</pattern>
+									<shadedPattern>org.apache.flink.fs.gcs.shaded.org.apache.commons</shadedPattern>
+								</relocation>
+
+								<!-- shade Flink's Hadoop FS adapter classes -->
+								<relocation>
+									<pattern>org.apache.flink.runtime.fs.hdfs</pattern>
+									<shadedPattern>org.apache.flink.fs.gcs.hadoop</shadedPattern>
+								</relocation>
+
+								<!-- GCS connector classes and dependencies -->
+								<relocation>
+									<pattern>com.google</pattern>
+									<shadedPattern>org.apache.flink.fs.gcs.shaded.com.google</shadedPattern>
+								</relocation>
+								<relocation>
+									<pattern>com.fasterxml</pattern>
+									<shadedPattern>org.apache.flink.fs.gcs.shaded.com.fasterxml</shadedPattern>
+								</relocation>
+								<relocation>
+									<pattern>org.codehaus</pattern>
+									<shadedPattern>org.apache.flink.fs.gcs.shaded.org.codehaus</shadedPattern>
+								</relocation>
+								<relocation>
+									<pattern>org.checkerframework</pattern>
+									<shadedPattern>org.apache.flink.fs.gcs.shaded.org.checkerframework</shadedPattern>
+								</relocation>
+								<relocation>
+									<pattern>org.apache.http</pattern>
+									<shadedPattern>org.apache.flink.fs.gcs.shaded.org.apache.http</shadedPattern>
+								</relocation>
+							</relocations>
+							<filters>
+								<filter>
+									<artifact>org.apache.flink:flink-fs-hadoop-shaded</artifact>
+									<excludes>
+										<exclude>com/google/common/**</exclude>
+									</excludes>
+								</filter>
+								<filter>
+									<artifact>org.apache.flink:flink-hadoop-fs</artifact>
+									<excludes>
+										<exclude>org/apache/flink/runtime/util/**</exclude>
+										<exclude>org/apache/flink/runtime/fs/hdfs/HadoopRecoverable*</exclude>
+									</excludes>
+								</filter>
+								<filter>
+									<artifact>*</artifact>
+									<excludes>
+										<exclude>mozilla/**</exclude>
+										<exclude>META-INF/maven/org.apache.flink/force-shading/**</exclude>
+									</excludes>
+								</filter>
+							</filters>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
