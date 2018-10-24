@@ -19,9 +19,7 @@
 package org.apache.flink.formats.avro.typeutils;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.typeutils.CompatibilityResult;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
@@ -30,9 +28,6 @@ import org.apache.flink.formats.avro.utils.DataOutputEncoder;
 import org.apache.flink.util.InstantiationUtil;
 
 import org.apache.avro.Schema;
-import org.apache.avro.SchemaCompatibility;
-import org.apache.avro.SchemaCompatibility.SchemaCompatibilityType;
-import org.apache.avro.SchemaCompatibility.SchemaPairCompatibility;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumReader;
@@ -65,31 +60,26 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  */
 public class AvroSerializer<T> extends TypeSerializer<T> {
 
-	private static final long serialVersionUID = 1L;
+	private static final long serialVersionUID = 2L;
 
-	/** Logger instance. */
+	/** Logger instance.
+	 */
 	private static final Logger LOG = LoggerFactory.getLogger(AvroSerializer.class);
 
 	/** Flag whether to check for concurrent thread access.
 	 * Because this flag is static final, a value of 'false' allows the JIT compiler to eliminate
-	 * the guarded code sections. */
+	 * the guarded code sections.
+	 */
 	private static final boolean CONCURRENT_ACCESS_CHECK =
 		LOG.isDebugEnabled() || AvroSerializerDebugInitHelper.setToDebug;
 
 	// -------- configuration fields, serializable -----------
 
-	/** The class of the type that is serialized by this serializer. */
+	/** The class of the type that is serialized by this serializer.
+	 */
 	private final Class<T> type;
 	private final SerializableAvroSchema schema;
 	private final SerializableAvroSchema previousSchema;
-
-	/** This field was present in this class prior to 1.7, and held the string representation of
-	 * a {@link Schema} (only in the case of an Avro GenericRecord). Since, {@code FsStateBackend} stores the serializer
-	 * (via Java serialization) within the checkpoint to later restore the state, we need to have this field here.
-	 * see {@link #initializeAvro()}.
-	 */
-	@Deprecated
-	private final String schemaString = null;
 
 	// -------- runtime fields, non-serializable, lazily initialized -----------
 
@@ -100,10 +90,12 @@ public class AvroSerializer<T> extends TypeSerializer<T> {
 	private transient DatumReader<T> reader;
 	private transient Schema runtimeSchema;
 
-	/** The serializer configuration snapshot, cached for efficiency. */
+	/** The serializer configuration snapshot, cached for efficiency.
+	 */
 	private transient TypeSerializerSnapshot<T> configSnapshot;
 
-	/** The currently accessing thread, set and checked on debug level only. */
+	/** The currently accessing thread, set and checked on debug level only.
+	 */
 	private transient volatile Thread currentThread;
 
 	// ------------------------------------------------------------------------
@@ -175,7 +167,7 @@ public class AvroSerializer<T> extends TypeSerializer<T> {
 	// ------------------------------------------------------------------------
 
 	@Override
-	public T createInstance()  {
+	public T createInstance() {
 		return InstantiationUtil.instantiate(type);
 	}
 
@@ -280,26 +272,6 @@ public class AvroSerializer<T> extends TypeSerializer<T> {
 		return configSnapshot;
 	}
 
-	@Override
-	@SuppressWarnings({"deprecation", "unchecked"})
-	public CompatibilityResult<T> ensureCompatibility(TypeSerializerConfigSnapshot<?> configSnapshot) {
-		if (configSnapshot instanceof AvroSchemaSerializerConfigSnapshot) {
-			// proper schema snapshot, can do the sophisticated schema-based compatibility check
-			final String schemaString = ((AvroSchemaSerializerConfigSnapshot<?>) configSnapshot).getSchemaString();
-			final Schema lastSchema = new Schema.Parser().parse(schemaString);
-
-			checkAvroInitialized();
-			final SchemaPairCompatibility compatibility =
-				SchemaCompatibility.checkReaderWriterCompatibility(runtimeSchema, lastSchema);
-
-			return compatibility.getType() == SchemaCompatibilityType.COMPATIBLE ?
-				CompatibilityResult.compatible() : CompatibilityResult.requiresMigration();
-		}
-		else {
-			return CompatibilityResult.requiresMigration();
-		}
-	}
-
 	// ------------------------------------------------------------------------
 	//  Utilities
 	// ------------------------------------------------------------------------
@@ -355,26 +327,13 @@ public class AvroSerializer<T> extends TypeSerializer<T> {
 	}
 
 	private void initializeAvro() {
-		final AvroFactory<T> factory;
-		if (wasThisInstanceDeserializedFromAPre17Version()) {
-			// since schema is a final field that is initialized to a non null value,
-			// this can only have happened when restoring from a checkpoint in an FsStateBackend pre Flink 1.7.
-			// To maintain backwards compatibility we need to use the information stored at schemaString.
-			factory = AvroFactory.createFromTypeAndSchemaString(type, schemaString);
-		}
-		else {
-			factory = AvroFactory.create(type, schema.getAvroSchema(), previousSchema.getAvroSchema());
-		}
+		AvroFactory<T> factory = AvroFactory.create(type, schema.getAvroSchema(), previousSchema.getAvroSchema());
 		this.runtimeSchema = factory.getSchema();
 		this.writer = factory.getWriter();
 		this.reader = factory.getReader();
 		this.encoder = factory.getEncoder();
 		this.decoder = factory.getDecoder();
 		this.avroData = factory.getAvroData();
-	}
-
-	private boolean wasThisInstanceDeserializedFromAPre17Version() {
-		return (schema == null);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -416,75 +375,10 @@ public class AvroSerializer<T> extends TypeSerializer<T> {
 	 * This class is now deprecated and only kept for backward comparability.
 	 */
 	@Deprecated
-	public static final class AvroSchemaSerializerConfigSnapshot<T> extends TypeSerializerConfigSnapshot<T> {
+	public static final class AvroSchemaSerializerConfigSnapshot<T> extends AvroSerializerSnapshot<T> {
 
-		private String schemaString;
-
-		/**
-		 * Default constructor for instantiation via reflection.
-		 */
-		@SuppressWarnings("unused")
 		public AvroSchemaSerializerConfigSnapshot() {
 		}
 
-		/**
-		 * AvroSerializer now uses the new {@link AvroSerializerSnapshot} class instead.
-		 */
-		@SuppressWarnings("unused")
-		public AvroSchemaSerializerConfigSnapshot(String schemaString) {
-			this.schemaString = checkNotNull(schemaString);
-		}
-
-		public String getSchemaString() {
-			return schemaString;
-		}
-
-		// --- Serialization ---
-
-		@Override
-		public void read(DataInputView in) throws IOException {
-			super.read(in);
-			this.schemaString = in.readUTF();
-		}
-
-		@Override
-		public void write(DataOutputView out) throws IOException {
-			super.write(out);
-			out.writeUTF(schemaString);
-		}
-
-		// --- Version ---
-
-		@Override
-		public int getVersion() {
-			return 1;
-		}
-
-		// --- Utils ---
-
-		@Override
-		public boolean equals(Object obj) {
-			if (obj == this) {
-				return true;
-			}
-			else if (obj != null && obj.getClass() == AvroSchemaSerializerConfigSnapshot.class) {
-				final AvroSchemaSerializerConfigSnapshot that = (AvroSchemaSerializerConfigSnapshot) obj;
-				return this.schemaString.equals(that.schemaString);
-			}
-			else {
-				return false;
-			}
-		}
-
-		@Override
-		public int hashCode() {
-			return 11 + schemaString.hashCode();
-		}
-
-		@Override
-		public String toString() {
-			return getClass().getName() + " (" + schemaString + ')';
-		}
 	}
-
 }

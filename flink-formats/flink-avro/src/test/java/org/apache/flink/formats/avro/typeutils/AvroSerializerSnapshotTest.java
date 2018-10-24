@@ -76,13 +76,13 @@ public class AvroSerializerSnapshotTest {
 	@Test
 	public void removingAnOptionalFieldsIsCompatibleAsIs() {
 		assertThat(AvroSerializerSnapshot.resolveSchemaCompatibility(FIRST_REQUIRED_LAST_OPTIONAL, FIRST_NAME),
-			isCompatibleAsIs());
+			isCompatibleAfterMigration());
 	}
 
 	@Test
 	public void addingAnOptionalFieldsIsCompatibleAsIs() {
 		assertThat(AvroSerializerSnapshot.resolveSchemaCompatibility(FIRST_NAME, FIRST_REQUIRED_LAST_OPTIONAL),
-			isCompatibleAsIs());
+			isCompatibleAfterMigration());
 	}
 
 	@Test
@@ -152,13 +152,13 @@ public class AvroSerializerSnapshotTest {
 	}
 
 	@Test
-	public void validSchemaEvaluationShouldResultInCompatibleSerializers() {
+	public void validSchemaEvaluationShouldResultInCRequiresMigration() {
 		final AvroSerializer<GenericRecord> originalSerializer = new AvroSerializer<>(GenericRecord.class, FIRST_NAME);
 		final AvroSerializer<GenericRecord> newSerializer = new AvroSerializer<>(GenericRecord.class, FIRST_REQUIRED_LAST_OPTIONAL);
 
 		TypeSerializerSnapshot<GenericRecord> originalSnapshot = originalSerializer.snapshotConfiguration();
 
-		assertThat(originalSnapshot.resolveSchemaCompatibility(newSerializer), isCompatibleAsIs());
+		assertThat(originalSnapshot.resolveSchemaCompatibility(newSerializer), isCompatibleAfterMigration());
 	}
 
 	@Test
@@ -229,16 +229,16 @@ public class AvroSerializerSnapshotTest {
 	 * Serialize an (avro)TypeSerializerSnapshot and deserialize it.
 	 */
 	private static <T> AvroSerializerSnapshot<T> roundTrip(TypeSerializerSnapshot<T> original) throws IOException {
-		// write
+		// writeSnapshot();
 		DataOutputSerializer out = new DataOutputSerializer(1024);
-		original.write(out);
+		original.writeSnapshot(out);
 
 		// init
 		AvroSerializerSnapshot<T> restored = new AvroSerializerSnapshot<>();
 
-		// read
+		// readSnapshot();
 		DataInputView in = new DataInputDeserializer(out.wrapAsByteBuffer());
-		restored.read(restored.getCurrentVersion(), in, original.getClass().getClassLoader());
+		restored.readSnapshot(restored.getCurrentVersion(), in, original.getClass().getClassLoader());
 
 		return restored;
 	}

@@ -43,7 +43,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * @param <T> The data type that the originating serializer of this configuration serializes.
  */
-public final class AvroSerializerSnapshot<T> implements TypeSerializerSnapshot<T> {
+public class AvroSerializerSnapshot<T> implements TypeSerializerSnapshot<T> {
 	private Class<T> runtimeType;
 	private Schema schema;
 	private Schema runtimeSchema;
@@ -60,11 +60,11 @@ public final class AvroSerializerSnapshot<T> implements TypeSerializerSnapshot<T
 
 	@Override
 	public int getCurrentVersion() {
-		return 1;
+		return 2;
 	}
 
 	@Override
-	public void write(DataOutputView out) throws IOException {
+	public void writeSnapshot(DataOutputView out) throws IOException {
 		checkNotNull(runtimeType);
 		checkNotNull(schema);
 
@@ -74,7 +74,29 @@ public final class AvroSerializerSnapshot<T> implements TypeSerializerSnapshot<T
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public void read(int readVersion, DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
+	public void readSnapshot(int readVersion, DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
+		switch (readVersion) {
+			case 1: {
+				readV1(in, userCodeClassLoader);
+				return;
+			}
+			case 2: {
+				readV2(in, userCodeClassLoader);
+				return;
+			}
+			default:
+				throw new IllegalArgumentException("unknown snapshot version for AvroSerializerSnapshot " + readVersion);
+		}
+	}
+
+	private void readV1(DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
+		final String previousSchemaDefinition = in.readUTF();
+		this.schema = parseAvroSchema(previousSchemaDefinition);
+		this.runtimeType = findClassOrThrow(userCodeClassLoader, schema.getFullName()); // TODO: change
+		this.runtimeSchema = tryExtractAvroSchema(userCodeClassLoader, runtimeType);
+	}
+
+	private void readV2(DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
 		final String previousRuntimeTypeName = in.readUTF();
 		final String previousSchemaDefinition = in.readUTF();
 
@@ -134,11 +156,12 @@ public final class AvroSerializerSnapshot<T> implements TypeSerializerSnapshot<T
 
 	private static <T, NS extends TypeSerializer<T>> TypeSerializerSchemaCompatibility<T, NS>
 	avroCompatibilityToFlinkCompatibility(SchemaPairCompatibility compatibility) {
+
 		switch (compatibility.getType()) {
 			case COMPATIBLE: {
 				// The new serializer would be able to read data persisted with *this* serializer, therefore no migration
 				// is required.
-				return TypeSerializerSchemaCompatibility.compatibleAsIs();
+				return TypeSerializerSchemaCompatibility.compatibleAfterMigration();
 			}
 			case INCOMPATIBLE: {
 				return TypeSerializerSchemaCompatibility.incompatible();
