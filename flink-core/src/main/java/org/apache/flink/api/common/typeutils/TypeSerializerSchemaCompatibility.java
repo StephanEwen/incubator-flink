@@ -34,13 +34,11 @@ import javax.annotation.Nullable;
  *
  * @param <T> the type of data serialized by the serializer that was being checked.
  *
- * @param <NS> the type of serializer that was being checked.
- *
  * @see TypeSerializer
  * @see TypeSerializerConfigSnapshot#resolveSchemaCompatibility(TypeSerializer)
  */
 @PublicEvolving
-public class TypeSerializerSchemaCompatibility<T, NS extends TypeSerializer<T>> {
+public class TypeSerializerSchemaCompatibility<T> {
 
 	/**
 	 * Enum for the type of the compatibility.
@@ -77,7 +75,7 @@ public class TypeSerializerSchemaCompatibility<T, NS extends TypeSerializer<T>> 
 	 *
 	 * @return a result that indicates migration is not required for the new serializer.
 	 */
-	public static <T, NS extends TypeSerializer<T>> TypeSerializerSchemaCompatibility<T, NS> compatibleAsIs() {
+	public static <T> TypeSerializerSchemaCompatibility<T> compatibleAsIs() {
 		return new TypeSerializerSchemaCompatibility<>(Type.COMPATIBLE_AS_IS, null);
 	}
 
@@ -87,7 +85,7 @@ public class TypeSerializerSchemaCompatibility<T, NS extends TypeSerializer<T>> 
 	 *
 	 * @return a result that indicates that the new serializer can be used after migrating the written bytes.
 	 */
-	public static <T, NS extends TypeSerializer<T>> TypeSerializerSchemaCompatibility<T, NS> compatibleAfterMigration() {
+	public static <T> TypeSerializerSchemaCompatibility<T> compatibleAfterMigration() {
 		return new TypeSerializerSchemaCompatibility<>(Type.COMPATIBLE_AFTER_MIGRATION, null);
 	}
 
@@ -101,11 +99,11 @@ public class TypeSerializerSchemaCompatibility<T, NS extends TypeSerializer<T>> 
 	 *
 	 * @return a result that indicates incompatibility between the new and previous serializer.
 	 */
-	public static <T, NS extends TypeSerializer<T>> TypeSerializerSchemaCompatibility<T, NS> incompatible() {
+	public static <T> TypeSerializerSchemaCompatibility<T> incompatible() {
 		return new TypeSerializerSchemaCompatibility<>(Type.INCOMPATIBLE, null);
 	}
 
-	private TypeSerializerSchemaCompatibility(Type resultType, @Nullable NS reconfiguredNewSerializer) {
+	private TypeSerializerSchemaCompatibility(Type resultType, @Nullable TypeSerializer<T> reconfiguredNewSerializer) {
 		this.resultType = Preconditions.checkNotNull(resultType);
 	}
 

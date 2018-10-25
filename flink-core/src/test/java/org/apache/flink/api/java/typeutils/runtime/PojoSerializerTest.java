@@ -311,7 +311,7 @@ public class PojoSerializerTest extends SerializerTestBase<PojoSerializerTest.Te
 		}
 
 		@SuppressWarnings("unchecked")
-		TypeSerializerSchemaCompatibility<SubTestUserClassA, ?> compatResult =
+		TypeSerializerSchemaCompatibility<SubTestUserClassA> compatResult =
 			pojoSerializerConfigSnapshot.resolveSchemaCompatibility(pojoSerializer2);
 		assertTrue(compatResult.isIncompatible());
 	}
@@ -354,7 +354,7 @@ public class PojoSerializerTest extends SerializerTestBase<PojoSerializerTest.Te
 		}
 
 		@SuppressWarnings("unchecked")
-		TypeSerializerSchemaCompatibility<TestUserClass, ?> compatResult =
+		TypeSerializerSchemaCompatibility<TestUserClass> compatResult =
 			pojoSerializerConfigSnapshot.resolveSchemaCompatibility(pojoSerializer);
 		assertTrue(compatResult.isCompatibleAsIs());
 
@@ -401,7 +401,7 @@ public class PojoSerializerTest extends SerializerTestBase<PojoSerializerTest.Te
 
 		// reconfigure - check reconfiguration result and that subclass serializer cache is repopulated
 		@SuppressWarnings("unchecked")
-		TypeSerializerSchemaCompatibility<TestUserClass, ?> compatResult =
+		TypeSerializerSchemaCompatibility<TestUserClass> compatResult =
 			pojoSerializerConfigSnapshot.resolveSchemaCompatibility(pojoSerializer);
 		assertTrue(compatResult.isCompatibleAsIs());
 		assertEquals(2, pojoSerializer.getSubclassSerializerCache().size());
@@ -466,7 +466,7 @@ public class PojoSerializerTest extends SerializerTestBase<PojoSerializerTest.Te
 		// 1) subclass serializer cache is repopulated
 		// 2) registrations also contain the now registered subclasses
 		@SuppressWarnings("unchecked")
-		TypeSerializerSchemaCompatibility<TestUserClass, ?> compatResult =
+		TypeSerializerSchemaCompatibility<TestUserClass> compatResult =
 			pojoSerializerConfigSnapshot.resolveSchemaCompatibility(pojoSerializer);
 		assertTrue(compatResult.isCompatibleAsIs());
 		assertEquals(2, pojoSerializer.getSubclassSerializerCache().size());
@@ -544,7 +544,7 @@ public class PojoSerializerTest extends SerializerTestBase<PojoSerializerTest.Te
 				new HashMap<>()); // empty; irrelevant for this test
 
 		// reconfigure - check reconfiguration result and that fields are reordered to the previous order
-		TypeSerializerSchemaCompatibility<TestUserClass, ?> compatResult =
+		TypeSerializerSchemaCompatibility<TestUserClass> compatResult =
 			mockPreviousConfigSnapshot.resolveSchemaCompatibility(pojoSerializer);
 		assertTrue(compatResult.isCompatibleAsIs());
 		int i = 0;

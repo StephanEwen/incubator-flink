@@ -24,7 +24,9 @@ import org.apache.flink.core.memory.DataOutputView;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.function.Function;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
@@ -39,7 +41,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * their formats independently.
  */
 @Internal
-public abstract class ProductSerializerSnapshot<T, S extends TypeSerializer<T>> implements TypeSerializerSnapshot<T> {
+public class ProductSerializerSnapshot {
 
 	/** Magic number for integrity checks during deserialization. */
 	private static final int MAGIC_NUMBER = 1333245;
@@ -47,31 +49,82 @@ public abstract class ProductSerializerSnapshot<T, S extends TypeSerializer<T>> 
 	/** Current version of the new serialization format. */
 	private static final int VERSION = 1;
 
-	private TypeSerializerSnapshot<?>[] nestedSnapshots;
+	/** The snapshots from the serializer that make up this composition. */
+	private final TypeSerializerSnapshot<?>[] nestedSnapshots;
 
 	/**
-	 * Constructor for read instantiation.
+	 * Constructor to create a snapshot for writing.
 	 */
-	protected ProductSerializerSnapshot() {}
-
-	/**
-	 * Constructor for writing snapshot.
-	 */
-	protected ProductSerializerSnapshot(TypeSerializer<?>... serializers) {
+	public ProductSerializerSnapshot(TypeSerializer<?>... serializers) {
 		this.nestedSnapshots = TypeSerializerUtils.snapshotBackwardsCompatible(serializers);
 	}
 
+	/**
+	 * Constructor to create a snapshot during deserialization.
+	 */
+	private ProductSerializerSnapshot(TypeSerializerSnapshot<?>[] snapshots) {
+		this.nestedSnapshots = snapshots;
+	}
+
 	// ------------------------------------------------------------------------
-	//
+	//  Nested Serializers and Compatibility
 	// ------------------------------------------------------------------------
 
-	protected abstract TypeSerializer<T> createSerializer(TypeSerializer<?>... nestedSerializers);
+	public TypeSerializer<?>[] getRestoreSerializers() {
+		return snapshotsToRestoreSerializers(nestedSnapshots);
+	}
 
-	protected abstract TypeSerializer<?>[] getNestedSerializersFromSerializer(S serializer);
+	public <T> TypeSerializer<T> getRestoreSerializer(int pos) {
+		checkArgument(pos < nestedSnapshots.length);
 
-	protected abstract TypeSerializerSchemaCompatibility<T, S> outerCompatibility(S serializer);
+		@SuppressWarnings("unchecked")
+		TypeSerializerSnapshot<T> snapshot = (TypeSerializerSnapshot<T>) nestedSnapshots[pos];
 
-	protected abstract Class<?> outerSerializerType();
+		return snapshot.restoreSerializer();
+	}
+
+	public <T, S> TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(
+			TypeSerializer<T> outerSerializer,
+			Class<S> requiredOuterSerializerType,
+			Function<S, TypeSerializer<?>[]> serializerAccessor,
+			Function<S, TypeSerializerSchemaCompatibility<?>> outerCompatibility) {
+
+		// class compatibility
+		if (!requiredOuterSerializerType.isInstance(outerSerializer)) {
+			return TypeSerializerSchemaCompatibility.incompatible();
+		}
+
+		// compatibility of the outer serializer's format
+
+		@SuppressWarnings("unchecked")
+		final S castedSerializer = (S) outerSerializer;
+		final TypeSerializerSchemaCompatibility<?> outerResult = outerCompatibility.apply(castedSerializer);
+
+		if (outerResult.isIncompatible()) {
+			return TypeSerializerSchemaCompatibility.incompatible();
+		}
+		if (outerResult.isCompatibleAfterMigration()) {
+			return TypeSerializerSchemaCompatibility.compatibleAfterMigration();
+		}
+
+		// check nested serializers for compatibility
+		final TypeSerializer<?>[] nestedSerializers = serializerAccessor.apply(castedSerializer);
+		checkState(nestedSerializers.length == nestedSnapshots.length);
+
+		for (int i = 0; i < nestedSnapshots.length; i++) {
+			TypeSerializerSchemaCompatibility<?> compatibility =
+					resolveCompatibility(nestedSerializers[i], nestedSnapshots[i]);
+
+			if (compatibility.isIncompatible()) {
+				return TypeSerializerSchemaCompatibility.incompatible();
+			}
+			if (compatibility.isCompatibleAfterMigration()) {
+				return TypeSerializerSchemaCompatibility.compatibleAfterMigration();
+			}
+		}
+
+		return TypeSerializerSchemaCompatibility.compatibleAsIs();
+	}
 
 	// ------------------------------------------------------------------------
 	//  Serialization
@@ -93,7 +146,7 @@ public abstract class ProductSerializerSnapshot<T, S extends TypeSerializer<T>> 
 	/**
 	 * Reads the composite snapshot of all the contained serializers.
 	 */
-	public final void readProductSnapshots(DataInputView in, ClassLoader cl) throws IOException {
+	public static ProductSerializerSnapshot readProductSnapshot(DataInputView in, ClassLoader cl) throws IOException {
 		final int magicNumber = in.readInt();
 		if (magicNumber != MAGIC_NUMBER) {
 			throw new IOException(String.format("Corrupt data, magic number mismatch. Expected %8x, found %8x",
@@ -106,66 +159,17 @@ public abstract class ProductSerializerSnapshot<T, S extends TypeSerializer<T>> 
 		}
 
 		final int numSnapshots = in.readInt();
-		nestedSnapshots = new TypeSerializerSnapshot<?>[numSnapshots];
+		final TypeSerializerSnapshot<?>[] nestedSnapshots = new TypeSerializerSnapshot<?>[numSnapshots];
 
 		for (int i = 0; i < numSnapshots; i++) {
 			nestedSnapshots[i] = TypeSerializerSnapshot.readVersionedSnapshot(in, cl);
 		}
+
+		return new ProductSerializerSnapshot(nestedSnapshots);
 	}
 
-	public final void legacyReadProductSnapshots(DataInputView in, ClassLoader cl) throws IOException {
+	public static ProductSerializerSnapshot legacyReadProductSnapshots(DataInputView in, ClassLoader cl) throws IOException {
 		throw new UnsupportedOperationException("bäh!");
-	}
-
-	// ------------------------------------------------------------------------
-	//  Type Serializer Snapshot
-	// ------------------------------------------------------------------------
-
-	@Override
-	public TypeSerializer<T> restoreSerializer() {
-		TypeSerializer<?>[] nestedSerializers = snapshotsToRestoreSerializers(nestedSnapshots);
-		return createSerializer(nestedSerializers);
-	}
-
-	public <NS extends TypeSerializer<T>> TypeSerializerSchemaCompatibility<T, NS>
-	resolveSchemaCompatibility(NS newSerializer) {
-
-		// class compatibility
-		if (!outerSerializerType().isInstance(newSerializer)) {
-			return TypeSerializerSchemaCompatibility.incompatible();
-		}
-
-		// compatibility of the outer serializer's format
-
-		@SuppressWarnings("unchecked")
-		final S castedSerializer = (S) newSerializer;
-		final TypeSerializerSchemaCompatibility<T, S> outerCompatibility = outerCompatibility(castedSerializer);
-
-		if (outerCompatibility.isIncompatible()) {
-			return TypeSerializerSchemaCompatibility.incompatible();
-		}
-		if (outerCompatibility.isCompatibleAfterMigration()) {
-			return TypeSerializerSchemaCompatibility.compatibleAfterMigration();
-		}
-
-		// check nested serializers for compatibility
-
-		final TypeSerializer<?>[] nestedSerializers = getNestedSerializersFromSerializer(castedSerializer);
-		checkState(nestedSerializers.length == nestedSnapshots.length);
-
-		for (int i = 0; i < nestedSnapshots.length; i++) {
-			TypeSerializerSchemaCompatibility<?, ?> compatibility =
-					resolveCompatibility(nestedSerializers[i], nestedSnapshots[i]);
-
-			if (compatibility.isIncompatible()) {
-				return TypeSerializerSchemaCompatibility.incompatible();
-			}
-			if (compatibility.isCompatibleAfterMigration()) {
-				return TypeSerializerSchemaCompatibility.compatibleAfterMigration();
-			}
-		}
-
-		return TypeSerializerSchemaCompatibility.compatibleAsIs();
 	}
 
 	// ------------------------------------------------------------------------
@@ -176,11 +180,11 @@ public abstract class ProductSerializerSnapshot<T, S extends TypeSerializer<T>> 
 	 * Utility method to conjure up a new scope for the generic parameters.
 	 */
 	@SuppressWarnings("unchecked")
-	private static <E, X extends TypeSerializer<E>> TypeSerializerSchemaCompatibility<E, X> resolveCompatibility(
+	private static <E> TypeSerializerSchemaCompatibility<E> resolveCompatibility(
 			TypeSerializer<?> serializer,
 			TypeSerializerSnapshot<?> snapshot) {
 
-		X typedSerializer = (X) serializer;
+		TypeSerializer<E> typedSerializer = (TypeSerializer<E>) serializer;
 		TypeSerializerSnapshot<E> typedSnapshot = (TypeSerializerSnapshot<E>) snapshot;
 
 		return typedSnapshot.resolveSchemaCompatibility(typedSerializer);
