@@ -135,7 +135,7 @@ public abstract class TypeSerializerConfigSnapshot<T> extends VersionedIOReadabl
 
 			throw new IllegalStateException(
 					"Could not Java-deserialize TypeSerializer while restoring checkpoint metadata for serializer " +
-					"snapshot '" + getClass().getName() + "'." +
+					"snapshot '" + getClass().getName() + "'. " +
 					"Please update to the TypeSerializerSnapshot interface that removes Java Serialization to avoid " +
 					"this problem in the future.", originalError);
 		} else {

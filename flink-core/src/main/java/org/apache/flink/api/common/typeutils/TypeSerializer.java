@@ -232,11 +232,11 @@ public abstract class TypeSerializer<T> implements Serializable {
 	public CompatibilityResult<T> ensureCompatibility(TypeSerializerConfigSnapshot<?> configSnapshot) {
 		throw new UnsupportedOperationException(
 				"This method is not supported any more - please evolve your TypeSerializer the following way:\n\n" +
-				"  - If you have a serializer whose 'ensureCompatibility()' method delegates to other\n" +
-				"    serializers' 'ensureCompatibility()', please use" +
+				"  - If you have a serializer whose 'ensureCompatibility()' method delegates to another\n" +
+				"    serializer's 'ensureCompatibility()', please use" +
 						"'CompatibilityUtil.resolveCompatibilityResult(snapshot, this)' instead.\n\n" +
 				"  - If you updated your serializer (removed overriding the 'ensureCompatibility()' method),\n" +
-				"    please also update the corresponding config snapshot to not extend\n" +
-				"    'TypeSerializerConfigSnapshot' any more.");
+				"    please also update the corresponding config snapshot to not extend 'TypeSerializerConfigSnapshot'" +
+						"any more.\n\n");
 	}
 }
