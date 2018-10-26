@@ -105,12 +105,13 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 
 	@Test
 	public void testSnapshotConfigurationAndReconfigure() throws Exception {
-		final TypeSerializerSnapshot<T> configSnapshot = getSerializer().snapshotConfiguration();
+		final TypeSerializer<T> serializer = getSerializer();
+		final TypeSerializerSnapshot<T> configSnapshot = serializer.snapshotConfiguration();
 
 		byte[] serializedConfig;
 		try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 			TypeSerializerSnapshotSerializationUtil.writeSerializerSnapshot(
-				new DataOutputViewStreamWrapper(out), configSnapshot, getSerializer());
+				new DataOutputViewStreamWrapper(out), configSnapshot, serializer);
 			serializedConfig = out.toByteArray();
 		}
 
@@ -122,6 +123,9 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 
 		TypeSerializerSchemaCompatibility<T, ? extends TypeSerializer<T>> strategy = restoredConfig.resolveSchemaCompatibility(getSerializer());
 		assertTrue(strategy.isCompatibleAsIs());
+
+		TypeSerializer<T> restoreSerializer = restoredConfig.restoreSerializer();
+		assertEquals(serializer.getClass(), restoreSerializer.getClass());
 	}
 
 	@Test
