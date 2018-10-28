@@ -55,12 +55,12 @@ public class CompositeTypeSerializerSnapshotMigrationTest extends TypeSerializer
 
 		// GenericArray<String>
 
-		final TestSpecification<String[]> array = TestSpecification.<String[]>builder("1.6-generic-array", GenericArraySerializer.class ,GenericArraySerializerConfigSnapshot.class)
+		final TestSpecification<String[]> array = TestSpecification.<String[]>builder("1.6-generic-array", GenericArraySerializer.class, GenericArraySerializerConfigSnapshot.class)
 			.withSerializerProvider(() -> new GenericArraySerializer<>(String.class, StringSerializer.INSTANCE))
 			.withSnapshotDataLocation("flink-1.6-array-type-serializer-snapshot")
 			.withTestData("flink-1.6-array-type-serializer-data", 10);
 
-		return Arrays.<Object[]>asList(
+		return Arrays.asList(
 			new Object[]{either},
 			new Object[]{array}
 		);
