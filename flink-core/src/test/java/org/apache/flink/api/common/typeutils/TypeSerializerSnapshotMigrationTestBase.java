@@ -143,15 +143,7 @@ public abstract class TypeSerializerSnapshotMigrationTestBase<ElementT> extends 
 		List<Tuple2<TypeSerializer<?>, TypeSerializerSnapshot<?>>> serializers =
 			TypeSerializerSerializationUtil.readSerializersAndConfigsWithResilience(input, cl);
 
-		Tuple2<TypeSerializer<?>, TypeSerializerSnapshot<?>> serializer = serializers.get(0);
-
-		if (serializer.f1 instanceof  TypeSerializerConfigSnapshot) {
-			TypeSerializerConfigSnapshot<ElementT> priorSnapshot = (TypeSerializerConfigSnapshot<ElementT>) serializer.f1;
-			TypeSerializer<ElementT> priorSerializer = (TypeSerializer<ElementT>) serializer.f0;
-			priorSnapshot.setPriorSerializer(priorSerializer);
-		}
-
-		return (TypeSerializerSnapshot<ElementT>) serializer.f1;
+		return (TypeSerializerSnapshot<ElementT>) serializers.get(0).f1;
 	}
 
 	private DataInputView dataUnderTest() {
