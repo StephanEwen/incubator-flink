@@ -77,8 +77,7 @@ public class SimpleTypeSerializerSnapshot<T> implements TypeSerializerSnapshot<T
 	}
 
 	@Override
-	public <NS extends TypeSerializer<T>> TypeSerializerSchemaCompatibility<T, NS>
-	resolveSchemaCompatibility(NS newSerializer) {
+	public TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(TypeSerializer<T> newSerializer) {
 
 		checkState(serializerClass != null);
 		return newSerializer.getClass() == serializerClass ?

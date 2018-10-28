@@ -4703,8 +4703,8 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 			}
 
 			@Override
-			public <NS extends TypeSerializer<TestCustomStateClass>> TypeSerializerSchemaCompatibility<TestCustomStateClass, NS>
-			resolveSchemaCompatibility(NS newSerializer) {
+			public TypeSerializerSchemaCompatibility<TestCustomStateClass>
+			resolveSchemaCompatibility(TypeSerializer<TestCustomStateClass> newSerializer) {
 
 				if (newSerializer instanceof TestReconfigurableCustomTypeSerializer) {
 					((TestReconfigurableCustomTypeSerializer) newSerializer).reconfigured = true;
