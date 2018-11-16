@@ -132,7 +132,7 @@ public final class IOUtils {
 		while (toRead > 0) {
 			final int ret = in.read(buf, off, toRead);
 			if (ret < 0) {
-				throw new IOException("Premeture EOF from inputStream");
+				throw new IOException("Premature EOF from inputStream");
 			}
 			toRead -= ret;
 			off += ret;
