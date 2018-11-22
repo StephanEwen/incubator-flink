@@ -26,7 +26,6 @@ import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.util.InstantiationUtil;
-import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TestLogger;
 
 import org.apache.commons.lang3.SerializationException;
@@ -42,7 +41,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.CyclicBarrier;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -75,6 +73,16 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 
 	protected abstract T[] getTestData();
 
+	// --------------------------------------------------------------------------------------------
+	//  element equality
+	// --------------------------------------------------------------------------------------------
+
+	protected boolean typesEquals(T a, T b) {
+		return a == b || (a != null && b != null && a.equals(b));
+	}
+
+	// --------------------------------------------------------------------------------------------
+	//  The individual tests
 	// --------------------------------------------------------------------------------------------
 
 	@Test
@@ -441,13 +449,13 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 		final int numThreads = 10;
 		final TypeSerializer<T> serializer = getSerializer();
 		final CyclicBarrier startLatch = new CyclicBarrier(numThreads);
-		final List<SerializerRunner<T>> concurrentRunners = new ArrayList<>(numThreads);
+		final List<SerializerRunner> concurrentRunners = new ArrayList<>(numThreads);
 		Assert.assertEquals(serializer, serializer.duplicate());
 
 		T[] testData = getData();
 
 		for (int i = 0; i < numThreads; ++i) {
-			SerializerRunner<T> runner = new SerializerRunner<>(
+			SerializerRunner runner = new SerializerRunner(
 				startLatch,
 				serializer.duplicate(),
 				testData,
@@ -457,7 +465,7 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 			concurrentRunners.add(runner);
 		}
 
-		for (SerializerRunner<T> concurrentRunner : concurrentRunners) {
+		for (SerializerRunner concurrentRunner : concurrentRunners) {
 			concurrentRunner.join();
 			concurrentRunner.checkResult();
 		}
@@ -503,7 +511,10 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 			assertEquals(((Throwable)should).getMessage(), ((Throwable)is).getMessage());
 		}
 		else {
-			assertEquals(message,  should, is);
+			if (!typesEquals(should, is)) {
+				// call assertEquals again for the error message
+				assertEquals(message,  should, is);
+			}
 		}
 	}
 
@@ -555,9 +566,8 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 
 	/**
 	 * Runner to test serializer duplication via concurrency.
-	 * @param <T> type of the test elements.
 	 */
-	static class SerializerRunner<T> extends Thread {
+	class SerializerRunner extends Thread {
 		final CyclicBarrier allReadyBarrier;
 		final TypeSerializer<T> serializer;
 		final T[] testData;
@@ -595,8 +605,9 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 						T copySerdeTestItem = serializer.copy(serdeTestItem);
 						dataOutputSerializer.clear();
 
-						Preconditions.checkState(Objects.deepEquals(testItem, copySerdeTestItem),
-							"Serialization/Deserialization cycle resulted in an object that are not equal to the original.");
+						deepEquals(
+								"Serialization/Deserialization cycle resulted in an object that are not equal to the original.",
+								testItem, copySerdeTestItem);
 
 						// try to enforce some upper bound to the test time
 						if (System.nanoTime() >= endTimeNanos) {
