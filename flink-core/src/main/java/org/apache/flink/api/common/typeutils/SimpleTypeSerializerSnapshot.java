@@ -54,12 +54,6 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 	private Class<? extends TypeSerializer<T>> serializerClass;
 
 	/**
-	 * Default constructor for instantiation on restore (reading the snapshot).
-	 */
-	@SuppressWarnings("unused")
-	public SimpleTypeSerializerSnapshot() {}
-
-	/**
 	 * Constructor to create snapshot from serializer (writing the snapshot).
 	 */
 	public SimpleTypeSerializerSnapshot(@Nonnull Class<? extends TypeSerializer<T>> serializerClass) {
