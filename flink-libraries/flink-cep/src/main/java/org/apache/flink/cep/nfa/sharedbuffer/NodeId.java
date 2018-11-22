@@ -20,7 +20,6 @@ package org.apache.flink.cep.nfa.sharedbuffer;
 
 import org.apache.flink.api.common.typeutils.SimpleTypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
-import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton;
 import org.apache.flink.core.memory.DataInputView;
@@ -141,10 +140,14 @@ public class NodeId {
 
 		@Override
 		public void copy(DataInputView source, DataOutputView target) throws IOException {
-			target.writeByte(source.readByte());
+			byte isNull = source.readByte();
+			target.writeByte(isNull);
 
-			LongSerializer.INSTANCE.copy(source, target); // eventId
-			LongSerializer.INSTANCE.copy(source, target); // timestamp
+			if (isNull == 0) {
+				return;
+			}
+
+			EventId.EventIdSerializer.INSTANCE.copy(source, target); // eventId
 			StringSerializer.INSTANCE.copy(source, target); // pageName
 		}
 
