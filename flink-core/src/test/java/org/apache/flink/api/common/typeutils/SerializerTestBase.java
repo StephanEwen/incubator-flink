@@ -79,27 +79,20 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 
 	@Test
 	public void testInstantiate() {
-		try {
-			TypeSerializer<T> serializer = getSerializer();
-			if(serializer.getClass().getName().endsWith("KryoSerializer")) {
-				// the kryo serializer will return null. We ignore this test for Kryo.
-				return;
-			}
-			T instance = serializer.createInstance();
-			assertNotNull("The created instance must not be null.", instance);
+		TypeSerializer<T> serializer = getSerializer();
+		T instance = serializer.createInstance();
 
-			Class<T> type = getTypeClass();
-			assertNotNull("The test is corrupt: type class is null.", type);
-
-			if (!type.isAssignableFrom(instance.getClass())) {
-				fail("Type of the instantiated object is wrong. " +
-					"Expected Type: " + type + " present type " + instance.getClass());
-			}
+		// null is okay as a return value
+		if (instance == null) {
+			return;
 		}
-		catch (Exception e) {
-			System.err.println(e.getMessage());
-			e.printStackTrace();
-			fail("Exception in test: " + e.getMessage());
+
+		Class<T> type = getTypeClass();
+		assertNotNull("The test is corrupt: type class is null.", type);
+
+		if (!type.isAssignableFrom(instance.getClass())) {
+			fail("Type of the instantiated object is wrong. " +
+				"Expected Type: " + type + " present type " + instance.getClass());
 		}
 	}
 
