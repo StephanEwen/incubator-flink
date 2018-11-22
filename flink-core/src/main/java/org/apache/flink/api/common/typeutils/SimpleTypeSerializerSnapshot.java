@@ -83,7 +83,6 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 
 	@Override
 	public TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(TypeSerializer<T> newSerializer) {
-
 		checkState(serializerClass != null);
 		return newSerializer.getClass() == serializerClass ?
 				TypeSerializerSchemaCompatibility.compatibleAsIs() :
@@ -109,7 +108,7 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 
 	private void read(DataInputView in, ClassLoader classLoader) throws IOException {
 		final String className = in.readUTF();
-		final Class<?> clazz = resolveClassName(className, classLoader, false);
+		final Class<?> clazz = resolveClassName(className, classLoader);
 		this.serializerClass = cast(clazz);
 	}
 
@@ -136,19 +135,11 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 	//  utilities
 	// ------------------------------------------------------------------------
 
-	private static Class<?> resolveClassName(String className, ClassLoader cl, boolean allowCanonicalName) throws IOException {
+	private static Class<?> resolveClassName(String className, ClassLoader cl) throws IOException {
 		try {
 			return Class.forName(className, false, cl);
 		}
 		catch (ClassNotFoundException e) {
-			if (allowCanonicalName) {
-				try {
-					return Class.forName(guessClassNameFromCanonical(className), false, cl);
-				}
-				catch (ClassNotFoundException ignored) {}
-			}
-
-			// throw with original ClassNotFoundException
 			throw new IOException(
 						"Failed to read SimpleTypeSerializerSnapshot: Serializer class not found: " + className, e);
 		}
@@ -162,14 +153,5 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 		}
 
 		return (Class<? extends TypeSerializer<T>>) clazz;
-	}
-
-	static String guessClassNameFromCanonical(String className) {
-		int lastDot = className.lastIndexOf('.');
-		if (lastDot > 0 && lastDot < className.length() - 1) {
-			return className.substring(0, lastDot) + '$' + className.substring(lastDot + 1);
-		} else {
-			return className;
-		}
 	}
 }
