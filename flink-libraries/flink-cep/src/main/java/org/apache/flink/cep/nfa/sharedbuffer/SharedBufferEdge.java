@@ -18,6 +18,8 @@
 
 package org.apache.flink.cep.nfa.sharedbuffer;
 
+import org.apache.flink.api.common.typeutils.SimpleTypeSerializerSnapshot;
+import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton;
 import org.apache.flink.cep.nfa.DeweyNumber;
 import org.apache.flink.core.memory.DataInputView;
@@ -121,6 +123,18 @@ public class SharedBufferEdge {
 		@Override
 		public boolean canEqual(Object obj) {
 			return obj.getClass().equals(SharedBufferEdgeSerializer.class);
+		}
+
+		@Override
+		public TypeSerializerSnapshot<SharedBufferEdge> snapshotConfiguration() {
+			return new SharedBufferEdgeSerializerSnapshot();
+		}
+
+		public static class SharedBufferEdgeSerializerSnapshot extends SimpleTypeSerializerSnapshot<SharedBufferEdge> {
+
+			public SharedBufferEdgeSerializerSnapshot() {
+				super(INSTANCE);
+			}
 		}
 	}
 }

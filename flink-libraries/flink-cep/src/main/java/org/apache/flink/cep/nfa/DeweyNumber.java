@@ -18,7 +18,9 @@
 
 package org.apache.flink.cep.nfa;
 
+import org.apache.flink.api.common.typeutils.SimpleTypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton;
 import org.apache.flink.core.memory.DataInputView;
@@ -271,6 +273,18 @@ public class DeweyNumber implements Serializable {
 		@Override
 		public int hashCode() {
 			return elemSerializer.hashCode();
+		}
+
+		@Override
+		public TypeSerializerSnapshot<DeweyNumber> snapshotConfiguration() {
+			return new DeweyNumberSerializerSnapshot();
+		}
+
+		public static class DeweyNumberSerializerSnapshot extends SimpleTypeSerializerSnapshot<DeweyNumber> {
+
+			public DeweyNumberSerializerSnapshot() {
+				super(INSTANCE);
+			}
 		}
 	}
 }
