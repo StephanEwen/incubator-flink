@@ -83,12 +83,12 @@ public class SharedBufferEdge {
 
 		@Override
 		public SharedBufferEdge copy(SharedBufferEdge from) {
-			return new SharedBufferEdge(from.target, from.deweyNumber);
+			return from;
 		}
 
 		@Override
 		public SharedBufferEdge copy(SharedBufferEdge from, SharedBufferEdge reuse) {
-			return copy(from);
+			return from;
 		}
 
 		@Override

@@ -20,7 +20,6 @@ package org.apache.flink.cep.nfa.sharedbuffer;
 
 import org.apache.flink.api.common.typeutils.SimpleTypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
-import org.apache.flink.api.common.typeutils.base.ListSerializer;
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton;
 import org.apache.flink.cep.nfa.sharedbuffer.SharedBufferEdge.SharedBufferEdgeSerializer;
 import org.apache.flink.core.memory.DataInputView;
@@ -65,9 +64,6 @@ public class SharedBufferNode {
 
 		private static final long serialVersionUID = -6687780732295439832L;
 
-		private final ListSerializer<SharedBufferEdge> edgesSerializer =
-			new ListSerializer<>(SharedBufferEdgeSerializer.INSTANCE);
-
 		@Override
 		public boolean isImmutableType() {
 			return false;
@@ -75,12 +71,12 @@ public class SharedBufferNode {
 
 		@Override
 		public SharedBufferNode createInstance() {
-			return new SharedBufferNode(new ArrayList<>());
+			return new SharedBufferNode();
 		}
 
 		@Override
 		public SharedBufferNode copy(SharedBufferNode from) {
-			return new SharedBufferNode(edgesSerializer.copy(from.edges));
+			return new SharedBufferNode(new ArrayList<>(from.edges));
 		}
 
 		@Override
@@ -95,12 +91,24 @@ public class SharedBufferNode {
 
 		@Override
 		public void serialize(SharedBufferNode record, DataOutputView target) throws IOException {
-			edgesSerializer.serialize(record.edges, target);
+			final List<SharedBufferEdge> edges = record.getEdges();
+			target.writeInt(edges.size());
+
+			final SharedBufferEdgeSerializer ser = SharedBufferEdgeSerializer.INSTANCE;
+			for (SharedBufferEdge edge : edges) {
+				ser.serialize(edge, target);
+			}
 		}
 
 		@Override
 		public SharedBufferNode deserialize(DataInputView source) throws IOException {
-			List<SharedBufferEdge> edges = edgesSerializer.deserialize(source);
+			final int size = source.readInt();
+			final ArrayList<SharedBufferEdge> edges = new ArrayList<>(size);
+
+			final SharedBufferEdgeSerializer ser = SharedBufferEdgeSerializer.INSTANCE;
+			for (int i = size; i > 0; --i) {
+				edges.add(ser.deserialize(source));
+			}
 			return new SharedBufferNode(edges);
 		}
 
@@ -111,7 +119,13 @@ public class SharedBufferNode {
 
 		@Override
 		public void copy(DataInputView source, DataOutputView target) throws IOException {
-			edgesSerializer.copy(source, target);
+			final int size = source.readInt();
+			target.writeInt(size);
+
+			final SharedBufferEdgeSerializer ser = SharedBufferEdgeSerializer.INSTANCE;
+			for (int i = size; i > 0; --i) {
+				ser.copy(source, target);
+			}
 		}
 
 		@Override
@@ -124,6 +138,9 @@ public class SharedBufferNode {
 			return new SharedBufferNodeSerializerSnapshot();
 		}
 
+		/**
+		 * Config snapshot for the SharedBufferNodeSerializer.
+		 */
 		public static class SharedBufferNodeSerializerSnapshot extends SimpleTypeSerializerSnapshot<SharedBufferNode> {
 
 			public SharedBufferNodeSerializerSnapshot() {

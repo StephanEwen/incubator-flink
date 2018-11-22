@@ -98,12 +98,12 @@ public class NodeId {
 
 		@Override
 		public NodeId copy(NodeId from) {
-			return new NodeId(from.eventId, from.pageName);
+			return from;
 		}
 
 		@Override
 		public NodeId copy(NodeId from, NodeId reuse) {
-			return copy(from);
+			return from;
 		}
 
 		@Override

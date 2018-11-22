@@ -21,7 +21,6 @@ package org.apache.flink.cep.nfa;
 import org.apache.flink.api.common.typeutils.SimpleTypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
-import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
@@ -196,15 +195,13 @@ public class DeweyNumber implements Serializable {
 
 		private static final long serialVersionUID = -5086792497034943656L;
 
-		private final IntSerializer elemSerializer = IntSerializer.INSTANCE;
-
 		public static final DeweyNumberSerializer INSTANCE = new DeweyNumberSerializer();
 
 		private DeweyNumberSerializer() {}
 
 		@Override
 		public boolean isImmutableType() {
-			return false;
+			return true;
 		}
 
 		@Override
@@ -214,12 +211,12 @@ public class DeweyNumber implements Serializable {
 
 		@Override
 		public DeweyNumber copy(DeweyNumber from) {
-			return new DeweyNumber(from);
+			return from;
 		}
 
 		@Override
 		public DeweyNumber copy(DeweyNumber from, DeweyNumber reuse) {
-			return copy(from);
+			return from;
 		}
 
 		@Override
@@ -232,7 +229,7 @@ public class DeweyNumber implements Serializable {
 			final int size = record.length();
 			target.writeInt(size);
 			for (int i = 0; i < size; i++) {
-				elemSerializer.serialize(record.deweyNumber[i], target);
+				target.writeInt(record.deweyNumber[i]);
 			}
 		}
 
@@ -241,7 +238,7 @@ public class DeweyNumber implements Serializable {
 			final int size = source.readInt();
 			int[] number = new int[size];
 			for (int i = 0; i < size; i++) {
-				number[i] = elemSerializer.deserialize(source);
+				number[i] = source.readInt();
 			}
 			return new DeweyNumber(number);
 		}
@@ -255,9 +252,7 @@ public class DeweyNumber implements Serializable {
 		public void copy(DataInputView source, DataOutputView target) throws IOException {
 			final int size = source.readInt();
 			target.writeInt(size);
-			for (int i = 0; i < size; i++) {
-				elemSerializer.copy(source, target);
-			}
+			target.write(source, 4 * size);
 		}
 
 		@Override
@@ -272,7 +267,7 @@ public class DeweyNumber implements Serializable {
 
 		@Override
 		public int hashCode() {
-			return elemSerializer.hashCode();
+			return getClass().hashCode();
 		}
 
 		@Override
