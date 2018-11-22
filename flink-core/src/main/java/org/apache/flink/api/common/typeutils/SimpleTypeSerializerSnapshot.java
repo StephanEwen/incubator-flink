@@ -21,6 +21,7 @@ package org.apache.flink.api.common.typeutils;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.InstantiationUtil;
 
 import javax.annotation.Nonnull;
@@ -58,6 +59,7 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 	 */
 	public SimpleTypeSerializerSnapshot(@Nonnull Class<? extends TypeSerializer<T>> serializerClass) {
 		this.serializerClass = checkNotNull(serializerClass);
+		checkForInstantiation(serializerClass);
 	}
 
 	// ------------------------------------------------------------------------
@@ -147,5 +149,16 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 		}
 
 		return (Class<? extends TypeSerializer<T>>) clazz;
+	}
+
+	private static void checkForInstantiation(Class<?> clazz) {
+		try {
+			InstantiationUtil.checkForInstantiation(clazz);
+		}
+		catch (Exception e) {
+			throw new FlinkRuntimeException(
+					"The given serializer cannot be used with the SimpleTypeSerializerSnapshot. " +
+							"It cannot be instantiated via a public zero-argument constructor.");
+		}
 	}
 }
