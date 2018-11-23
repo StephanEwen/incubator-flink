@@ -24,13 +24,10 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.InstantiationUtil;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
 import java.io.IOException;
+import java.util.function.Supplier;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * A simple base class for TypeSerializerSnapshots, for serializers that have no
@@ -51,15 +48,29 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 
 	/** The class of the serializer for this snapshot.
 	 * The field is null if the serializer was created for read and has not been read, yet. */
-	@Nullable
 	private Class<? extends TypeSerializer<T>> serializerClass;
 
+	/** The factory to create the restore serializer.*/
+	private final Supplier<TypeSerializer<T>> serializerFactory;
+
 	/**
-	 * Constructor to create snapshot from serializer (writing the snapshot).
+	 * Constructor to create snapshot for serializers that can be instantiated from the class.
+	 * The class needs to declare a public zero-argument constructor.
 	 */
-	public SimpleTypeSerializerSnapshot(@Nonnull Class<? extends TypeSerializer<T>> serializerClass) {
-		this.serializerClass = checkNotNull(serializerClass);
+	public SimpleTypeSerializerSnapshot(Class<? extends TypeSerializer<T>> serializerClass) {
 		checkForInstantiation(serializerClass);
+		this.serializerClass = checkNotNull(serializerClass);
+		this.serializerFactory = () -> InstantiationUtil.instantiate(serializerClass);
+	}
+
+	/**
+	 * Constructor to create snapshot for serializers that exist as singleton instances.
+	 * The same instance is returned for the restore serializer.
+	 */
+	@SuppressWarnings("unchecked")
+	public SimpleTypeSerializerSnapshot(TypeSerializer<T> serializer) {
+		this.serializerClass = (Class<? extends TypeSerializer<T>>) serializer.getClass();
+		this.serializerFactory = () -> serializer;
 	}
 
 	// ------------------------------------------------------------------------
@@ -73,13 +84,11 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 
 	@Override
 	public TypeSerializer<T> restoreSerializer() {
-		checkState(serializerClass != null);
-		return InstantiationUtil.instantiate(serializerClass);
+		return serializerFactory.get();
 	}
 
 	@Override
 	public TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(TypeSerializer<T> newSerializer) {
-		checkState(serializerClass != null);
 		return newSerializer.getClass() == serializerClass ?
 				TypeSerializerSchemaCompatibility.compatibleAsIs() :
 				TypeSerializerSchemaCompatibility.incompatible();
@@ -87,7 +96,6 @@ public abstract class SimpleTypeSerializerSnapshot<T> implements TypeSerializerS
 
 	@Override
 	public void writeSnapshot(DataOutputView out) throws IOException {
-		checkState(serializerClass != null);
 		out.writeUTF(serializerClass.getName());
 	}
 
