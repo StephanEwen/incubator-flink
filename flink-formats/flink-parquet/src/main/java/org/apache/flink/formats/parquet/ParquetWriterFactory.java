@@ -37,12 +37,12 @@ import java.io.IOException;
 @PublicEvolving
 public class ParquetWriterFactory<T> implements BulkWriter.Factory<T> {
 
-	private static final long serialVersionUID = 1L;
-
-	private CompressionCodecName compressionCodec = CompressionCodecName.UNCOMPRESSED;
+	private static final long serialVersionUID = 2L;
 
 	/** The builder to construct the ParquetWriter. */
 	private final ParquetBuilder<T> writerBuilder;
+
+	private CompressionCodecName compressionCodec = CompressionCodecName.UNCOMPRESSED;
 
 	/**
 	 * Creates a new ParquetWriterFactory using the given builder to assemble the
@@ -67,7 +67,7 @@ public class ParquetWriterFactory<T> implements BulkWriter.Factory<T> {
 	@Override
 	public BulkWriter<T> create(FSDataOutputStream stream) throws IOException {
 		final OutputFile out = new StreamOutputFile(stream);
-		final ParquetWriter<T> writer = writerBuilder.createWriter(out, this.compressionCodec);
+		final ParquetWriter<T> writer = writerBuilder.createWriter(out, compressionCodec);
 		return new ParquetBulkWriter<>(writer);
 	}
 }

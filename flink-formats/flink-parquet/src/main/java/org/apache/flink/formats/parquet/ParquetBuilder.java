@@ -18,6 +18,8 @@
 
 package org.apache.flink.formats.parquet;
 
+import org.apache.flink.annotation.PublicEvolving;
+
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.parquet.io.OutputFile;
@@ -30,6 +32,7 @@ import java.io.Serializable;
  *
  * @param <T> The type of elements written by the writer.
  */
+@PublicEvolving
 @FunctionalInterface
 public interface ParquetBuilder<T> extends Serializable {
 
