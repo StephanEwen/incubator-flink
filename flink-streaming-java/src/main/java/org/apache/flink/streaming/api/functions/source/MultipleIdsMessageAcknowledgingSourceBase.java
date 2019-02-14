@@ -63,8 +63,8 @@ public abstract class MultipleIdsMessageAcknowledgingSourceBase<Type, UId, Sessi
 		LoggerFactory.getLogger(MultipleIdsMessageAcknowledgingSourceBase.class);
 
 	/* Session ids per pending snapshot */
-	protected transient Deque<Tuple2<Long, List<SessionId>>> sessionIdsPerSnapshot;
 
+	protected transient Deque<Tuple2<Long, List<SessionId>>> sessionIdsPerSnapshot;
 	/* Current session ids for this snapshot */
 	protected transient List<SessionId> sessionIds;
 

@@ -36,7 +36,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * own streams against a file, instances can create one stream only.
  */
 @Internal
-class StreamOutputFile implements OutputFile {
+final class StreamOutputFile implements OutputFile {
 
 	private static final long DEFAULT_BLOCK_SIZE = 64L * 1024L * 1024L;
 

@@ -31,7 +31,7 @@ import static org.apache.parquet.Preconditions.checkNotNull;
  * An adapter to turn Flink's {@link FSDataOutputStream} into a {@link PositionOutputStream}.
  */
 @Internal
-class PositionOutputStreamAdapter extends PositionOutputStream {
+final class PositionOutputStreamAdapter extends PositionOutputStream {
 
 	/** The Flink stream written to. */
 	private final FSDataOutputStream out;

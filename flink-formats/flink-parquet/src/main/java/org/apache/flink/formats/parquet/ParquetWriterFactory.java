@@ -27,6 +27,8 @@ import org.apache.parquet.io.OutputFile;
 
 import java.io.IOException;
 
+import static org.apache.parquet.Preconditions.checkNotNull;
+
 /**
  * A factory that creates a Parquet {@link BulkWriter}. The factory takes a user-supplied
  * builder to assemble Parquet's writer and then turns it into a Flink {@code BulkWriter}.
@@ -48,9 +50,22 @@ public class ParquetWriterFactory<T> implements BulkWriter.Factory<T> {
 	 * @param writerBuilder The builder to construct the ParquetWriter.
 	 */
 	public ParquetWriterFactory(ParquetBuilder<T> writerBuilder) {
-		this.writerBuilder = writerBuilder;
+		this.writerBuilder = checkNotNull(writerBuilder, "writerBuilder");
 	}
 
+<<<<<<< HEAD
+=======
+	/**
+	 * Sets the compression codec to enable compression on the ParquetWriter.
+	 *
+	 * @param compressionCodec Compression codec
+	 */
+	public ParquetWriterFactory<T> withCompressionCodec(CompressionCodecName compressionCodec) {
+		this.compressionCodec = checkNotNull(compressionCodec, "compressionCodec");
+		return this;
+	}
+
+>>>>>>> a3d71d6df0... WIP
 	@Override
 	public BulkWriter<T> create(FSDataOutputStream stream) throws IOException {
 		final OutputFile out = new StreamOutputFile(stream);
