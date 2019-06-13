@@ -24,11 +24,11 @@ import org.junit.Before;
 import java.io.IOException;
 
 /**
- * Tests for {@link CachedBufferBlocker}.
+ * Tests for {@link CachedBufferStorage}.
  */
-public class CachedBufferBlockerTest extends BufferBlockerTestBase {
+public class CachedBufferStorageTest extends BufferStorageTestBase {
 
-	private CachedBufferBlocker bufferBlocker;
+	private CachedBufferStorage bufferBlocker;
 
 	// ------------------------------------------------------------------------
 	//  Setup / Cleanup
@@ -36,7 +36,7 @@ public class CachedBufferBlockerTest extends BufferBlockerTestBase {
 
 	@Before
 	public void createBlocker() {
-		bufferBlocker = new CachedBufferBlocker(PAGE_SIZE);
+		bufferBlocker = new CachedBufferStorage(PAGE_SIZE);
 	}
 
 	@After
@@ -47,7 +47,7 @@ public class CachedBufferBlockerTest extends BufferBlockerTestBase {
 	}
 
 	@Override
-	public BufferBlocker createBufferBlocker() {
+	public BufferStorage createBufferBlocker() {
 		return  bufferBlocker;
 	}
 }
