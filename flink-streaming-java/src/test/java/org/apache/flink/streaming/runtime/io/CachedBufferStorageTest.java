@@ -47,7 +47,7 @@ public class CachedBufferStorageTest extends BufferStorageTestBase {
 	}
 
 	@Override
-	public BufferStorage createBufferBlocker() {
+	public BufferStorageImpl createBufferBlocker() {
 		return  bufferBlocker;
 	}
 }

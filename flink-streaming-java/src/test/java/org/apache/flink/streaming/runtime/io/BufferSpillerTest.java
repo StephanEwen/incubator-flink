@@ -76,7 +76,7 @@ public class BufferSpillerTest extends BufferStorageTestBase {
 	}
 
 	@Override
-	public BufferStorage createBufferBlocker() {
+	public BufferStorageImpl createBufferBlocker() {
 		return spiller;
 	}
 
@@ -92,7 +92,7 @@ public class BufferSpillerTest extends BufferStorageTestBase {
 		assertEquals(
 			"Changed the header format, but did not adjust the HEADER_SIZE field",
 			BufferSpiller.HEADER_SIZE + size,
-			spiller.getBytesBlocked());
+			spiller.getPendingBytes());
 	}
 
 	private static void checkNoTempFilesRemain() {

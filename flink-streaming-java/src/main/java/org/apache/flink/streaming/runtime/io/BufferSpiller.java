@@ -18,6 +18,7 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.event.AbstractEvent;
@@ -53,7 +54,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Internal
 @Deprecated
-public class BufferSpiller implements BufferStorage {
+public class BufferSpiller extends BufferStorageImpl {
 
 	/** Size of header in bytes (see add method). */
 	static final int HEADER_SIZE = 9;
@@ -91,14 +92,27 @@ public class BufferSpiller implements BufferStorage {
 	/** The number of bytes written since the last roll over. */
 	private long bytesWritten;
 
+	@VisibleForTesting
+	BufferSpiller(IOManager ioManager, int pageSize) throws IOException {
+		this(ioManager, pageSize, -1);
+	}
+
+	@VisibleForTesting
+	BufferSpiller(IOManager ioManager, int pageSize, long maxBufferedBytes) throws IOException {
+		this(ioManager, pageSize, maxBufferedBytes, "Testing");
+	}
+
 	/**
 	 * Creates a new {@link BufferSpiller}, spilling to one of the I/O manager's temp directories.
 	 *
 	 * @param ioManager The I/O manager for access to the temp directories.
 	 * @param pageSize The page size used to re-create spilled buffers.
+	 * @param maxBufferedBytes The maximum bytes to be buffered before the checkpoint aborts.
+	 * @param taskName The task name for logging.
 	 * @throws IOException Thrown if the temp files for spilling cannot be initialized.
 	 */
-	public BufferSpiller(IOManager ioManager, int pageSize) throws IOException {
+	public BufferSpiller(IOManager ioManager, int pageSize, long maxBufferedBytes, String taskName) throws IOException {
+		super(maxBufferedBytes, taskName);
 		this.pageSize = pageSize;
 
 		this.readBuffer = ByteBuffer.allocateDirect(READ_BUFFER_SIZE);
@@ -118,12 +132,6 @@ public class BufferSpiller implements BufferStorage {
 		createSpillingChannel();
 	}
 
-	/**
-	 * Adds a buffer or event to the sequence of spilled buffers and events.
-	 *
-	 * @param boe The buffer or event to add and spill.
-	 * @throws IOException Thrown, if the buffer of event could not be spilled.
-	 */
 	@Override
 	public void add(BufferOrEvent boe) throws IOException {
 		try {
@@ -222,6 +230,7 @@ public class BufferSpiller implements BufferStorage {
 		if (!currentSpillFile.delete()) {
 			throw new IOException("Cannot delete spill file");
 		}
+		super.close();
 	}
 
 	/**
@@ -230,7 +239,7 @@ public class BufferSpiller implements BufferStorage {
 	 * @return the number of bytes written in the current spill file
 	 */
 	@Override
-	public long getBytesBlocked() {
+	public long getPendingBytes() {
 		return bytesWritten;
 	}
 

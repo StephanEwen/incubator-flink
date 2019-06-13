@@ -18,10 +18,12 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.ArrayDeque;
 
 /**
@@ -34,7 +36,7 @@ import java.util.ArrayDeque;
  * alignment in exactly-once mode.
  */
 @Internal
-public class CachedBufferStorage implements BufferStorage {
+public class CachedBufferStorage extends BufferStorageImpl {
 
 	/** The page size, to estimate the total cached data size. */
 	private final int pageSize;
@@ -45,14 +47,20 @@ public class CachedBufferStorage implements BufferStorage {
 	/** The current memory queue for caching the buffers or events. */
 	private ArrayDeque<BufferOrEvent> currentBuffers;
 
+	@VisibleForTesting
+	CachedBufferStorage(int pageSize) {
+		this(pageSize, -1, "Testing");
+	}
+
 	/**
 	 * Creates a new {@link CachedBufferStorage}, caching the buffers or events in memory queue.
 	 *
 	 * @param pageSize The page size used to estimate the cached size.
 	 */
-	public CachedBufferStorage(int pageSize) {
+	public CachedBufferStorage(int pageSize, long maxBufferedBytes, String taskName) {
+		super(maxBufferedBytes, taskName);
 		this.pageSize = pageSize;
-		this.currentBuffers = new ArrayDeque<BufferOrEvent>();
+		this.currentBuffers = new ArrayDeque<>();
 	}
 
 	@Override
@@ -84,17 +92,18 @@ public class CachedBufferStorage implements BufferStorage {
 	}
 
 	@Override
-	public void close() {
+	public void close() throws IOException {
 		BufferOrEvent boe;
 		while ((boe = currentBuffers.poll()) != null) {
 			if (boe.isBuffer()) {
 				boe.getBuffer().recycleBuffer();
 			}
 		}
+		super.close();
 	}
 
 	@Override
-	public long getBytesBlocked() {
+	public long getPendingBytes() {
 		return bytesBlocked;
 	}
 
