@@ -38,6 +38,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.optimizer.Optimizer;
 import org.apache.flink.optimizer.plan.OptimizedPlan;
+import org.apache.flink.optimizer.testfunctions.IdentityMapper;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.InputFormatVertex;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -275,7 +276,7 @@ public class JobGraphGeneratorTest {
 		DataSet<Tuple2<Long, Long>> input = env.fromElements(new Tuple2<>(1L, 2L))
 			.setParallelism(1);
 
-		DataSet ds = input.map((MapFunction<Tuple2<Long, Long>, Object>) value -> new Tuple2<>(value.f0 + 1, value.f1))
+		DataSet<Tuple2<Long, Long>> ds = input.map(new IdentityMapper<>())
 			.setParallelism(3);
 
 		AbstractID intermediateDataSetID = new AbstractID();
@@ -285,7 +286,7 @@ public class JobGraphGeneratorTest {
 			.setParallelism(1);
 
 		// this is the normal output branch.
-		ds.output(new DiscardingOutputFormat())
+		ds.output(new DiscardingOutputFormat<>())
 			.setParallelism(1);
 
 		JobGraph jobGraph = compileJob(env);
