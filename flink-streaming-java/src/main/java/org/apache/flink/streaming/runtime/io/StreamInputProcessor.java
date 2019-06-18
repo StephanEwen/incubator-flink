@@ -100,7 +100,7 @@ public class StreamInputProcessor<IN> {
 
 		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
 
-		CheckpointedInputGate barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
+		CheckpointedInputGate barrierHandler = InputProcessorUtil.createCheckpointedInputGate(
 			checkpointedTask,
 			checkpointMode,
 			ioManager,
