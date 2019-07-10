@@ -199,13 +199,8 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		}
 	}
 
-	@Override
-	public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
-		writeAndFlushNextMessageIfPossible(ctx.channel());
-	}
-
 	private void writeAndFlushNextMessageIfPossible(final Channel channel) throws IOException {
-		if (fatalError || !channel.isWritable()) {
+		if (fatalError) {
 			return;
 		}
 
