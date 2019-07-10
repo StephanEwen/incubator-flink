@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network;
 
+import org.apache.flink.runtime.io.network.netty.PartitionRequestQueue;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
@@ -72,4 +73,6 @@ public interface NetworkSequenceViewReader {
 	InputChannelID getReceiverId();
 
 	int getSequenceNumber();
+
+	PartitionRequestQueue.WriteAndFlushNextMessageIfPossibleListener getFutureListener(PartitionRequestQueue queue);
 }

@@ -50,11 +50,9 @@ import static org.apache.flink.runtime.io.network.netty.NettyMessage.BufferRespo
  * A nonEmptyReader of partition queues, which listens for channel writability changed
  * events before writing and flushing {@link Buffer} instances.
  */
-class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
+public class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private static final Logger LOG = LoggerFactory.getLogger(PartitionRequestQueue.class);
-
-	private final ChannelFutureListener writeListener = new WriteAndFlushNextMessageIfPossibleListener();
 
 	/** The readers which are already enqueued available for transferring data. */
 	private final ArrayDeque<NetworkSequenceViewReader> availableReaders = new ArrayDeque<>();
@@ -97,7 +95,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	 * <p>NOTE: Only one thread would trigger the actual enqueue after checking the reader's
 	 * availability, so there is no race condition here.
 	 */
-	private void enqueueAvailableReader(final NetworkSequenceViewReader reader) throws Exception {
+	void enqueueAvailableReader(final NetworkSequenceViewReader reader) throws Exception {
 		if (reader.isRegisteredAsAvailable() || !reader.isAvailable()) {
 			return;
 		}
@@ -236,10 +234,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 					}
 				} else {
 					// This channel was now removed from the available reader queue.
-					// We re-add it into the queue if it is still available
-					if (next.moreAvailable()) {
-						registerAvailableReader(reader);
-					}
+					// it will be re-added when the write request is done
 
 					BufferResponse msg = new BufferResponse(
 						next.buffer(),
@@ -249,7 +244,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 					// Write and flush and wait until this is done before
 					// trying to continue with the next buffer.
-					channel.writeAndFlush(msg).addListener(writeListener);
+					channel.writeAndFlush(msg).addListener(reader.getFutureListener(this));
 
 					return;
 				}
@@ -321,20 +316,31 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	// This listener is called after an element of the current nonEmptyReader has been
 	// flushed. If successful, the listener triggers further processing of the
 	// queues.
-	private class WriteAndFlushNextMessageIfPossibleListener implements ChannelFutureListener {
+	public static class WriteAndFlushNextMessageIfPossibleListener implements ChannelFutureListener {
+
+		private final PartitionRequestQueue partitionQueue;
+
+		private final NetworkSequenceViewReader reader;
+
+		WriteAndFlushNextMessageIfPossibleListener(PartitionRequestQueue partitionQueue, NetworkSequenceViewReader reader) {
+			this.partitionQueue = partitionQueue;
+			this.reader = reader;
+		}
 
 		@Override
 		public void operationComplete(ChannelFuture future) throws Exception {
+			partitionQueue.enqueueAvailableReader(reader);
+
 			try {
 				if (future.isSuccess()) {
-					writeAndFlushNextMessageIfPossible(future.channel());
+					partitionQueue.writeAndFlushNextMessageIfPossible(future.channel());
 				} else if (future.cause() != null) {
-					handleException(future.channel(), future.cause());
+					partitionQueue.handleException(future.channel(), future.cause());
 				} else {
-					handleException(future.channel(), new IllegalStateException("Sending cancelled by user."));
+					partitionQueue.handleException(future.channel(), new IllegalStateException("Sending cancelled by user."));
 				}
 			} catch (Throwable t) {
-				handleException(future.channel(), t);
+				partitionQueue.handleException(future.channel(), t);
 			}
 		}
 	}

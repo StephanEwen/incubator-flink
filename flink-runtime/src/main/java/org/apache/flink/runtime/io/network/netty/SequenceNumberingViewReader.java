@@ -50,6 +50,8 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener, Network
 
 	private boolean isRegisteredAvailable;
 
+	private PartitionRequestQueue.WriteAndFlushNextMessageIfPossibleListener futureListener;
+
 	SequenceNumberingViewReader(InputChannelID receiverId, PartitionRequestQueue requestQueue) {
 		this.receiverId = receiverId;
 		this.requestQueue = requestQueue;
@@ -104,6 +106,14 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener, Network
 	@Override
 	public int getSequenceNumber() {
 		return sequenceNumber;
+	}
+
+	@Override
+	public PartitionRequestQueue.WriteAndFlushNextMessageIfPossibleListener getFutureListener(PartitionRequestQueue queue) {
+		if (futureListener == null) {
+			futureListener = new PartitionRequestQueue.WriteAndFlushNextMessageIfPossibleListener(queue, this);
+		}
+		return futureListener;
 	}
 
 	@Override

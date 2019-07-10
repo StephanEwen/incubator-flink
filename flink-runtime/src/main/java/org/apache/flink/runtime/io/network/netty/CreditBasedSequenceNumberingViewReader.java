@@ -47,6 +47,8 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 
 	private volatile ResultSubpartitionView subpartitionView;
 
+	private PartitionRequestQueue.WriteAndFlushNextMessageIfPossibleListener futureListener;
+
 	/**
 	 * The status indicating whether this reader is already enqueued in the pipeline for transferring
 	 * data or not.
@@ -143,6 +145,14 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 	@Override
 	public int getSequenceNumber() {
 		return sequenceNumber;
+	}
+
+	@Override
+	public PartitionRequestQueue.WriteAndFlushNextMessageIfPossibleListener getFutureListener(PartitionRequestQueue queue) {
+		if (futureListener == null) {
+			futureListener = new PartitionRequestQueue.WriteAndFlushNextMessageIfPossibleListener(queue, this);
+		}
+		return futureListener;
 	}
 
 	@VisibleForTesting
