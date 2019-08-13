@@ -210,7 +210,7 @@ class AggregationCodeGenerator(
       // should not happen, but add an error message just in case.
       throw new CodeGenException(
         s"Cannot emit partial results if DISTINCT values are tracked in state-backed maps. " +
-          s"Please report this bug."
+          s"Please reportFinishedSplit this bug."
       )
     }
 
