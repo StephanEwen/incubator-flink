@@ -32,7 +32,6 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -68,7 +67,7 @@ public abstract class SplitFetcherManager<E extends WithSplitId, SplitT extends 
 
 	/** A finished split reporter to allow the split fetcher to report finished splits.
 	 * This is needed in order to clean up the split states maintained in the source reader. */
-	private FinishedSplitReporter finishedSplitReporter;
+	private SplitFinishedCallback splitFinishedCallback;
 
 	/** The configurations of this SplitFetcherManager and the SplitReaders. */
 	private Configuration config;
@@ -110,7 +109,7 @@ public abstract class SplitFetcherManager<E extends WithSplitId, SplitT extends 
 		// the fetcher thread exits abnormally.
 		this.executors = Executors.newCachedThreadPool(r -> new Thread(r, "SourceFetcher"));
 		// The finished split reporter simply enqueues a SplitFinishedMarker.
-		this.finishedSplitReporter = new FinishedSplitReporter(new Consumer<String>() {
+		this.splitFinishedCallback = new SplitFinishedCallback(new Consumer<String>() {
 			@Override
 			public void accept(String splitId) {
 				try {
@@ -139,7 +138,7 @@ public abstract class SplitFetcherManager<E extends WithSplitId, SplitT extends 
 			fetcherId,
 			(BlockingQueue<E>) sourceReader.elementsQueue(),
 			splitReader,
-			finishedSplitReporter,
+			splitFinishedCallback,
 			() -> fetchers.remove(fetcherId));
 		fetchers.put(fetcherId, splitFetcher);
 		return splitFetcher;

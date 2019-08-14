@@ -17,7 +17,6 @@
 
 package org.apache.flink.impl.connector.source;
 
-import org.apache.flink.api.connectors.source.SplitEnumerator;
 import org.apache.flink.api.connectors.source.SourceOutput;
 import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SourceSplit;

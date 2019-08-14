@@ -19,8 +19,9 @@ package org.apache.flink.impl.connector.source.splitreader;
 
 import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.impl.connector.source.Configurable;
-import org.apache.flink.impl.connector.source.fetcher.FinishedSplitReporter;
+import org.apache.flink.impl.connector.source.fetcher.SplitFinishedCallback;
 
+import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 
 /**
@@ -40,18 +41,18 @@ public interface SplitReader<E, SplitT extends SourceSplit> extends Configurable
 	 * should just resume from where the last fetch call was waken up or interrupted.
 	 *
 	 * @param queue The element queue to put the fetched element into.
-	 * @param splitsChangesWithEpoch the currently assigned splits and the assignment epoch.
-	 * @param finishedSplitReporter a collector to report finished splits.
+	 * @param splitsChanges a queue with split changes that has not been handled by this SplitReader.
+	 * @param splitFinishedCallback a collector to report finished splits.
 	 * @throws InterruptedException when interrupted
 	 */
 	void fetch(
 		BlockingQueue<E> queue,
-		SplitsChangesWithEpoch<SplitT> splitsChangesWithEpoch,
-		FinishedSplitReporter finishedSplitReporter) throws InterruptedException;
+		Queue<SplitsChange<SplitT>> splitsChanges,
+		SplitFinishedCallback splitFinishedCallback) throws InterruptedException;
 
 	/**
 	 * Wake up the split reader in case the fetcher thread is blocking in
-	 * {@link #fetch(BlockingQueue, SplitsChangesWithEpoch, FinishedSplitReporter)}.
+	 * {@link #fetch(BlockingQueue, Queue, SplitFinishedCallback)}.
 	 */
 	void wakeUp();
 }
