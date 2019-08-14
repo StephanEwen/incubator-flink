@@ -18,7 +18,7 @@
 package org.apache.flink.impl.connector.source.fetcher;
 
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.impl.connector.source.WithSplitId;
+import org.apache.flink.impl.connector.source.RecordsWithSplitId;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.impl.connector.source.splitreader.SplitsAddition;
 import org.apache.flink.impl.connector.source.splitreader.SplitsChange;
@@ -38,7 +38,7 @@ import java.util.concurrent.LinkedBlockingDeque;
 /**
  * The internal fetcher runnable responsible for polling message from the external system.
  */
-public class SplitFetcher<E extends WithSplitId, SplitT extends SourceSplit> implements Runnable {
+public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 	private static final Logger LOG = LoggerFactory.getLogger(SplitFetcher.class);
 	private final int id;
 	private final BlockingDeque<SplitFetcherTask> taskQueue;
@@ -46,7 +46,7 @@ public class SplitFetcher<E extends WithSplitId, SplitT extends SourceSplit> imp
 	private final Map<String, SplitT> assignedSplits;
 	/** The current split assignments for this fetcher. */
 	private final Queue<SplitsChange<SplitT>> splitChanges;
-	private final BlockingQueue<E> elementsQueue;
+	private final BlockingQueue<RecordsWithSplitId<E>> elementsQueue;
 	private final SplitReader<E, SplitT> splitReader;
 	private final Runnable shutdownHook;
 	private final SplitFinishedCallback splitFinishedCallback;
@@ -57,7 +57,7 @@ public class SplitFetcher<E extends WithSplitId, SplitT extends SourceSplit> imp
 
 	SplitFetcher(
 		int id,
-		BlockingQueue<E> elementsQueue,
+		BlockingQueue<RecordsWithSplitId<E>> elementsQueue,
 		SplitReader<E, SplitT> splitReader,
 		SplitFinishedCallback splitFinishedCallback,
 		Runnable shutdownHook) {

@@ -19,6 +19,7 @@ package org.apache.flink.impl.connector.source.splitreader;
 
 import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.impl.connector.source.Configurable;
+import org.apache.flink.impl.connector.source.RecordsWithSplitId;
 import org.apache.flink.impl.connector.source.fetcher.SplitFinishedCallback;
 
 import java.util.Queue;
@@ -46,7 +47,7 @@ public interface SplitReader<E, SplitT extends SourceSplit> extends Configurable
 	 * @throws InterruptedException when interrupted
 	 */
 	void fetch(
-		BlockingQueue<E> queue,
+		BlockingQueue<RecordsWithSplitId<E>> queue,
 		Queue<SplitsChange<SplitT>> splitsChanges,
 		SplitFinishedCallback splitFinishedCallback) throws InterruptedException;
 

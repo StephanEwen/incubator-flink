@@ -15,22 +15,19 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source.fetcher;
+package org.apache.flink.streaming.connectors.kafka.newsrc;
 
-import org.apache.flink.impl.connector.source.WithSplitId;
+import org.apache.flink.api.connectors.source.SourceOutput;
+import org.apache.flink.impl.connector.source.RecordEmitter;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 
-/**
- * A marker class to indicate that a split has finished.
- */
-public class SplitFinishedMarker implements WithSplitId {
-	private final String splitId;
-
-	SplitFinishedMarker(String splitId) {
-		this.splitId = splitId;
-	}
+public class ConsumerRecordEmitter<K, V>
+		implements RecordEmitter<RecordsByTopicPartition<K, V>, ConsumerRecord<K, V>, PartitionState<K, V>> {
 
 	@Override
-	public String splitId() {
-		return splitId;
+	public void emitRecord(RecordsByTopicPartition<K, V> records,
+						   SourceOutput<ConsumerRecord<K, V>> output,
+						   PartitionState<K, V> splitState) {
+
 	}
 }
