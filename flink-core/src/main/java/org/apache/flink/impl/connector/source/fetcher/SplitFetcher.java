@@ -20,10 +20,17 @@ package org.apache.flink.impl.connector.source.fetcher;
 import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.impl.connector.source.WithSplitId;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
+import org.apache.flink.impl.connector.source.splitreader.SplitsAddition;
+import org.apache.flink.impl.connector.source.splitreader.SplitsChange;
+import org.apache.flink.impl.connector.source.splitreader.SplitsRemoval;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -35,12 +42,14 @@ public class SplitFetcher<E extends WithSplitId, SplitT extends SourceSplit> imp
 	private static final Logger LOG = LoggerFactory.getLogger(SplitFetcher.class);
 	private final int id;
 	private final BlockingDeque<SplitFetcherTask> taskQueue;
+	// track the assigned splits so we can suspend the reader when there is no splits assigned.
+	private final Map<String, SplitT> assignedSplits;
 	/** The current split assignments for this fetcher. */
-	private final SplitsAssignments<SplitT> splitsAssignments;
+	private final Queue<SplitsChange<SplitT>> splitChanges;
 	private final BlockingQueue<E> elementsQueue;
 	private final SplitReader<E, SplitT> splitReader;
 	private final Runnable shutdownHook;
-	private final FinishedSplitReporter finishedSplitReporter;
+	private final SplitFinishedCallback splitFinishedCallback;
 	private final FetchTask fetchTask;
 	private volatile boolean wakenUp;
 	private volatile boolean closed;
@@ -50,27 +59,22 @@ public class SplitFetcher<E extends WithSplitId, SplitT extends SourceSplit> imp
 		int id,
 		BlockingQueue<E> elementsQueue,
 		SplitReader<E, SplitT> splitReader,
-		FinishedSplitReporter finishedSplitReporter,
+		SplitFinishedCallback splitFinishedCallback,
 		Runnable shutdownHook) {
 
 		this.id = id;
 		this.taskQueue = new LinkedBlockingDeque<>();
 		this.elementsQueue = elementsQueue;
-		this.splitsAssignments = new SplitsAssignments<>();
+		this.splitChanges = new LinkedList<>();
+		this.assignedSplits = new HashMap<>();
 		this.splitReader = splitReader;
 		this.shutdownHook = shutdownHook;
-		this.finishedSplitReporter = finishedSplitReporter;
+		this.splitFinishedCallback = splitFinishedCallback;
+		// Remove the split from the assignments if it is already done.
+		this.splitFinishedCallback.chainAction(assignedSplits::remove);
 		this.fetchTask = new FetchTask();
-		// TODO: chain an action to handle split removal.
 		this.wakenUp = false;
 		this.closed = false;
-	}
-
-	/**
-	 * @return the current split assignments for this fetcher.
-	 */
-	public SplitsAssignments<SplitT> splitsAssignments() {
-		return this.splitsAssignments;
 	}
 
 	@Override
@@ -108,32 +112,47 @@ public class SplitFetcher<E extends WithSplitId, SplitT extends SourceSplit> imp
 		}
 	}
 
+	/**
+	 * Add splits to the split fetcher. This operation is asynchronous.
+	 *
+	 * @param splitsToAdd the splits to add.
+	 */
 	public void addSplits(List<SplitT> splitsToAdd) {
-		maybeEnqueueTask(new SplitFetcherTask() {
-			@Override
-			public boolean run() throws InterruptedException {
-				splitsAssignments.addSplits(splitsToAdd);
-				if (!fetchTask.isRunnable()) {
-					maybeEnqueueTask(fetchTask);
-				}
-				return true;
+		maybeEnqueueTask(() -> {
+			splitChanges.add(new SplitsAddition<>(splitsToAdd));
+			splitsToAdd.forEach(s -> assignedSplits.put(s.splitId(), s));
+			if (!fetchTask.isRunnable()) {
+				maybeEnqueueTask(fetchTask);
 			}
-
-			@Override
-			public void wakeUp() {
-				// No op.
-			}
+			return true;
 		});
 		maybeWakeUpRunningThread();
 	}
 
+	/**
+	 * Remove splits from the fetcher. This operation is asynchronous.
+	 *
+	 * @param splitsToRemove the splits to remove.
+	 */
+	public void removeSplits(List<SplitT> splitsToRemove) {
+		maybeEnqueueTask(() -> {
+			splitChanges.add(new SplitsRemoval<>(splitsToRemove));
+			splitsToRemove.forEach(s -> assignedSplits.remove(s.splitId()));
+			if (!fetchTask.isRunnable()) {
+				maybeEnqueueTask(fetchTask);
+			}
+			return true;
+		});
+		maybeWakeUpRunningThread();
+	}
+
+	/**
+	 * Shutdown the split fetcher.
+	 */
 	public void shutdown() {
 		LOG.info("Closing split fetcher {}", id);
 		closed = true;
-		SplitFetcherTask task = runningTask;
-		if (task != null) {
-			task.wakeUp();
-		}
+		maybeWakeUpRunningThread();
 	}
 
 	private void maybeWakeUpRunningThread() {
@@ -164,11 +183,12 @@ public class SplitFetcher<E extends WithSplitId, SplitT extends SourceSplit> imp
 		private boolean isRunnable = true;
 		@Override
 		public boolean run() throws InterruptedException {
-			if (!splitsAssignments.isEmpty()) {
-				splitReader.fetch(elementsQueue, splitsAssignments.currentSplitsWithEpoch(), finishedSplitReporter);
+			if (!assignedSplits.isEmpty() || !splitChanges.isEmpty()) {
+				splitReader.fetch(elementsQueue, splitChanges, splitFinishedCallback);
 			}
-			isRunnable = !splitsAssignments.isEmpty();
-			return splitsAssignments.isEmpty();
+			isRunnable = !assignedSplits.isEmpty() || !splitChanges.isEmpty();
+			// If it is not runnable then the work is done.
+			return !isRunnable;
 		}
 
 		@Override

@@ -23,9 +23,8 @@ import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.impl.connector.source.splitreader.SplitsChange;
-import org.apache.flink.impl.connector.source.splitreader.SplitsChangesWithEpoch;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.impl.connector.source.fetcher.FinishedSplitReporter;
+import org.apache.flink.impl.connector.source.fetcher.SplitFinishedCallback;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -35,7 +34,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -147,8 +146,8 @@ public class SourceReaderBaseTest {
 		TestingSourceReader reader = new TestingSourceReader(() -> new SplitReader<TestingElements, IdAndIndex>() {
 			@Override
 			public void fetch(BlockingQueue<TestingElements> queue,
-					SplitsChangesWithEpoch<IdAndIndex> splitsChangesWithEpoch,
-					FinishedSplitReporter finishedSplitReporter) throws InterruptedException {
+					Queue<SplitsChange<IdAndIndex>> splitsChangesWithEpoch,
+					SplitFinishedCallback finishedSplitReporter) throws InterruptedException {
 				throw new RuntimeException(errMsg);
 			}
 
@@ -243,7 +242,6 @@ public class SourceReaderBaseTest {
 		private final int[] positions;
 		private Boundedness boundedness;
 		private volatile boolean wakenUp;
-		private long epoch = -1;
 
 		TestingSplitReader(List<int[]> records) {
 			this.records = records;
@@ -254,15 +252,12 @@ public class SourceReaderBaseTest {
 
 		@Override
 		public void fetch(BlockingQueue<TestingElements> queue,
-			SplitsChangesWithEpoch<IdAndIndex> splitsChangesWithEpoch,
-			FinishedSplitReporter finishedSplitReporter) throws InterruptedException {
-			if (epoch < splitsChangesWithEpoch.currentEpoch()) {
-				Map<Long, SplitsChange<IdAndIndex>> newSplitsChanges = splitsChangesWithEpoch.splits().tailMap(epoch + 1);
-				for (SplitsChange<IdAndIndex> splitsChange : newSplitsChanges.values()) {
-					// split.id indicates the integer array, and split.idx indicates the position.
-					splitsChange.splits().forEach(split -> positions[split.id] = split.idx);
-				}
-				epoch = splitsChangesWithEpoch.currentEpoch();
+				Queue<SplitsChange<IdAndIndex>> splitsChanges,
+				SplitFinishedCallback splitFinishedCallback) throws InterruptedException {
+			while (!splitsChanges.isEmpty()) {
+				SplitsChange<IdAndIndex> splitsChange = splitsChanges.poll();
+				// split.id indicates the integer array, and split.idx indicates the position.
+				splitsChange.splits().forEach(split -> positions[split.id] = split.idx);
 			}
 
 			for (int i = 0; i < positions.length; i++) {
@@ -274,7 +269,7 @@ public class SourceReaderBaseTest {
 					positions[i]++;
 					// return on each element put into the queue.
 					if (positions[i] == split.length && boundedness == Boundedness.BOUNDED) {
-						finishedSplitReporter.reportFinishedSplit(Integer.toString(i));
+						splitFinishedCallback.onSplitFinished(Integer.toString(i));
 					}
 					return;
 				}

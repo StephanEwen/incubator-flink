@@ -36,5 +36,7 @@ public interface SplitFetcherTask {
 	/**
 	 * Wake up the running thread.
 	 */
-	void wakeUp();
+	default void wakeUp() {
+		// Usually the tasks finishes shortly, so by default wakeUp() does nothing.
+	}
 }

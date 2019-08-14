@@ -25,7 +25,7 @@ import java.util.List;
  * @param <SplitT>
  */
 public class SplitsRemoval<SplitT> extends SplitsChange<SplitT> {
-	SplitsRemoval(List<SplitT> splits) {
+	public SplitsRemoval(List<SplitT> splits) {
 		super(splits);
 	}
 }

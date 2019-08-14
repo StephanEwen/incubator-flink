@@ -22,7 +22,7 @@ import java.util.function.Consumer;
 /**
  * Reporter for {@link SplitFetcher} to pass the finished splits to the main thread.
  */
-public class FinishedSplitReporter {
+public class SplitFinishedCallback {
 	private Consumer<String> finishedSplitsConsumer;
 
 	/**
@@ -30,7 +30,7 @@ public class FinishedSplitReporter {
 	 *
 	 * @param finishedSplitsConsumer the consumer to handle finished splits.
 	 */
-	FinishedSplitReporter(Consumer<String> finishedSplitsConsumer) {
+	SplitFinishedCallback(Consumer<String> finishedSplitsConsumer) {
 		this.finishedSplitsConsumer = finishedSplitsConsumer;
 	}
 
@@ -39,7 +39,7 @@ public class FinishedSplitReporter {
 	 *
 	 * @param splitId the ID of the finished split.
 	 */
-	public void reportFinishedSplit(String splitId) {
+	public void onSplitFinished(String splitId) {
 		finishedSplitsConsumer.accept(splitId);
 	}
 
