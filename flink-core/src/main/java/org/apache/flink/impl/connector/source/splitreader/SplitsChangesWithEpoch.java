@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.connectors.source.splitreader;
+package org.apache.flink.impl.connector.source.splitreader;
 
 
 import java.util.Collections;

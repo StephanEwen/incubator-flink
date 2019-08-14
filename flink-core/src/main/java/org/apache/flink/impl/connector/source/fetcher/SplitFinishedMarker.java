@@ -15,19 +15,22 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source;
+package org.apache.flink.impl.connector.source.fetcher;
+
+import org.apache.flink.impl.connector.source.WithSplitId;
 
 /**
  * A marker class to indicate that a split has finished.
  */
-class SplitFinishedMarker {
+public class SplitFinishedMarker implements WithSplitId {
 	private final String splitId;
 
 	SplitFinishedMarker(String splitId) {
 		this.splitId = splitId;
 	}
 
-	String splitId() {
+	@Override
+	public String splitId() {
 		return splitId;
 	}
 }

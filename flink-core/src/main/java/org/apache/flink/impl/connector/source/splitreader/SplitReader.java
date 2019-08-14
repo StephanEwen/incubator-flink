@@ -15,10 +15,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.connectors.source.splitreader;
+package org.apache.flink.impl.connector.source.splitreader;
 
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.impl.connector.source.FinishedSplitReporter;
+import org.apache.flink.impl.connector.source.Configurable;
+import org.apache.flink.impl.connector.source.fetcher.FinishedSplitReporter;
 
 import java.util.concurrent.BlockingQueue;
 
@@ -29,7 +30,7 @@ import java.util.concurrent.BlockingQueue;
  * @param <E> the element type.
  * @param <SplitT> the split type.
  */
-public interface SplitReader<E, SplitT extends SourceSplit> {
+public interface SplitReader<E, SplitT extends SourceSplit> extends Configurable {
 
 	/**
 	 * Fetch elements into the blocking queue for the given splits. The fetch call could be blocking

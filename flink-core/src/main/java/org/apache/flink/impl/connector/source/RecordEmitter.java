@@ -18,8 +18,32 @@
 package org.apache.flink.impl.connector.source;
 
 import org.apache.flink.api.connectors.source.SourceOutput;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 
-public interface RecordEmitter<T> {
+/**
+ * Emit a record to the downstream.
+ *
+ * @param <E> the type of the record emitted by the {@link SplitReader}
+ * @param <T> the type of records that are eventually emitted to the {@link SourceOutput}.
+ * @param <SplitStateT> the mutable type of split state.
+ */
+public interface RecordEmitter<E, T, SplitStateT> extends Configurable {
 
-	void emitRecord(T record);
+	/**
+	 * Process and emit the records to the {@link SourceOutput}. A few recommendations to the implementation
+	 * are following:
+	 *
+	 * <p>The
+	 *
+	 * @param records
+	 * @param output
+	 * @param splitState
+	 */
+	void emitRecord(E records, SourceOutput<T> output, SplitStateT splitState);
+
+	@Override
+	default void configure(Configuration config) {
+		// by default do nothing.
+	}
 }

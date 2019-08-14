@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source;
+package org.apache.flink.impl.connector.source.fetcher;
 
 import java.util.function.Consumer;
 

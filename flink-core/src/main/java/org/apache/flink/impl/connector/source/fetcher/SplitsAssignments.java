@@ -15,11 +15,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source;
+package org.apache.flink.impl.connector.source.fetcher;
 
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.api.connectors.source.splitreader.SplitsAddition;
-import org.apache.flink.api.connectors.source.splitreader.SplitsChangesWithEpoch;
+import org.apache.flink.impl.connector.source.splitreader.SplitsAddition;
+import org.apache.flink.impl.connector.source.splitreader.SplitsChangesWithEpoch;
 
 import java.util.List;
 
@@ -51,20 +51,16 @@ class SplitsAssignments<SplitT extends SourceSplit> {
 	 *
 	 * @param splitsToAdd the splits to add.
 	 */
-	public synchronized void addSplits(List<SplitT> splitsToAdd) {
+	public void addSplits(List<SplitT> splitsToAdd) {
 		splitsChangesWithEpoch =
 			splitsChangesWithEpoch.newEpochWithSplitsChange(new SplitsAddition<>(splitsToAdd), epoch++);
-		this.notify();
 	}
 
 	/**
-	 * Block if there is no split assigned.
-	 *
-	 * @throws InterruptedException if the thread is interrupted when waiting for the split assignment.
+	 * Check whether there are assigned splits.
+	 * @return true if there are assigned splits, false otherwise.
 	 */
-	public synchronized void blockOnEmpty() throws InterruptedException {
-		if (splitsChangesWithEpoch.splits().isEmpty()) {
-			this.wait();
-		}
+	public boolean isEmpty() {
+		return splitsChangesWithEpoch.splits().isEmpty();
 	}
 }

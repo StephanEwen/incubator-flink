@@ -17,7 +17,7 @@
 
 package org.apache.flink.streaming.connectors.kafka.newsrc;
 
-import org.apache.flink.api.connectors.source.splitreader.SplitReader;
+import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.configuration.Configuration;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
