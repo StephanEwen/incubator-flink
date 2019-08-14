@@ -15,17 +15,18 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.connectors.source.splitreader;
+package org.apache.flink.impl.connector.source.splitreader;
 
 import java.util.List;
 
 /**
- * A class that helps reduce
+ * A change to add splits.
  *
- * @param <SplitT>
+ * @param <SplitT> the split type.
  */
-public class SplitsRemoval<SplitT> extends SplitsChange<SplitT> {
-	SplitsRemoval(List<SplitT> splits) {
+public class SplitsAddition<SplitT> extends SplitsChange<SplitT> {
+
+	public SplitsAddition(List<SplitT> splits) {
 		super(splits);
 	}
 }

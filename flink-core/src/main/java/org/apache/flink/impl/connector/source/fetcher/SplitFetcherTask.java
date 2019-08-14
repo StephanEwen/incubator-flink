@@ -15,26 +15,26 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.connectors.source.splitreader;
-
-import java.util.Collections;
-import java.util.List;
+package org.apache.flink.impl.connector.source.fetcher;
 
 /**
- * An abstract class to host splits change.
+ * An interface similar to {@link Runnable} but allows throwing exceptions and wakeup.
  */
-public abstract class SplitsChange<SplitT> {
-	private final List<SplitT> splits;
-
-	SplitsChange(List<SplitT> splits) {
-		this.splits = splits;
-	}
+public interface SplitFetcherTask {
 
 	/**
-	 * @return the list of splits.
+	 * Run the logic. This method allows throwing an interrupted exception on wakeup, but the
+	 * implementation does not have to. It is preferred to finish the work elegantly
+	 * and return a boolean to indicate whether all the jobs have been done or more
+	 * invocation is needed.
+	 *
+	 * @return whether the runnable has successfully finished running.
+	 * @throws InterruptedException when interrupted.
 	 */
-	public List<SplitT> splits() {
-		return Collections.unmodifiableList(splits);
-	}
+	boolean run() throws InterruptedException;
 
+	/**
+	 * Wake up the running thread.
+	 */
+	void wakeUp();
 }

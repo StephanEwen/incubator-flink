@@ -15,10 +15,14 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source;
+package org.apache.flink.impl.connector.source.fetcher;
 
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.api.connectors.source.splitreader.SplitReader;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.impl.connector.source.Configurable;
+import org.apache.flink.impl.connector.source.WithSplitId;
+import org.apache.flink.impl.connector.source.splitreader.SplitReader;
+import org.apache.flink.impl.connector.source.SourceReaderBase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +32,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -38,14 +43,16 @@ import java.util.function.Supplier;
  * A class responsible for starting the {@link SplitFetcher} and manage the life cycles of them.
  * This class works with the {@link SourceReaderBase}.
  */
-public abstract class SplitFetcherManager<E, SplitT extends SourceSplit> {
+public abstract class SplitFetcherManager<E extends WithSplitId, SplitT extends SourceSplit> implements Configurable {
 	private static final Logger LOG = LoggerFactory.getLogger(SplitFetcherManager.class);
+
+	private final ThrowableCatchingRunnableWrapper runnableWrapper;
 
 	/** An atomic integer to generate monotonically increasing fetcher ids. */
 	private final AtomicInteger fetcherIdGenerator;
 
 	/** A supplier to provide split readers */
-	private final Supplier<SplitReader<E, SplitT>> splitReaderSupplier;
+	private final Supplier<SplitReader<E, SplitT>> splitReaderFactory;
 
 	/** Uncaught exception in the split fetchers.*/
 	private final AtomicReference<Throwable> uncaughtFetcherException;
@@ -54,7 +61,7 @@ public abstract class SplitFetcherManager<E, SplitT extends SourceSplit> {
 	protected final Map<Integer, SplitFetcher<E, SplitT>> fetchers;
 
 	/** The source reader this split fetcher manager is working with. */
-	private SourceReaderBase<E, ?, SplitT> sourceReader;
+	private SourceReaderBase<E, ?, SplitT, ?> sourceReader;
 
 	/** An executor service with two threads. One for the fetcher and one for the future completing thread. */
 	private ExecutorService executors;
@@ -63,35 +70,45 @@ public abstract class SplitFetcherManager<E, SplitT extends SourceSplit> {
 	 * This is needed in order to clean up the split states maintained in the source reader. */
 	private FinishedSplitReporter finishedSplitReporter;
 
+	/** The configurations of this SplitFetcherManager and the SplitReaders. */
+	private Configuration config;
+
 	/**
 	 * Create a split fetcher manager.
 	 */
-	public SplitFetcherManager(Supplier<SplitReader<E, SplitT>> splitReaderSupplier) {
-		this.splitReaderSupplier = splitReaderSupplier;
+	public SplitFetcherManager(Supplier<SplitReader<E, SplitT>> splitReaderFactory) {
+		this.runnableWrapper = new ThrowableCatchingRunnableWrapper(new Consumer<Throwable>() {
+			@Override
+			public void accept(Throwable t) {
+				if (!uncaughtFetcherException.compareAndSet(null, t)) {
+					// Add the exception to the exception list.
+					uncaughtFetcherException.get().addSuppressed(t);
+					// Wake up the main thread to let it know the exception.
+					sourceReader.wakeup();
+				}
+			}
+		}, LoggerFactory.getLogger(SplitFetcher.class));
+		this.splitReaderFactory = splitReaderFactory;
 		this.uncaughtFetcherException = new AtomicReference<>(null);
 		this.fetcherIdGenerator = new AtomicInteger(0);
 		this.fetchers = new HashMap<>();
 	}
 
+	@Override
+	public void configure(Configuration config) {
+		this.config = config;
+	}
+
 	/**
 	 * Set the source reader this SplitFetcherManager will be working with.
 	 *
-	 * <p>The method is package private because we do not expect users to set this explicitly.
-	 *
 	 * @param sourceReader the source Reader this split manager will work with.
 	 */
-	void setSourceReader(SourceReaderBase<E, ?, SplitT> sourceReader) {
+	public void setSourceReader(SourceReaderBase<E, ?, SplitT, ?> sourceReader) {
 		this.sourceReader = sourceReader;
 		// Create the executor with a thread factory that fails the source reader if one of
 		// the fetcher thread exits abnormally.
-		this.executors = Executors.newCachedThreadPool(new SourceReaderThreadFactory((t) -> {
-			if (!uncaughtFetcherException.compareAndSet(null, t)) {
-				// Add the exception to the exception list.
-				uncaughtFetcherException.get().addSuppressed(t);
-				// Wake up the main thread to let it know the exception.
-				sourceReader.wakeup();
-			}
-		}));
+		this.executors = Executors.newCachedThreadPool(r -> new Thread(r, "SourceFetcher"));
 		// The finished split reporter simply enqueues a SplitFinishedMarker.
 		this.finishedSplitReporter = new FinishedSplitReporter(new Consumer<String>() {
 			@Override
@@ -105,19 +122,23 @@ public abstract class SplitFetcherManager<E, SplitT extends SourceSplit> {
 		});
 	}
 
-	protected abstract void addSplits(List<SplitT> splitsToAdd);
+	public abstract void addSplits(List<SplitT> splitsToAdd);
 
 	protected void startFetcher(SplitFetcher<E, SplitT> fetcher) {
-		executors.submit(fetcher);
+		executors.submit(runnableWrapper.wrap(fetcher));
 	}
 
 	@SuppressWarnings("unchecked")
 	protected SplitFetcher<E, SplitT> createSplitFetcher() {
+		// Create SplitReader.
+		SplitReader<E, SplitT> splitReader = splitReaderFactory.get();
+		splitReader.configure(config);
+
 		int fetcherId = fetcherIdGenerator.getAndIncrement();
 		SplitFetcher<E, SplitT> splitFetcher = new SplitFetcher<>(
 			fetcherId,
-			(BlockingQueue<E>)  sourceReader.elementsQueue(),
-			splitReaderSupplier.get(),
+			(BlockingQueue<E>) sourceReader.elementsQueue(),
+			splitReader,
 			finishedSplitReporter,
 			() -> fetchers.remove(fetcherId));
 		fetchers.put(fetcherId, splitFetcher);
@@ -135,7 +156,7 @@ public abstract class SplitFetcherManager<E, SplitT extends SourceSplit> {
 
 	public void checkErrors() {
 		if (uncaughtFetcherException.get() != null) {
-			throw new RuntimeException("One ore more fetcher has encountered exception",
+			throw new RuntimeException("One or more fetchers have encountered exception",
 				uncaughtFetcherException.get());
 		}
 	}

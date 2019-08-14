@@ -17,19 +17,22 @@
 
 package org.apache.flink.impl.connector.source;
 
+import org.apache.flink.api.connectors.source.Boundedness;
 import org.apache.flink.api.connectors.source.SourceOutput;
 import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.api.connectors.source.splitreader.SplitReader;
-import org.apache.flink.api.connectors.source.splitreader.SplitsChange;
-import org.apache.flink.api.connectors.source.splitreader.SplitsChangesWithEpoch;
+import org.apache.flink.impl.connector.source.splitreader.SplitReader;
+import org.apache.flink.impl.connector.source.splitreader.SplitsChange;
+import org.apache.flink.impl.connector.source.splitreader.SplitsChangesWithEpoch;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.impl.connector.source.fetcher.FinishedSplitReporter;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +40,8 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -48,12 +53,15 @@ public class SourceReaderBaseTest {
 	private final int NUM_SPLITS = 10;
 	private final int NUM_RECORDS_PER_SPLIT = 10;
 
+	@Rule
+	public ExpectedException expectedException = ExpectedException.none();
+
 	/**
 	 * Simply test the reader reads all the splits fine.
 	 */
 	@Test (timeout = 30000L)
 	public void testRead() {
-		TestingSourceReader reader = createReader();
+		TestingSourceReader reader = createReader(Boundedness.UNBOUNDED);
 		List<IdAndIndex> splits = new ArrayList<>();
 		for (int i = 0; i < NUM_SPLITS; i++) {
 			splits.add(new IdAndIndex(i, 0));
@@ -72,8 +80,7 @@ public class SourceReaderBaseTest {
 		// Add a split to start the fetcher.
 		List<IdAndIndex> splits = Collections.singletonList(new IdAndIndex(0, 0));
 		// Poll 5 records and let it block on the element queue which only have capacity fo 1;
-		TestingSourceReader reader = consumeRecords(splits, output, 5);
-		System.out.println("Adding splits");
+		TestingSourceReader reader = consumeRecords(splits, output, 5, Boundedness.BOUNDED);
 		List<IdAndIndex> newSplits = new ArrayList<>();
 		for (int i = 1; i < NUM_SPLITS; i++) {
 			newSplits.add(new IdAndIndex(i, 0));
@@ -92,7 +99,7 @@ public class SourceReaderBaseTest {
 		ValidatingSourceOutput output = new ValidatingSourceOutput();
 		List<IdAndIndex> splits = Collections.singletonList(new IdAndIndex(0, 0));
 		// Consumer all the records in the s;oit.
-		TestingSourceReader reader = consumeRecords(splits, output, NUM_RECORDS_PER_SPLIT);
+		TestingSourceReader reader = consumeRecords(splits, output, NUM_RECORDS_PER_SPLIT, Boundedness.BOUNDED);
 		// Now let the main thread poll again.
 		assertEquals("The status should be ", SourceReader.Status.AVAILABLE_LATER, reader.pollNext(output));
 	}
@@ -102,7 +109,7 @@ public class SourceReaderBaseTest {
 		ValidatingSourceOutput output = new ValidatingSourceOutput();
 		List<IdAndIndex> splits = Collections.singletonList(new IdAndIndex(0, 0));
 		// Consumer all the records in the s;oit.
-		TestingSourceReader reader = consumeRecords(splits, output, NUM_RECORDS_PER_SPLIT);
+		TestingSourceReader reader = consumeRecords(splits, output, NUM_RECORDS_PER_SPLIT, Boundedness.UNBOUNDED);
 
 		CompletableFuture<?> future = reader.available();
 		assertFalse("There should be no records read for poll.", future.isDone());
@@ -121,7 +128,7 @@ public class SourceReaderBaseTest {
 			splits.add(new IdAndIndex(i, 0));
 		}
 		// Poll 5 records and let it block on the element queue which only have capacity fo 1;
-		TestingSourceReader reader = consumeRecords(splits, output, 45);
+		TestingSourceReader reader = consumeRecords(splits, output, 45, Boundedness.BOUNDED);
 
 		List<IdAndIndex> state = reader.snapshotState();
 		assertEquals("The snapshot should only have 10 splits. ", 10, state.size());
@@ -134,13 +141,40 @@ public class SourceReaderBaseTest {
 		}
 	}
 
+	@Test
+	public void testExceptionInSplitReader() throws InterruptedException {
+		final String errMsg = "Testing Exception";
+		TestingSourceReader reader = new TestingSourceReader(() -> new SplitReader<TestingElements, IdAndIndex>() {
+			@Override
+			public void fetch(BlockingQueue<TestingElements> queue,
+					SplitsChangesWithEpoch<IdAndIndex> splitsChangesWithEpoch,
+					FinishedSplitReporter finishedSplitReporter) throws InterruptedException {
+				throw new RuntimeException(errMsg);
+			}
+
+			@Override
+			public void wakeUp() {}
+
+			@Override
+			public void configure(Configuration config) {}
+		});
+		expectedException.expect(RuntimeException.class);
+		expectedException.expectMessage("One or more fetchers have encountered exception");
+
+		reader.configure(getConfig(Boundedness.BOUNDED));
+		ValidatingSourceOutput output = new ValidatingSourceOutput();
+		reader.addSplits(Collections.singletonList(new IdAndIndex(0, 0)));
+		// This is not a real infinite loop, it is supposed to throw exception after two polls.
+		while (true) {
+			reader.pollNext(output);
+			// Add a sleep to avoid tight loop.
+			Thread.sleep(1);
+		}
+	}
+
 	// ---------------- helper methods -----------------
 
-	private TestingSourceReader createReader() {
-		Configuration config = new Configuration();
-		config.setInteger(SourceReaderOptions.ELEMENT_QUEUE_CAPACITY, 1);
-		config.setLong(SourceReaderOptions.SOURCE_READER_CLOSE_TIMEOUT, 30000L);
-		config.setString(SourceReaderOptions.SOURCE_READER_BOUNDEDNESS, "bounded");
+	private TestingSourceReader createReader(Boundedness boundedness) {
 
 		List<int[]> records = new ArrayList<>();
 		for (int i = 0; i < NUM_SPLITS; i++) {
@@ -150,13 +184,19 @@ public class SourceReaderBaseTest {
 				split[j] = i * 10 + j;
 			}
 		}
-		TestingSourceReader reader = new TestingSourceReader(records);
+
+		TestingSourceReader reader = new TestingSourceReader(() -> new TestingSplitReader(records));
+		Configuration config = getConfig(boundedness);
 		reader.configure(config);
 		return reader;
 	}
 
-	private TestingSourceReader consumeRecords(List<IdAndIndex> splits, ValidatingSourceOutput output, int n) {
-		TestingSourceReader reader = createReader();
+	private TestingSourceReader consumeRecords(
+			List<IdAndIndex> splits,
+			ValidatingSourceOutput output,
+			int n,
+			Boundedness boundedness) {
+		TestingSourceReader reader = createReader(boundedness);
 		// Add splits to start the fetcher.
 		reader.addSplits(splits);
 		// Poll all the n records of the single split.
@@ -164,6 +204,14 @@ public class SourceReaderBaseTest {
 			reader.pollNext(output);
 		}
 		return reader;
+	}
+
+	private Configuration getConfig(Boundedness boundedness) {
+		Configuration config = new Configuration();
+		config.setInteger(SourceReaderOptions.ELEMENT_QUEUE_CAPACITY, 1);
+		config.setLong(SourceReaderOptions.SOURCE_READER_CLOSE_TIMEOUT, 30000L);
+		config.setString(SourceReaderOptions.SOURCE_READER_BOUNDEDNESS, boundedness.name());
+		return config;
 	}
 
 	// ---------------- helper classes -----------------
@@ -190,9 +238,10 @@ public class SourceReaderBaseTest {
 	 * A testing split reader that reads from a given list of integer arrays, where each array represents a split.
 	 * The returned int array is [split, index, value].
 	 */
-	private static class TestingSplitReader implements SplitReader<int[], IdAndIndex> {
+	private static class TestingSplitReader implements SplitReader<TestingElements, IdAndIndex> {
 		private final List<int[]> records;
 		private final int[] positions;
+		private Boundedness boundedness;
 		private volatile boolean wakenUp;
 		private long epoch = -1;
 
@@ -204,7 +253,7 @@ public class SourceReaderBaseTest {
 		}
 
 		@Override
-		public void fetch(BlockingQueue<int[]> queue,
+		public void fetch(BlockingQueue<TestingElements> queue,
 			SplitsChangesWithEpoch<IdAndIndex> splitsChangesWithEpoch,
 			FinishedSplitReporter finishedSplitReporter) throws InterruptedException {
 			if (epoch < splitsChangesWithEpoch.currentEpoch()) {
@@ -220,11 +269,11 @@ public class SourceReaderBaseTest {
 				int[] split = records.get(i);
 				if (positions[i] >= 0 && positions[i] < split.length) {
 					// [split, index, value]
-					queue.put(new int[]{i, positions[i], split[positions[i]]});
+					queue.put(new TestingElements(new int[]{i, positions[i], split[positions[i]]}));
 					// increment position of the split.
 					positions[i]++;
 					// return on each element put into the queue.
-					if (positions[i] == split.length) {
+					if (positions[i] == split.length && boundedness == Boundedness.BOUNDED) {
 						finishedSplitReporter.reportFinishedSplit(Integer.toString(i));
 					}
 					return;
@@ -245,19 +294,21 @@ public class SourceReaderBaseTest {
 				this.notify();
 			}
 		}
+
+		@Override
+		public void configure(Configuration config) {
+			boundedness = config.getEnum(Boundedness.class, SourceReaderOptions.SOURCE_READER_BOUNDEDNESS);
+		}
 	}
 
 	/**
 	 * A testing SourceReader class;
 	 */
 	private static final class TestingSourceReader
-			extends SingleThreadMultiplexSourceReaderBase<int[], Integer, IdAndIndex> {
-		private final Map<Integer, Integer> tempState;
-		private volatile int[] last = new int[]{-1, -1, -1};
+			extends SingleThreadMultiplexSourceReaderBase<TestingElements, Integer, IdAndIndex, AtomicInteger> {
 
-		TestingSourceReader(List<int[]> records) {
-			super(() -> new TestingSplitReader(records));
-			this.tempState = new HashMap<>();
+		TestingSourceReader(Supplier<SplitReader<TestingElements, IdAndIndex>> splitReaderFactory) {
+			super(splitReaderFactory, new TestingRecordEmitter());
 		}
 
 		@Override
@@ -266,36 +317,49 @@ public class SourceReaderBaseTest {
 		}
 
 		@Override
-		protected void initializedState(IdAndIndex split) {
-			tempState.put(split.id, split.idx);
+		protected AtomicInteger initializedState(IdAndIndex split) {
+			return new AtomicInteger(split.idx);
 		}
 
 		@Override
-		protected void updateState(int[] element) {
-			tempState.put(element[0], element[1]);
-		}
-
-		@Override
-		protected Integer convertToEmit(int[] element) {
-			if (Arrays.equals(last, element)) {
-				System.out.println("Dup :: " + Arrays.toString(element));
-			}
-			last = element;
-			return element[2];
-		}
-
-		@Override
-		public List<IdAndIndex> snapshotState() {
-			List<IdAndIndex> states = new ArrayList<>();
-			tempState.forEach((id, idx) -> states.add(new IdAndIndex(id, idx)));
-			return states;
+		protected IdAndIndex toSplitType(String splitId, AtomicInteger splitState) {
+			return new IdAndIndex(Integer.parseInt(splitId), splitState.get());
 		}
 	}
 
+	private static class TestingRecordEmitter implements RecordEmitter<TestingElements, Integer, AtomicInteger> {
+		@Override
+		public void emitRecord(TestingElements records, SourceOutput<Integer> output, AtomicInteger splitState) {
+			output.collect(records.element[2]);
+			splitState.set(records.element[1]);
+		}
+	}
+
+	/**
+	 * Mutable Split state class
+	 */
+	private static class TestingElements implements WithSplitId {
+
+		private final int[] element;
+
+		TestingElements(int[] element) {
+			this.element = element;
+		}
+
+		@Override
+		public String splitId() {
+			return Integer.toString(element[0]);
+		}
+	}
+
+	/**
+	 * A source output that validates the output.
+	 */
 	private static class ValidatingSourceOutput implements SourceOutput<Integer> {
 		private Set<Integer> consumedValues = new HashSet<>();
 		private int max = Integer.MIN_VALUE;
 		private int min = Integer.MAX_VALUE;
+
 		private int count = 0;
 
 		@Override
@@ -317,9 +381,9 @@ public class SourceReaderBaseTest {
 			assertEquals("The min value should be 0", 0, min);
 			assertEquals("The max value should be 99", 99, max);
 		}
-
 		public int count() {
 			return count;
 		}
+
 	}
 }

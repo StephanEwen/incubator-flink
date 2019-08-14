@@ -21,15 +21,19 @@ import org.apache.flink.api.connectors.source.SplitEnumerator;
 import org.apache.flink.api.connectors.source.SourceOutput;
 import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.api.connectors.source.splitreader.SplitReader;
-import org.apache.flink.api.connectors.source.TimestampExtractor;
+import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.impl.connector.source.fetcher.SplitFetcherManager;
+import org.apache.flink.impl.connector.source.fetcher.SplitFinishedMarker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -43,20 +47,27 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * @param <E> The rich element type that contains information for split state update or timestamp extraction.
  * @param <T> The final element type to emit.
- * @param <SplitT> the split type.
+ * @param <SplitT> the immutable split type.
+ * @param <SplitStateT> the mutable type of split state.
  */
-public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit>
+public abstract class SourceReaderBase<E extends WithSplitId, T, SplitT extends SourceSplit, SplitStateT>
 	implements SourceReader<T, SplitT>, Configurable {
 	private static final Logger LOG = LoggerFactory.getLogger(SourceReaderBase.class);
 
 	/** A queue to buffer the elements fetched by the fetcher thread. */
-	private final LinkedBlockingQueue<Object> elementsQueue;
+	private final LinkedBlockingQueue<WithSplitId> elementsQueue;
 
 	/** The future to complete when the element queue becomes non-empty. */
 	private final AtomicReference<CompletableFuture<Object>> futureRef;
 
+	/** The state of the splits. */
+	private final Map<String, SplitStateT> splitStates;
+
+	/** The record emitter to handle the records read by the SplitReaders. */
+	protected final RecordEmitter<E, T, SplitStateT> recordEmitter;
+
 	/** The split fetcher manager to run split fetchers. */
-	private final SplitFetcherManager<E, SplitT> splitFetcherManager;
+	protected final SplitFetcherManager<E, SplitT> splitFetcherManager;
 
 	/** The configuration for the reader. */
 	protected SourceReaderOptions options;
@@ -64,12 +75,13 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit>
 	/** The raw configurations that may be used by subclasses. */
 	protected Configuration configuration;
 
-	/** The timestamp extractor to assign timestamps and generate watermarks. */
-	private TimestampExtractor timestampExtractor;
-
-	public SourceReaderBase(SplitFetcherManager<E, SplitT> splitFetcherManager) {
+	public SourceReaderBase(
+		SplitFetcherManager<E, SplitT> splitFetcherManager,
+		RecordEmitter<E, T, SplitStateT> recordEmitter) {
 		this.futureRef = new AtomicReference<>(null);
 		this.elementsQueue = new FutureCompletingBlockingQueue<>(futureRef);
+		this.recordEmitter = recordEmitter;
+		this.splitStates = new HashMap<>();
 		this.splitFetcherManager = splitFetcherManager;
 		this.splitFetcherManager.setSourceReader(this);
 	}
@@ -103,9 +115,7 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit>
 		} else {
 			E element = (E) next;
 			// Update the state if needed.
-			updateState(element);
-			// Put the element into the queue
-			sourceOutput.collect(convertToEmit(element));
+			recordEmitter.emitRecord(element, sourceOutput, splitStates.get(element.splitId()));
 			// Prepare the return status based on the availability of the next element.
 			status = elementsQueue.isEmpty() ? Status.AVAILABLE_LATER : Status.AVAILABLE_NOW;
 		}
@@ -130,6 +140,26 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit>
 	}
 
 	@Override
+	public List<SplitT> snapshotState() {
+		List<SplitT> splits = new ArrayList<>();
+		splitStates.forEach((id, state) -> splits.add(toSplitType(id, state)));
+		return splits;
+	}
+
+	@Override
+	public void addSplits(List<SplitT> splits) {
+		// Initialize the state for each split.
+		splits.forEach(s -> splitStates.put(s.splitId(), initializedState(s)));
+		// Hand over the splits to the split fetcher to start fetch.
+		splitFetcherManager.addSplits(splits);
+	}
+
+	@Override
+	public void handleOperatorEvents(SourceEvent sourceEvent) {
+		// Default action is do nothing.
+	}
+
+	@Override
 	public void close() throws Exception {
 		splitFetcherManager.close(options.sourceReaderCloseTimeout);
 	}
@@ -145,63 +175,30 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit>
 	 *
 	 * @param split a newly added split.
 	 */
-	protected abstract void initializedState(SplitT split);
+	protected abstract SplitStateT initializedState(SplitT split);
 
 	/**
-	 * When an element is polled out, update the state.
+	 * Convert a mutable SplitStateT to immutable SplitT.
 	 *
-	 * @param element the element that is polled out of the reader.
+	 * @param splitState splitState.
+	 * @return an immutable Split state.
 	 */
-	protected abstract void updateState(E element);
+	protected abstract SplitT toSplitType(String splitId, SplitStateT splitState);
 
-	/**
-	 * Convert an element from its rich type to the final type for emission.
-	 *
-	 * @param element the element to be converted then emitted.
-	 * @return A convereted element to emit.
-	 */
-	protected abstract T convertToEmit(E element);
-
-	/**
-	 * In this abstract implementation, the expectation is that that state are continuously maintained
-	 * with {@link #initializedState(SourceSplit)} and {@link #updateState(Object)} by the calling thread.
-	 * So when snapshotState() is invoked, no synchronization is needed between the calling thread and
-	 * fetchers.
-	 */
-	@Override
-	public abstract List<SplitT> snapshotState();
-
-	/**
-	 * Default operation is do nothing.
-	 *
-	 * @param sourceEvent the event sent by the {@link SplitEnumerator}.
-	 */
-	@Override
-	public void handleOperatorEvents(SourceEvent sourceEvent) {
-		// Do nothing.
-	}
-
-	@Override
-	public void addSplits(List<SplitT> splits) {
-		// Initialize the state for each split.
-		splits.forEach(this::initializedState);
-		// Hand over the splits to the split fetcher to start fetch.
-		splitFetcherManager.addSplits(splits);
-	}
-// ------------------ package private methods used by SplitFetcherManager -----------------
+// ------------------ methods used by SplitFetcherManager -----------------
 
 	/**
 	 * Get the elements queue.
 	 * @return the elements queue.
 	 */
-	BlockingQueue<Object> elementsQueue() {
+	public BlockingQueue<WithSplitId> elementsQueue() {
 		return elementsQueue;
 	}
 
 	/**
 	 * Wakeup this main thread interacting with this source reader.
 	 */
-	void wakeup() {
+	public void wakeup() {
 		maybeCompleteFuture(futureRef);
 	}
 
