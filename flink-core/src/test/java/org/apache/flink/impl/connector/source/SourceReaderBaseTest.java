@@ -31,6 +31,7 @@ import org.junit.rules.ExpectedException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -143,11 +144,11 @@ public class SourceReaderBaseTest {
 	@Test
 	public void testExceptionInSplitReader() throws InterruptedException {
 		final String errMsg = "Testing Exception";
-		TestingSourceReader reader = new TestingSourceReader(() -> new SplitReader<TestingElements, IdAndIndex>() {
+		TestingSourceReader reader = new TestingSourceReader(() -> new SplitReader<int[], IdAndIndex>() {
 			@Override
-			public void fetch(BlockingQueue<TestingElements> queue,
-					Queue<SplitsChange<IdAndIndex>> splitsChangesWithEpoch,
-					SplitFinishedCallback finishedSplitReporter) throws InterruptedException {
+			public void fetch(BlockingQueue<RecordsWithSplitId<int[]>> queue,
+							  Queue<SplitsChange<IdAndIndex>> splitsChanges,
+							  SplitFinishedCallback splitFinishedCallback) {
 				throw new RuntimeException(errMsg);
 			}
 
@@ -237,7 +238,7 @@ public class SourceReaderBaseTest {
 	 * A testing split reader that reads from a given list of integer arrays, where each array represents a split.
 	 * The returned int array is [split, index, value].
 	 */
-	private static class TestingSplitReader implements SplitReader<TestingElements, IdAndIndex> {
+	private static class TestingSplitReader implements SplitReader<int[], IdAndIndex> {
 		private final List<int[]> records;
 		private final int[] positions;
 		private Boundedness boundedness;
@@ -251,7 +252,7 @@ public class SourceReaderBaseTest {
 		}
 
 		@Override
-		public void fetch(BlockingQueue<TestingElements> queue,
+		public void fetch(BlockingQueue<RecordsWithSplitId<int[]>> queue,
 				Queue<SplitsChange<IdAndIndex>> splitsChanges,
 				SplitFinishedCallback splitFinishedCallback) throws InterruptedException {
 			while (!splitsChanges.isEmpty()) {
@@ -300,10 +301,11 @@ public class SourceReaderBaseTest {
 	 * A testing SourceReader class;
 	 */
 	private static final class TestingSourceReader
-			extends SingleThreadMultiplexSourceReaderBase<TestingElements, Integer, IdAndIndex, AtomicInteger> {
+			extends SingleThreadMultiplexSourceReaderBase<int[], Integer, IdAndIndex, AtomicInteger> {
 
-		TestingSourceReader(Supplier<SplitReader<TestingElements, IdAndIndex>> splitReaderFactory) {
-			super(splitReaderFactory, new TestingRecordEmitter());
+
+		public TestingSourceReader(Supplier<SplitReader<int[], IdAndIndex>> splitFetcherSupplier) {
+			super(splitFetcherSupplier, new TestingRecordEmitter());
 		}
 
 		@Override
@@ -322,18 +324,18 @@ public class SourceReaderBaseTest {
 		}
 	}
 
-	private static class TestingRecordEmitter implements RecordEmitter<TestingElements, Integer, AtomicInteger> {
+	private static class TestingRecordEmitter implements RecordEmitter<int[], Integer, AtomicInteger> {
 		@Override
-		public void emitRecord(TestingElements records, SourceOutput<Integer> output, AtomicInteger splitState) {
-			output.collect(records.element[2]);
-			splitState.set(records.element[1]);
+		public void emitRecord(int[] record, SourceOutput<Integer> output, AtomicInteger splitState) {
+			output.collect(record[2]);
+			splitState.set(record[1]);
 		}
 	}
 
 	/**
 	 * Mutable Split state class
 	 */
-	private static class TestingElements implements WithSplitId {
+	private static class TestingElements implements RecordsWithSplitId<int[]> {
 
 		private final int[] element;
 
@@ -344,6 +346,11 @@ public class SourceReaderBaseTest {
 		@Override
 		public String splitId() {
 			return Integer.toString(element[0]);
+		}
+
+		@Override
+		public Collection<int[]> records() {
+			return Collections.singleton(element);
 		}
 	}
 

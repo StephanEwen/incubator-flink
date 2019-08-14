@@ -26,7 +26,7 @@ import org.apache.flink.impl.connector.source.fetcher.SplitFetcherManager;
 import java.util.List;
 import java.util.function.Supplier;
 
-public abstract class SingleThreadMultiplexSourceReaderBase<E extends WithSplitId, T, SplitT extends SourceSplit, SplitStateT>
+public abstract class SingleThreadMultiplexSourceReaderBase<E, T, SplitT extends SourceSplit, SplitStateT>
 	extends SourceReaderBase<E, T, SplitT, SplitStateT> {
 
 	public SingleThreadMultiplexSourceReaderBase(
@@ -45,7 +45,7 @@ public abstract class SingleThreadMultiplexSourceReaderBase<E extends WithSplitI
 	/**
 	 * A Fetcher manager with a single fetcher and assign all the splits to it.
 	 */
-	private static class SingleThreadFetcherManager<E extends WithSplitId, SplitT extends SourceSplit>
+	private static class SingleThreadFetcherManager<E, SplitT extends SourceSplit>
 		extends SplitFetcherManager<E, SplitT> {
 
 		public SingleThreadFetcherManager(Supplier<SplitReader<E, SplitT>> splitReaderSupplier) {

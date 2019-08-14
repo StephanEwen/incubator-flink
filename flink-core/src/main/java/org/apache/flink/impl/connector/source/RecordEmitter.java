@@ -34,13 +34,17 @@ public interface RecordEmitter<E, T, SplitStateT> extends Configurable {
 	 * Process and emit the records to the {@link SourceOutput}. A few recommendations to the implementation
 	 * are following:
 	 *
-	 * <p>The
+	 * <ul>
+	 * 	<li>The method maybe interrupted in the middle. In that case, the same set of records will be passed
+	 * 	to the record emitter again later. The implementation needs to make sure it reades
+	 * 	<li>
+	 * </ul>
 	 *
-	 * @param records
+	 * @param element
 	 * @param output
 	 * @param splitState
 	 */
-	void emitRecord(E records, SourceOutput<T> output, SplitStateT splitState);
+	void emitRecord(E element, SourceOutput<T> output, SplitStateT splitState);
 
 	@Override
 	default void configure(Configuration config) {

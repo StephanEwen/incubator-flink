@@ -15,17 +15,35 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source;
+package org.apache.flink.streaming.connectors.kafka.newsrc;
+
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.TopicPartition;
 
 /**
- * An interface for classes that needs to be associated with a particular split.
+ * The mutable partition state.
  */
-public interface WithSplitId {
+public class PartitionState<K, V> {
+	private TopicPartition tp;
+	private long offset;
+	private int leaderEpoch;
 
-	/**
-	 * Get the split ID this class is associated with.
-	 *
-	 * @return the split ID this class is associated with.
-	 */
-	String splitId();
+	PartitionState(TopicPartition tp, long offset, int leaderEpoch) {
+		this.tp = tp;
+		this.offset = offset;
+		this.leaderEpoch = leaderEpoch;
+	}
+
+	void maybeUpdate(ConsumerRecord<K, V> record) {
+		offset = record.offset();
+		leaderEpoch = record.leaderEpoch().orElse(-1);
+	}
+
+	TopicPartition topicPartition() {
+		return tp;
+	}
+
+	KafkaPartition toKafkaPartition() {
+		return new KafkaPartition(tp, offset, leaderEpoch);
+	}
 }

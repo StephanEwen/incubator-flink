@@ -20,7 +20,6 @@ package org.apache.flink.impl.connector.source.fetcher;
 import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.impl.connector.source.Configurable;
-import org.apache.flink.impl.connector.source.WithSplitId;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.impl.connector.source.SourceReaderBase;
 import org.slf4j.Logger;
@@ -29,7 +28,6 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -42,7 +40,7 @@ import java.util.function.Supplier;
  * A class responsible for starting the {@link SplitFetcher} and manage the life cycles of them.
  * This class works with the {@link SourceReaderBase}.
  */
-public abstract class SplitFetcherManager<E extends WithSplitId, SplitT extends SourceSplit> implements Configurable {
+public abstract class SplitFetcherManager<E, SplitT extends SourceSplit> implements Configurable {
 	private static final Logger LOG = LoggerFactory.getLogger(SplitFetcherManager.class);
 
 	private final ThrowableCatchingRunnableWrapper runnableWrapper;
@@ -108,12 +106,12 @@ public abstract class SplitFetcherManager<E extends WithSplitId, SplitT extends 
 		// Create the executor with a thread factory that fails the source reader if one of
 		// the fetcher thread exits abnormally.
 		this.executors = Executors.newCachedThreadPool(r -> new Thread(r, "SourceFetcher"));
-		// The finished split reporter simply enqueues a SplitFinishedMarker.
+		// The finished split reporter simply enqueues a SplitFinishedMarkerRecords.
 		this.splitFinishedCallback = new SplitFinishedCallback(new Consumer<String>() {
 			@Override
 			public void accept(String splitId) {
 				try {
-					sourceReader.elementsQueue().put(new SplitFinishedMarker(splitId));
+					sourceReader.elementsQueue().put(new SplitFinishedMarkerRecords(splitId));
 				} catch (InterruptedException e) {
 					throw new RuntimeException("Interrupted while reporting the finished split " + splitId);
 				}
@@ -136,7 +134,7 @@ public abstract class SplitFetcherManager<E extends WithSplitId, SplitT extends 
 		int fetcherId = fetcherIdGenerator.getAndIncrement();
 		SplitFetcher<E, SplitT> splitFetcher = new SplitFetcher<>(
 			fetcherId,
-			(BlockingQueue<E>) sourceReader.elementsQueue(),
+			sourceReader.elementsQueue(),
 			splitReader,
 			splitFinishedCallback,
 			() -> fetchers.remove(fetcherId));

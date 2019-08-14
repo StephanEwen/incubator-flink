@@ -20,17 +20,18 @@ package org.apache.flink.impl.connector.source;
 import org.apache.flink.api.connectors.source.SourceOutput;
 import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SourceSplit;
+import org.apache.flink.impl.connector.source.fetcher.SplitFinishedMarkerRecords;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.impl.connector.source.fetcher.SplitFetcherManager;
-import org.apache.flink.impl.connector.source.fetcher.SplitFinishedMarker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -49,12 +50,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * @param <SplitT> the immutable split type.
  * @param <SplitStateT> the mutable type of split state.
  */
-public abstract class SourceReaderBase<E extends WithSplitId, T, SplitT extends SourceSplit, SplitStateT>
+public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitStateT>
 	implements SourceReader<T, SplitT>, Configurable {
 	private static final Logger LOG = LoggerFactory.getLogger(SourceReaderBase.class);
 
 	/** A queue to buffer the elements fetched by the fetcher thread. */
-	private final LinkedBlockingQueue<WithSplitId> elementsQueue;
+	private final LinkedBlockingQueue<RecordsWithSplitId<E>> elementsQueue;
 
 	/** The future to complete when the element queue becomes non-empty. */
 	private final AtomicReference<CompletableFuture<Object>> futureRef;
@@ -74,6 +75,9 @@ public abstract class SourceReaderBase<E extends WithSplitId, T, SplitT extends 
 	/** The raw configurations that may be used by subclasses. */
 	protected Configuration configuration;
 
+	/** The last element to ensure it is fully handled. */
+	private IteratorAndSplitId<E> iterAndSplitId;
+
 	public SourceReaderBase(
 		SplitFetcherManager<E, SplitT> splitFetcherManager,
 		RecordEmitter<E, T, SplitStateT> recordEmitter) {
@@ -83,6 +87,7 @@ public abstract class SourceReaderBase<E extends WithSplitId, T, SplitT extends 
 		this.splitStates = new HashMap<>();
 		this.splitFetcherManager = splitFetcherManager;
 		this.splitFetcherManager.setSourceReader(this);
+		this.iterAndSplitId = null;
 	}
 
 	@Override
@@ -99,22 +104,33 @@ public abstract class SourceReaderBase<E extends WithSplitId, T, SplitT extends 
 	@SuppressWarnings("unchecked")
 	public Status pollNext(SourceOutput<T> sourceOutput) {
 		splitFetcherManager.checkErrors();
-		// poll from the queue.
-		Object next = elementsQueue.poll();
+		// poll from the queue if the last element was successfully handled. Otherwise
+		// just pass the last element again.
+		RecordsWithSplitId<E> recordsWithSplitId = null;
+		boolean newFetch = iterAndSplitId == null || !iterAndSplitId.iter.hasNext();
+		if (newFetch) {
+			recordsWithSplitId = elementsQueue.poll();
+		}
 
 		Status status;
-		if (next == null) {
+		if (newFetch && recordsWithSplitId == null) {
 			// No element available, set to available later if needed.
 			status = Status.AVAILABLE_LATER;
-		} else if (next instanceof SplitFinishedMarker) {
+		} else if (recordsWithSplitId instanceof SplitFinishedMarkerRecords) {
 			// Handle the finished splits.
-			onSplitFinished(((SplitFinishedMarker) next).splitId());
+			onSplitFinished(recordsWithSplitId.splitId());
 			// Prepare the return status based on the availability of the next element.
 			status = elementsQueue.isEmpty() ? Status.AVAILABLE_LATER : Status.AVAILABLE_NOW;
 		} else {
-			E element = (E) next;
-			// Update the state if needed.
-			recordEmitter.emitRecord(element, sourceOutput, splitStates.get(element.splitId()));
+			// Update the record iterator if it is a new fetch.
+			if (newFetch) {
+				iterAndSplitId = new IteratorAndSplitId<>(
+						recordsWithSplitId.records().iterator(), recordsWithSplitId.splitId());
+			}
+			if (iterAndSplitId.iter.hasNext()) {
+				// emit the record.
+				recordEmitter.emitRecord(iterAndSplitId.iter.next(), sourceOutput, splitStates.get(iterAndSplitId.splitId));
+			}
 			// Prepare the return status based on the availability of the next element.
 			status = elementsQueue.isEmpty() ? Status.AVAILABLE_LATER : Status.AVAILABLE_NOW;
 		}
@@ -190,7 +206,7 @@ public abstract class SourceReaderBase<E extends WithSplitId, T, SplitT extends 
 	 * Get the elements queue.
 	 * @return the elements queue.
 	 */
-	public BlockingQueue<WithSplitId> elementsQueue() {
+	public BlockingQueue<RecordsWithSplitId<E>> elementsQueue() {
 		return elementsQueue;
 	}
 
@@ -215,6 +231,20 @@ public abstract class SourceReaderBase<E extends WithSplitId, T, SplitT extends 
 	}
 
 	// ------------------- private classes -----------------
+
+	/**
+	 * A simple container class to host iterator and split id tuple.
+	 * @param <E> the element type.
+	 */
+	private static class IteratorAndSplitId<E> {
+		private final Iterator<E> iter;
+		private final String splitId;
+
+		private IteratorAndSplitId(Iterator<E> iter, String splitId) {
+			this.iter = iter;
+			this.splitId = splitId;
+		}
+	}
 
 	/**
 	 * A subclass of {@link LinkedBlockingQueue} that ensures all the methods adding elements into

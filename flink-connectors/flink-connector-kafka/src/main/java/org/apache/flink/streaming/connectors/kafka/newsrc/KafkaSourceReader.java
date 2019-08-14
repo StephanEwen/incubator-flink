@@ -17,6 +17,8 @@
 
 package org.apache.flink.streaming.connectors.kafka.newsrc;
 
+import org.apache.flink.impl.connector.source.RecordEmitter;
+import org.apache.flink.impl.connector.source.fetcher.SplitFetcherManager;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.impl.connector.source.SourceReaderBase;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -27,12 +29,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.apache.flink.streaming.connectors.kafka.newsrc.KafkaSourceReader.*;
+
 /**
  * The source reader for Kafka.
  */
-public class KafkaSourceReader<K, V> extends SourceReaderBase<ConsumerRecord<K, V>, ConsumerRecord<K, V>, KafkaPartition> {
+public class KafkaSourceReader<K, V> extends SourceReaderBase<ConsumerRecord<K, V>, ConsumerRecord<K, V>,
+		KafkaPartition, PartitionState<K, V>> {
 
-	private final Map<TopicPartition, OffsetAndLeaderEpoch<K, V>> states = new HashMap<>();
+	private final Map<TopicPartition, PartitionState<K, V>> states = new HashMap<>();
+
+	public KafkaSourceReader(SplitFetcherManager splitFetcherManager,
+							 RecordEmitter recordEmitter) {
+		super(splitFetcherManager, recordEmitter);
+	}
 
 	@Override
 	protected SplitReader<ConsumerRecord<K, V>, KafkaPartition> createSplitReader() {
@@ -43,18 +53,12 @@ public class KafkaSourceReader<K, V> extends SourceReaderBase<ConsumerRecord<K, 
 	protected void initializedState(KafkaPartition split) {
 		states.put(
 			split.topicPartition(),
-			new OffsetAndLeaderEpoch<>(split.offset(), split.leaderEpoch().orElse(-1)));
+			new PartitionState<>(split.topicPartition(), split.offset(), split.leaderEpoch().orElse(-1)));
 	}
 
 	@Override
-	protected void updateState(ConsumerRecord<K, V> element) {
-		TopicPartition tp = new TopicPartition(element.topic(), element.partition());
-		states.get(tp).maybeUpdate(element);
-	}
-
-	@Override
-	protected ConsumerRecord<K, V> convertToEmit(ConsumerRecord<K, V> element) {
-		return element;
+	protected KafkaPartition toSplitType(String splitId, PartitionState splitState) {
+		return splitState.toKafkaPartition();
 	}
 
 	@Override
@@ -70,18 +74,8 @@ public class KafkaSourceReader<K, V> extends SourceReaderBase<ConsumerRecord<K, 
 		return snapshot;
 	}
 
-	private static class OffsetAndLeaderEpoch<K, V> {
-		private long offset;
-		private int leaderEpoch;
+	@Override
+	protected void onSplitFinished(String finishedSplitIds) {
 
-		private OffsetAndLeaderEpoch(long offset, int leaderEpoch) {
-			this.offset = offset;
-			this.leaderEpoch = leaderEpoch;
-		}
-
-		private void maybeUpdate(ConsumerRecord<K, V> record) {
-			offset = record.offset();
-			leaderEpoch = record.leaderEpoch().orElse(-1);
-		}
 	}
 }
