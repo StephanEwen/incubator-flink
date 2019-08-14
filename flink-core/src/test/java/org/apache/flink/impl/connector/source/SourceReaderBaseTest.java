@@ -265,9 +265,12 @@ public class SourceReaderBaseTest {
 				int[] split = records.get(i);
 				if (positions[i] >= 0 && positions[i] < split.length) {
 					// [split, index, value]
-					queue.put(new TestingElements(new int[]{i, positions[i], split[positions[i]]}));
-					// increment position of the split.
-					positions[i]++;
+					List<int[]> elements = new ArrayList<>();
+					elements.add(nextElement(i));
+					if (positions[i] < split.length - 1) {
+						elements.add(nextElement(i));
+					}
+					queue.put(new TestingElements(elements));
 					// return on each element put into the queue.
 					if (positions[i] == split.length && boundedness == Boundedness.BOUNDED) {
 						splitFinishedCallback.onSplitFinished(Integer.toString(i));
@@ -294,6 +297,12 @@ public class SourceReaderBaseTest {
 		@Override
 		public void configure(Configuration config) {
 			boundedness = config.getEnum(Boundedness.class, SourceReaderOptions.SOURCE_READER_BOUNDEDNESS);
+		}
+
+		private int[] nextElement(int i) {
+			int[] element = new int[]{i, positions[i], records.get(i)[positions[i]]};
+			positions[i]++;
+			return element;
 		}
 	}
 
@@ -337,20 +346,20 @@ public class SourceReaderBaseTest {
 	 */
 	private static class TestingElements implements RecordsWithSplitId<int[]> {
 
-		private final int[] element;
+		private final List<int[]> element;
 
-		TestingElements(int[] element) {
+		TestingElements(List<int[]> element) {
 			this.element = element;
 		}
 
 		@Override
 		public String splitId() {
-			return Integer.toString(element[0]);
+			return Integer.toString(element.get(0)[0]);
 		}
 
 		@Override
 		public Collection<int[]> records() {
-			return Collections.singleton(element);
+			return element;
 		}
 	}
 
