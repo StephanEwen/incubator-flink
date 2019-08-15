@@ -18,64 +18,43 @@
 package org.apache.flink.streaming.connectors.kafka.newsrc;
 
 import org.apache.flink.impl.connector.source.RecordEmitter;
-import org.apache.flink.impl.connector.source.fetcher.SplitFetcherManager;
+import org.apache.flink.impl.connector.source.SingleThreadMultiplexSourceReaderBase;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
-import org.apache.flink.impl.connector.source.SourceReaderBase;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
-import static org.apache.flink.streaming.connectors.kafka.newsrc.KafkaSourceReader.*;
 
 /**
  * The source reader for Kafka.
  */
-public class KafkaSourceReader<K, V> extends SourceReaderBase<ConsumerRecord<K, V>, ConsumerRecord<K, V>,
-		KafkaPartition, PartitionState<K, V>> {
+public class KafkaSourceReader<K, V> extends SingleThreadMultiplexSourceReaderBase<
+		ConsumerRecord<K, V>, ConsumerRecord<K, V>, KafkaPartition, PartitionState<K, V>> {
 
 	private final Map<TopicPartition, PartitionState<K, V>> states = new HashMap<>();
 
-	public KafkaSourceReader(SplitFetcherManager splitFetcherManager,
-							 RecordEmitter recordEmitter) {
-		super(splitFetcherManager, recordEmitter);
+	public KafkaSourceReader(
+			Supplier<SplitReader<ConsumerRecord<K, V>, KafkaPartition>> splitFetcherSupplier,
+			RecordEmitter<ConsumerRecord<K, V>, ConsumerRecord<K, V>, PartitionState<K, V>> recordEmitter) {
+		super(splitFetcherSupplier, recordEmitter);
 	}
 
-	@Override
-	protected SplitReader<ConsumerRecord<K, V>, KafkaPartition> createSplitReader() {
-		return new KafkaPartitionReader<>(configuration);
-	}
-
-	@Override
-	protected void initializedState(KafkaPartition split) {
-		states.put(
-			split.topicPartition(),
-			new PartitionState<>(split.topicPartition(), split.offset(), split.leaderEpoch().orElse(-1)));
-	}
-
-	@Override
-	protected KafkaPartition toSplitType(String splitId, PartitionState splitState) {
-		return splitState.toKafkaPartition();
-	}
-
-	@Override
-	public List<KafkaPartition> snapshotState() {
-		List<KafkaPartition> snapshot = new ArrayList<>();
-		states.entrySet().forEach(entry -> {
-			OffsetAndLeaderEpoch value = entry.getValue();
-			snapshot.add(new KafkaPartition(
-				entry.getKey(),
-				value.offset,
-				value.leaderEpoch));
-		});
-		return snapshot;
-	}
 
 	@Override
 	protected void onSplitFinished(String finishedSplitIds) {
+		// Do nothing.
+	}
 
+	@Override
+	protected PartitionState<K, V> initializedState(KafkaPartition split) {
+		return new PartitionState<>(split.topicPartition(), split.offset(), split.leaderEpoch().orElse(-1));
+	}
+
+	@Override
+	protected KafkaPartition toSplitType(String splitId, PartitionState<K, V> splitState) {
+		return splitState.toKafkaPartition();
 	}
 }
