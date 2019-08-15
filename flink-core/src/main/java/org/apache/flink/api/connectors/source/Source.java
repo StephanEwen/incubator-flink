@@ -52,7 +52,7 @@ public interface Source<T, SplitT extends SourceSplit, CoordChkT> extends Serial
 	 *
 	 * @param config the configuration of this operator.
 	 */
-	SplitEnumerator<SplitT, CoordChkT> restoreEumerator(Configuration config, CoordChkT checkpoint) throws IOException;
+	SplitEnumerator<SplitT, CoordChkT> restoreEnumerator(Configuration config, CoordChkT checkpoint) throws IOException;
 
 	// ------------------------------------------------------------------------
 	//  serializers for the metadata

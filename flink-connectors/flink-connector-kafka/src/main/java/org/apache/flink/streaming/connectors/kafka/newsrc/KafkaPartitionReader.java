@@ -17,19 +17,26 @@
 
 package org.apache.flink.streaming.connectors.kafka.newsrc;
 
+import org.apache.flink.impl.connector.source.RecordsWithSplitId;
+import org.apache.flink.impl.connector.source.fetcher.SplitFinishedCallback;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.impl.connector.source.splitreader.SplitsAddition;
+import org.apache.flink.impl.connector.source.splitreader.SplitsChange;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -42,8 +49,7 @@ public class KafkaPartitionReader<K, V> implements SplitReader<ConsumerRecord<K,
 	private static final long MAX_BLOCK_TIME_MS = 1000L;
 
 	private final KafkaConsumer<K, V> consumer;
-	private long splitEpoch;
-	private Iterator<ConsumerRecord<K, V>> unfinishedIter;
+	private Iterator<RecordsAndPartition<K, V>> unfinishedIter;
 
 	/** A boolean indicating whether the reader has been waken up. */
 	private volatile boolean wakenUp;
@@ -52,29 +58,30 @@ public class KafkaPartitionReader<K, V> implements SplitReader<ConsumerRecord<K,
 		Properties props = new Properties();
 		config.addAllToProperties(props);
 		this.consumer = new KafkaConsumer<>(props);
-		this.splitEpoch = -1;
 		this.unfinishedIter = null;
 	}
 
 	@Override
 	public void fetch(
-		BlockingQueue<ConsumerRecord<K, V>> queue,
-		SplitsWithEpoch<KafkaPartition> splitsWithEpoch) throws InterruptedException {
-		maybeUpdatePartitionAndOffsets(splitsWithEpoch);
+		BlockingQueue<RecordsWithSplitId<ConsumerRecord<K, V>>> queue,
+		Queue<SplitsChange<KafkaPartition>> splitsChanges,
+		SplitFinishedCallback splitFinishedCallback) throws InterruptedException {
+		maybeUpdatePartitionAndOffsets(splitsChanges);
 
 		// It is possible that the fetch got waken up and the iterator has not finished yet.
 		// In that case, we resume from the unfinished iterator rather than start from
 		// beginning.
-		Iterator<ConsumerRecord<K, V>> iter;
+		Iterator<RecordsAndPartition<K, V>> iter;
 		if (unfinishedIter == null) {
-			iter = consumer.poll(Duration.ofMillis(MAX_BLOCK_TIME_MS)).iterator();
+			ConsumerRecords<K, V> recrods = consumer.poll(Duration.ofMillis(MAX_BLOCK_TIME_MS));
+			iter = toRecordsAndPartition(recrods).iterator();
 		} else {
 			iter = unfinishedIter;
 		}
 
 		// so we can act to wakeup flag.
 		// Put all the records into the queue. Ensure the thread blocks up to MAX_BLOCK_tIME_MS
-		ConsumerRecord<K, V> current = null;
+		RecordsAndPartition<K, V> current = null;
 		boolean lastPutSucceeded = true;
 		while(iter.hasNext() && !wakenUp) {
 			if (lastPutSucceeded) {
@@ -86,6 +93,8 @@ public class KafkaPartitionReader<K, V> implements SplitReader<ConsumerRecord<K,
 		// Throw away the iterator if all the records has been put into the queue.
 		if (!iter.hasNext()) {
 			unfinishedIter = null;
+		} else {
+			unfinishedIter = iter;
 		}
 
 		// Reset the wakenUp flag.
@@ -97,22 +106,62 @@ public class KafkaPartitionReader<K, V> implements SplitReader<ConsumerRecord<K,
 		wakenUp = true;
 	}
 
-	private void maybeUpdatePartitionAndOffsets(SplitsWithEpoch<KafkaPartition> splitsWithEpoch) {
-		if (splitEpoch < splitsWithEpoch.epoch()) {
-			Set<TopicPartition> currentAssignments = consumer.assignment();
-			List<TopicPartition> toConsume = new ArrayList<>();
-			Set<KafkaPartition> toSeek = new HashSet<>();
-			for (KafkaPartition kp : splitsWithEpoch.splits()) {
-				if (!currentAssignments.contains(kp.topicPartition())) {
-					toConsume.add(kp.topicPartition());
+	private void maybeUpdatePartitionAndOffsets(Queue<SplitsChange<KafkaPartition>> splitsChanges) {
+		Set<TopicPartition> currentAssignments = consumer.assignment();
+		List<TopicPartition> toConsume = new ArrayList<>(currentAssignments);
+		Set<KafkaPartition> toSeek = new HashSet<>();
+		while (!splitsChanges.isEmpty()) {
+			SplitsChange<KafkaPartition> splitsChange = splitsChanges.poll();
+			if (splitsChange instanceof SplitsAddition) {
+				for (KafkaPartition kp : splitsChange.splits()) {
+					if (!currentAssignments.contains(kp.topicPartition())) {
+						toConsume.add(kp.topicPartition());
+					} else {
+						throw new IllegalStateException("Partition " + kp.topicPartition() + " is already assigned.");
+					}
+					toSeek.add(kp);
 				}
-				toSeek.add(kp);
+			} else {
+				splitsChange.splits().forEach(sc -> toConsume.remove(sc.topicPartition()));
 			}
 
 			consumer.assign(toConsume);
 			toSeek.forEach(kp -> consumer.seek(
-				kp.topicPartition(),
-				new OffsetAndMetadata(kp.offset(), kp.leaderEpoch(), null)));
+					kp.topicPartition(),
+					new OffsetAndMetadata(kp.offset(), kp.leaderEpoch(), null)));
+		}
+	}
+
+	@Override
+	public void configure(Configuration config) {
+
+	}
+
+	private List<RecordsAndPartition<K, V>> toRecordsAndPartition(ConsumerRecords<K, V> consumerRecords) {
+		List<RecordsAndPartition<K, V>> recordsAndPartitions = new ArrayList<>();
+		for (TopicPartition tp : consumerRecords.partitions()) {
+			recordsAndPartitions.add(new RecordsAndPartition<>(consumerRecords.records(tp), tp));
+		}
+		return recordsAndPartitions;
+	}
+
+	private static class RecordsAndPartition<K, V> implements RecordsWithSplitId<ConsumerRecord<K, V>> {
+		private final TopicPartition tp;
+		private final Collection<ConsumerRecord<K, V>> records;
+
+		private RecordsAndPartition(Collection<ConsumerRecord<K, V>> records, TopicPartition tp) {
+			this.records = records;
+			this.tp = tp;
+		}
+
+		@Override
+		public String splitId() {
+			return tp.toString();
+		}
+
+		@Override
+		public Collection<ConsumerRecord<K, V>> records() {
+			return records;
 		}
 	}
 }

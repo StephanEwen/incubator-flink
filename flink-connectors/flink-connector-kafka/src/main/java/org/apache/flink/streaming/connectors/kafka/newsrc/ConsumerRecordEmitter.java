@@ -22,12 +22,13 @@ import org.apache.flink.impl.connector.source.RecordEmitter;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 public class ConsumerRecordEmitter<K, V>
-		implements RecordEmitter<RecordsByTopicPartition<K, V>, ConsumerRecord<K, V>, PartitionState<K, V>> {
+		implements RecordEmitter<ConsumerRecord<K, V>, ConsumerRecord<K, V>, PartitionState<K, V>> {
 
 	@Override
-	public void emitRecord(RecordsByTopicPartition<K, V> records,
+	public void emitRecord(ConsumerRecord<K, V> element,
 						   SourceOutput<ConsumerRecord<K, V>> output,
 						   PartitionState<K, V> splitState) {
-
+		output.collect(element, element.timestamp());
+		splitState.maybeUpdate(element);
 	}
 }
