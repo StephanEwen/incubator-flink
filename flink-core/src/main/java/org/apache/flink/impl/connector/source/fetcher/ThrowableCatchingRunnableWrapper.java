@@ -30,9 +30,11 @@ public class ThrowableCatchingRunnableWrapper {
 	private final Logger logger;
 	private final Consumer<Throwable> exceptionConsumer;
 
-	public ThrowableCatchingRunnableWrapper(
-			Consumer<Throwable> exceptionConsumer,
-			Logger logger) {
+	public ThrowableCatchingRunnableWrapper(Consumer<Throwable> exceptionConsumer) {
+		this(exceptionConsumer, null);
+	}
+
+	public ThrowableCatchingRunnableWrapper(Consumer<Throwable> exceptionConsumer, Logger logger) {
 		this.logger = logger == null ? LOG : logger;
 		this.exceptionConsumer = exceptionConsumer;
 	}

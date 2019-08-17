@@ -24,7 +24,6 @@ import org.apache.flink.api.connectors.source.Source;
 import org.apache.flink.api.connectors.source.SourceOutput;
 import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.api.connectors.source.event.AddSplitEvent;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
@@ -92,8 +91,6 @@ public class NewStreamSourceOperator<T, SplitT extends SourceSplit, CoordCkt> ex
 
 	@Override
 	public void handleOperatorEvents(SourceEvent sourceEvent) {
-		if (sourceEvent instanceof AddSplitEvent) {
-			()
-		}
+
 	}
 }

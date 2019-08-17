@@ -19,11 +19,11 @@ package org.apache.flink.impl.connector.source.splitreader;
 
 import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.impl.connector.source.Configurable;
-import org.apache.flink.impl.connector.source.RecordsWithSplitId;
-import org.apache.flink.impl.connector.source.fetcher.SplitFinishedCallback;
+import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
 
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
+import java.util.function.Consumer;
 
 /**
  * An interface used to read from splits. The implementation could either read from a single split or from
@@ -42,18 +42,23 @@ public interface SplitReader<E, SplitT extends SourceSplit> extends Configurable
 	 * should just resume from where the last fetch call was waken up or interrupted.
 	 *
 	 * @param queue The element queue to put the fetched element into.
-	 * @param splitsChanges a queue with split changes that has not been handled by this SplitReader.
 	 * @param splitFinishedCallback a collector to report finished splits.
 	 * @throws InterruptedException when interrupted
 	 */
 	void fetch(
-		BlockingQueue<RecordsWithSplitId<E>> queue,
-		Queue<SplitsChange<SplitT>> splitsChanges,
-		SplitFinishedCallback splitFinishedCallback) throws InterruptedException;
+		BlockingQueue<RecordsWithSplitIds<E>> queue,
+		Consumer<String> splitFinishedCallback) throws InterruptedException;
+
+	/**
+	 * Handle the split changes. This call should be non-blocking.
+	 *
+	 * @param splitsChanges a queue with split changes that has not been handled by this SplitReader.
+	 */
+	void handleSplitsChanges(Queue<SplitsChange<SplitT>> splitsChanges);
 
 	/**
 	 * Wake up the split reader in case the fetcher thread is blocking in
-	 * {@link #fetch(BlockingQueue, Queue, SplitFinishedCallback)}.
+	 * {@link #fetch(BlockingQueue, Consumer)}.
 	 */
 	void wakeUp();
 }

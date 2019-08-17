@@ -24,7 +24,8 @@ import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.impl.connector.source.splitreader.SplitsChange;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.impl.connector.source.fetcher.SplitFinishedCallback;
+import org.apache.flink.impl.connector.source.synchronization.FutureCompletingBlockingQueue;
+import org.apache.flink.impl.connector.source.synchronization.FutureNotifier;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -41,6 +42,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import static org.junit.Assert.assertEquals;
@@ -105,14 +107,14 @@ public class SourceReaderBaseTest {
 	}
 
 	@Test (timeout = 30000L)
-	public void testAvailable() throws ExecutionException, InterruptedException {
+	public void testAvailableOnEmptyQueue() throws ExecutionException, InterruptedException {
 		ValidatingSourceOutput output = new ValidatingSourceOutput();
 		List<IdAndIndex> splits = Collections.singletonList(new IdAndIndex(0, 0));
-		// Consumer all the records in the s;oit.
+		// Consumer all the records in the split.
 		TestingSourceReader reader = consumeRecords(splits, output, NUM_RECORDS_PER_SPLIT, Boundedness.UNBOUNDED);
 
 		CompletableFuture<?> future = reader.available();
-		assertFalse("There should be no records read for poll.", future.isDone());
+		assertFalse("There should be no records ready for poll.", future.isDone());
 		// Add a split to the reader so there are more records to be read.
 		reader.addSplits(Collections.singletonList(new IdAndIndex(1, 0)));
 		// THe future should be completed fairly soon. Otherwise the test will hit timeout and fail.
@@ -128,7 +130,7 @@ public class SourceReaderBaseTest {
 			splits.add(new IdAndIndex(i, 0));
 		}
 		// Poll 5 records and let it block on the element queue which only have capacity fo 1;
-		TestingSourceReader reader = consumeRecords(splits, output, 45, Boundedness.BOUNDED);
+		TestingSourceReader reader = consumeRecords(splits, output, 45, Boundedness.UNBOUNDED);
 
 		List<IdAndIndex> state = reader.snapshotState();
 		assertEquals("The snapshot should only have 10 splits. ", 10, state.size());
@@ -144,20 +146,29 @@ public class SourceReaderBaseTest {
 	@Test
 	public void testExceptionInSplitReader() throws InterruptedException {
 		final String errMsg = "Testing Exception";
-		TestingSourceReader reader = new TestingSourceReader(() -> new SplitReader<int[], IdAndIndex>() {
-			@Override
-			public void fetch(BlockingQueue<RecordsWithSplitId<int[]>> queue,
-							  Queue<SplitsChange<IdAndIndex>> splitsChanges,
-							  SplitFinishedCallback splitFinishedCallback) {
-				throw new RuntimeException(errMsg);
-			}
 
-			@Override
-			public void wakeUp() {}
+		FutureNotifier futureNotifier = new FutureNotifier();
+		FutureCompletingBlockingQueue<RecordsWithSplitIds<int[]>> elementsQueue =
+				new FutureCompletingBlockingQueue<>(futureNotifier);
+		TestingSourceReader reader = new TestingSourceReader(
+				futureNotifier,
+				elementsQueue,
+				() -> new SplitReader<int[], IdAndIndex>() {
+					@Override
+					public void fetch(BlockingQueue<RecordsWithSplitIds<int[]>> queue,
+									  Consumer<String> splitFinishedCallback) {
+						throw new RuntimeException(errMsg);
+					}
 
-			@Override
-			public void configure(Configuration config) {}
-		});
+					@Override
+					public void handleSplitsChanges(Queue<SplitsChange<IdAndIndex>> splitsChanges) {}
+
+					@Override
+					public void wakeUp() {}
+
+					@Override
+					public void configure(Configuration config) {}
+				});
 		expectedException.expect(RuntimeException.class);
 		expectedException.expectMessage("One or more fetchers have encountered exception");
 
@@ -184,8 +195,13 @@ public class SourceReaderBaseTest {
 				split[j] = i * 10 + j;
 			}
 		}
-
-		TestingSourceReader reader = new TestingSourceReader(() -> new TestingSplitReader(records));
+		FutureNotifier futureNotifier = new FutureNotifier();
+		FutureCompletingBlockingQueue<RecordsWithSplitIds<int[]>> elementsQueue =
+				new FutureCompletingBlockingQueue<>(futureNotifier);
+		TestingSourceReader reader = new TestingSourceReader(
+				futureNotifier,
+				elementsQueue,
+				() -> new TestingSplitReader(records));
 		Configuration config = getConfig(boundedness);
 		reader.configure(config);
 		return reader;
@@ -252,28 +268,21 @@ public class SourceReaderBaseTest {
 		}
 
 		@Override
-		public void fetch(BlockingQueue<RecordsWithSplitId<int[]>> queue,
-				Queue<SplitsChange<IdAndIndex>> splitsChanges,
-				SplitFinishedCallback splitFinishedCallback) throws InterruptedException {
-			while (!splitsChanges.isEmpty()) {
-				SplitsChange<IdAndIndex> splitsChange = splitsChanges.poll();
-				// split.id indicates the integer array, and split.idx indicates the position.
-				splitsChange.splits().forEach(split -> positions[split.id] = split.idx);
-			}
-
+		public void fetch(BlockingQueue<RecordsWithSplitIds<int[]>> queue,
+				Consumer<String> splitFinishedCallback) throws InterruptedException {
 			for (int i = 0; i < positions.length; i++) {
 				int[] split = records.get(i);
 				if (positions[i] >= 0 && positions[i] < split.length) {
 					// [split, index, value]
-					List<int[]> elements = new ArrayList<>();
-					elements.add(nextElement(i));
+					RecordsBySplits<int[]> recordsBySplits = new RecordsBySplits<>();
+					recordsBySplits.add(Integer.toString(i), nextElement(i));
 					if (positions[i] < split.length - 1) {
-						elements.add(nextElement(i));
+						recordsBySplits.add(Integer.toString(i), nextElement(i));
 					}
-					queue.put(new TestingElements(elements));
+					queue.put(recordsBySplits);
 					// return on each element put into the queue.
 					if (positions[i] == split.length && boundedness == Boundedness.BOUNDED) {
-						splitFinishedCallback.onSplitFinished(Integer.toString(i));
+						splitFinishedCallback.accept(Integer.toString(i));
 					}
 					return;
 				}
@@ -283,6 +292,15 @@ public class SourceReaderBaseTest {
 					this.wait();
 				}
 				wakenUp = false;
+			}
+		}
+
+		@Override
+		public void handleSplitsChanges(Queue<SplitsChange<IdAndIndex>> splitsChanges) {
+			while (!splitsChanges.isEmpty()) {
+				SplitsChange<IdAndIndex> splitsChange = splitsChanges.poll();
+				// split.id indicates the integer array, and split.idx indicates the position.
+				splitsChange.splits().forEach(split -> positions[split.id] = split.idx);
 			}
 		}
 
@@ -313,12 +331,14 @@ public class SourceReaderBaseTest {
 			extends SingleThreadMultiplexSourceReaderBase<int[], Integer, IdAndIndex, AtomicInteger> {
 
 
-		public TestingSourceReader(Supplier<SplitReader<int[], IdAndIndex>> splitFetcherSupplier) {
-			super(splitFetcherSupplier, new TestingRecordEmitter());
+		public TestingSourceReader(FutureNotifier futureNotifier,
+								   FutureCompletingBlockingQueue<RecordsWithSplitIds<int[]>> elementsQueue,
+								   Supplier<SplitReader<int[], IdAndIndex>> splitFetcherSupplier) {
+			super(futureNotifier, elementsQueue, splitFetcherSupplier, new TestingRecordEmitter());
 		}
 
 		@Override
-		protected void onSplitFinished(String finishedSplitIds) {
+		protected void onSplitFinished(Collection<String> finishedSplitIds) {
 
 		}
 
@@ -338,28 +358,6 @@ public class SourceReaderBaseTest {
 		public void emitRecord(int[] record, SourceOutput<Integer> output, AtomicInteger splitState) {
 			output.collect(record[2]);
 			splitState.set(record[1]);
-		}
-	}
-
-	/**
-	 * Mutable Split state class
-	 */
-	private static class TestingElements implements RecordsWithSplitId<int[]> {
-
-		private final List<int[]> element;
-
-		TestingElements(List<int[]> element) {
-			this.element = element;
-		}
-
-		@Override
-		public String splitId() {
-			return Integer.toString(element.get(0)[0]);
-		}
-
-		@Override
-		public Collection<int[]> records() {
-			return element;
 		}
 	}
 

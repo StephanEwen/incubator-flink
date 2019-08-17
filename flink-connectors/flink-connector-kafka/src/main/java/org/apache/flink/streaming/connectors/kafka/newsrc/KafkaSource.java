@@ -23,6 +23,10 @@ import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SplitEnumerator;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
+import org.apache.flink.impl.connector.source.synchronization.FutureCompletingBlockingQueue;
+import org.apache.flink.impl.connector.source.synchronization.FutureNotifier;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 import java.io.IOException;
 
@@ -33,7 +37,12 @@ public class KafkaSource<K, V> implements Source {
 
 	@Override
 	public SourceReader createReader(Configuration config, SourceContext context) throws IOException {
-		return new KafkaSourceReader<>(() -> new KafkaPartitionReader<>(config), new ConsumerRecordEmitter<>());
+		FutureNotifier futureNotifier = new FutureNotifier();
+		FutureCompletingBlockingQueue<RecordsWithSplitIds<ConsumerRecord<K, V>>> elementQueue =
+				new FutureCompletingBlockingQueue<>(futureNotifier);
+		return new KafkaSourceReader<>(futureNotifier,
+									   elementQueue,
+									   () -> new KafkaPartitionReader<>(config), new ConsumerRecordEmitter<>());
 	}
 
 	@Override

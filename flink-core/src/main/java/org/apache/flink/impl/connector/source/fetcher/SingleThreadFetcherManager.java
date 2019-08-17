@@ -15,35 +15,39 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source;
+package org.apache.flink.impl.connector.source.fetcher;
 
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.impl.connector.source.fetcher.SingleThreadFetcherManager;
+import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.impl.connector.source.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.impl.connector.source.synchronization.FutureNotifier;
 
+import java.util.List;
 import java.util.function.Supplier;
 
-public abstract class SingleThreadMultiplexSourceReaderBase<E, T, SplitT extends SourceSplit, SplitStateT>
-	extends SourceReaderBase<E, T, SplitT, SplitStateT> {
+/**
+ * A Fetcher manager with a single fetcher and assign all the splits to it.
+ */
+public class SingleThreadFetcherManager<E, SplitT extends SourceSplit>
+		extends SplitFetcherManager<E, SplitT> {
 
-	public SingleThreadMultiplexSourceReaderBase(
-			FutureNotifier futureNotifier,
-			FutureCompletingBlockingQueue<RecordsWithSplitIds<E>> elementsQueue,
-			Supplier<SplitReader<E, SplitT>> splitFetcherSupplier,
-			RecordEmitter<E, T, SplitStateT> recordEmitter) {
-		super(futureNotifier,
-			  elementsQueue,
-			  new SingleThreadFetcherManager<>(futureNotifier, elementsQueue, splitFetcherSupplier),
-			  recordEmitter);
+	public SingleThreadFetcherManager(FutureNotifier futureNotifier,
+									  FutureCompletingBlockingQueue<RecordsWithSplitIds<E>> elementsQueue,
+									  Supplier<SplitReader<E, SplitT>> splitReaderSupplier) {
+		super(futureNotifier, elementsQueue, splitReaderSupplier);
 	}
 
 	@Override
-	public void configure(Configuration config) {
-		super.configure(config);
-		splitFetcherManager.configure(config);
-		recordEmitter.configure(config);
+	public void addSplits(List<SplitT> splitsToAdd) {
+		SplitFetcher<E, SplitT> fetcher = fetchers.get(0);
+		if (fetcher == null) {
+			fetcher = createSplitFetcher();
+			// Add the splits to the fetchers.
+			fetcher.addSplits(splitsToAdd);
+			startFetcher(fetcher);
+		} else {
+			fetcher.addSplits(splitsToAdd);
+		}
 	}
 }
