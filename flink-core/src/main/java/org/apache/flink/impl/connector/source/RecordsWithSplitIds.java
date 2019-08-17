@@ -18,23 +18,24 @@
 package org.apache.flink.impl.connector.source;
 
 import java.util.Collection;
+import java.util.Map;
 
 /**
- * An interface for classes that needs to be associated with a particular split.
+ * An interface for the elements passed from the fetchers to the source reader.
  */
-public interface RecordsWithSplitId<T> {
+public interface RecordsWithSplitIds<E> {
 
 	/**
-	 * Get the split ID this class is associated with.
+	 * Get all the split ids.
 	 *
-	 * @return the split ID this class is associated with.
+	 * @return a collection of split ids.
 	 */
-	String splitId();
+	Collection<String> splitIds();
 
 	/**
-	 * Get an iterator to iterate over the records.
+	 * Get all the records by Splits;
 	 *
-	 * @return an iterator going over the records.
+	 * @return a mapping from split ids to the records.
 	 */
-	Collection<T> records();
+	Map<String, Collection<E>> recordsBySplits();
 }

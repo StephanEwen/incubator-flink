@@ -17,28 +17,29 @@
 
 package org.apache.flink.impl.connector.source.fetcher;
 
-import org.apache.flink.impl.connector.source.RecordsWithSplitId;
+import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Map;
 
 /**
  * A marker class to indicate that a split has finished.
  */
-public class SplitFinishedMarkerRecords implements RecordsWithSplitId {
-	private final String splitId;
+public class SplitFinishedMarkerRecords<E> implements RecordsWithSplitIds<E> {
+	private final Collection<String> splitIds;
 
-	SplitFinishedMarkerRecords(String splitId) {
-		this.splitId = splitId;
+	SplitFinishedMarkerRecords(Collection<String> splitIds) {
+		this.splitIds = splitIds;
 	}
 
 	@Override
-	public String splitId() {
-		return splitId;
+	public Collection<String> splitIds() {
+		return splitIds;
 	}
 
 	@Override
-	public Collection records() {
-		return Collections.emptyList();
+	public Map<String, Collection<E>> recordsBySplits() {
+		return Collections.emptyMap();
 	}
 }

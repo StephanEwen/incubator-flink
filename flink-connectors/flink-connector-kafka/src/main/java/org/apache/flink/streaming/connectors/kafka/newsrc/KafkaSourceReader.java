@@ -18,13 +18,14 @@
 package org.apache.flink.streaming.connectors.kafka.newsrc;
 
 import org.apache.flink.impl.connector.source.RecordEmitter;
+import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
 import org.apache.flink.impl.connector.source.SingleThreadMultiplexSourceReaderBase;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
+import org.apache.flink.impl.connector.source.synchronization.FutureCompletingBlockingQueue;
+import org.apache.flink.impl.connector.source.synchronization.FutureNotifier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.TopicPartition;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Collection;
 import java.util.function.Supplier;
 
 
@@ -34,17 +35,17 @@ import java.util.function.Supplier;
 public class KafkaSourceReader<K, V> extends SingleThreadMultiplexSourceReaderBase<
 		ConsumerRecord<K, V>, ConsumerRecord<K, V>, KafkaPartition, PartitionState<K, V>> {
 
-	private final Map<TopicPartition, PartitionState<K, V>> states = new HashMap<>();
-
 	public KafkaSourceReader(
+			FutureNotifier futureNotifier,
+			FutureCompletingBlockingQueue<RecordsWithSplitIds<ConsumerRecord<K, V>>> elementsQueue,
 			Supplier<SplitReader<ConsumerRecord<K, V>, KafkaPartition>> splitFetcherSupplier,
 			RecordEmitter<ConsumerRecord<K, V>, ConsumerRecord<K, V>, PartitionState<K, V>> recordEmitter) {
-		super(splitFetcherSupplier, recordEmitter);
+		super(futureNotifier, elementsQueue, splitFetcherSupplier, recordEmitter);
 	}
 
 
 	@Override
-	protected void onSplitFinished(String finishedSplitIds) {
+	protected void onSplitFinished(Collection<String> finishedSplitIds) {
 		// Do nothing.
 	}
 

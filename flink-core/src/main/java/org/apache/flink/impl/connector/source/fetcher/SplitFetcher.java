@@ -18,11 +18,9 @@
 package org.apache.flink.impl.connector.source.fetcher;
 
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.impl.connector.source.RecordsWithSplitId;
+import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
-import org.apache.flink.impl.connector.source.splitreader.SplitsAddition;
 import org.apache.flink.impl.connector.source.splitreader.SplitsChange;
-import org.apache.flink.impl.connector.source.splitreader.SplitsRemoval;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,6 +32,8 @@ import java.util.Queue;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * The internal fetcher runnable responsible for polling message from the external system.
@@ -46,21 +46,21 @@ public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 	private final Map<String, SplitT> assignedSplits;
 	/** The current split assignments for this fetcher. */
 	private final Queue<SplitsChange<SplitT>> splitChanges;
-	private final BlockingQueue<RecordsWithSplitId<E>> elementsQueue;
+	private final BlockingQueue<RecordsWithSplitIds<E>> elementsQueue;
 	private final SplitReader<E, SplitT> splitReader;
 	private final Runnable shutdownHook;
-	private final SplitFinishedCallback splitFinishedCallback;
-	private final FetchTask fetchTask;
-	private volatile boolean wakenUp;
+	private final Consumer<String> splitFinishedCallback;
+	private final FetchTask<E, SplitT> fetchTask;
+	private final AtomicBoolean wakeUp;
+	private volatile Thread runningThread;
 	private volatile boolean closed;
 	private volatile SplitFetcherTask runningTask = null;
 
-	SplitFetcher(
-		int id,
-		BlockingQueue<RecordsWithSplitId<E>> elementsQueue,
-		SplitReader<E, SplitT> splitReader,
-		SplitFinishedCallback splitFinishedCallback,
-		Runnable shutdownHook) {
+	SplitFetcher(int id,
+				 BlockingQueue<RecordsWithSplitIds<E>> elementsQueue,
+				 SplitReader<E, SplitT> splitReader,
+				 Consumer<String> splitFinishedCallback,
+				 Runnable shutdownHook) {
 
 		this.id = id;
 		this.taskQueue = new LinkedBlockingDeque<>();
@@ -71,44 +71,76 @@ public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 		this.shutdownHook = shutdownHook;
 		this.splitFinishedCallback = splitFinishedCallback;
 		// Remove the split from the assignments if it is already done.
-		this.splitFinishedCallback.chainAction(assignedSplits::remove);
-		this.fetchTask = new FetchTask();
-		this.wakenUp = false;
+		this.splitFinishedCallback.andThen(assignedSplits::remove);
+		this.fetchTask = new FetchTask<>(splitReader, elementsQueue, splitFinishedCallback);
+		this.wakeUp = new AtomicBoolean(false);
 		this.closed = false;
 	}
 
 	@Override
 	public void run() {
 		try {
+			runningThread = Thread.currentThread();
 			while (!closed) {
-				try {
-					// Block at most 1 second. We don't want to naively throw InterruptedException.
-					runningTask = taskQueue.peek() == null ? fetchTask : taskQueue.take();
-					if (runningTask != null && runningTask.run()) {
-						LOG.debug("Finished running task {}", runningTask.getClass().getSimpleName());
-						// the task has finished running. Set it to null so it won't be enqueued.
-						runningTask = null;
-					}
-				} catch (InterruptedException ie) {
-					if (closed) {
-						// Normal close, just return;
-						return;
-					} else if (wakenUp) {
-						LOG.debug("Split fetcher has been waken up.");
-						// The fetcher thread has just been waken up. So ignore the interrupted exception
-						// and continue;
-						wakenUp = false;
-					} else {
-						throw new RuntimeException(String.format(
-							"SplitFetcher thread %d interrupted while polling the records", id), ie);
-					}
-				}
-				// If the task is not null that means this task needs to be re-executed. This only
-				// happens when the task is the fetching task or the task was interrupted.
-				maybeEnqueueTask(runningTask);
+				runOnce();
 			}
 		} finally {
+			// Reset the interrupted flag so the shutdown hook do not got interrupted.
+			Thread.interrupted();
 			shutdownHook.run();
+		}
+	}
+
+	/**
+	 * Package private method to help unit test.
+	 */
+	void runOnce() {
+		try {
+			// The fetch task should run if the split assignment is not empty or there is a split change.
+			if (shouldRunFetchTask()) {
+				runningTask = fetchTask;
+			} else {
+				runningTask = taskQueue.take();
+			}
+			// Now the running task is not null. If wakeUp() is called after this point, the fetcher
+			// thread will not be interrupted. Instead task.wakeUp() will be called. On the other hand,
+			// If the wakeUp() call was make before this point, the wakeUp flag must have already been
+			// have been set, and the fetcher thread may or may not be interrupted, depending on
+			// whether the wakeUp() call was before or after the runningTask assignment. So the
+			// code does the following:
+			// 1. check and clear the interrupt flag on the fetcher thread to avoid interruption in
+			//    later code.
+			// 2. check the wakeUp flag to avoid unnecessary task run.
+			// Note that the runningTask may still encounter the case that the task is waken up before
+			// the it starts running.
+			LOG.debug("Prepare to run {}", runningTask);
+			if (!Thread.interrupted() && !wakeUp.get() && runningTask.run()) {
+				LOG.debug("Finished running task {}", runningTask);
+				// the task has finished running. Set it to null so it won't be enqueued.
+				runningTask = null;
+			}
+		} catch (InterruptedException ie) {
+			if (closed) {
+				// The fetcher is closed, just return;
+				return;
+			} else if (wakeUp.get()) {
+				// The fetcher thread has just been waken up. So ignore the interrupted exception
+				// and continue;
+				LOG.debug("Split fetcher has been waken up.");
+			} else {
+				throw new RuntimeException(String.format(
+						"SplitFetcher thread %d interrupted while polling the records", id), ie);
+			}
+		}
+		// If the task is not null that means this task needs to be re-executed. This only
+		// happens when the task is the fetching task or the task was interrupted.
+		maybeEnqueueTask(runningTask);
+		synchronized (wakeUp) {
+			// Set the running task to null. It is necessary for the shutdown method to avoid
+			// unnecessarily interrupt the running task.
+			runningTask = null;
+			// Set the wakeUp flag to false.
+			wakeUp.set(false);
 		}
 	}
 
@@ -118,15 +150,8 @@ public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 	 * @param splitsToAdd the splits to add.
 	 */
 	public void addSplits(List<SplitT> splitsToAdd) {
-		maybeEnqueueTask(() -> {
-			splitChanges.add(new SplitsAddition<>(splitsToAdd));
-			splitsToAdd.forEach(s -> assignedSplits.put(s.splitId(), s));
-			if (!fetchTask.isRunnable()) {
-				maybeEnqueueTask(fetchTask);
-			}
-			return true;
-		});
-		maybeWakeUpRunningThread();
+		maybeEnqueueTask(new AddSplitsTask<>(splitReader, splitsToAdd, splitChanges, assignedSplits));
+		wakeUp(true);
 	}
 
 	/**
@@ -135,15 +160,8 @@ public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 	 * @param splitsToRemove the splits to remove.
 	 */
 	public void removeSplits(List<SplitT> splitsToRemove) {
-		maybeEnqueueTask(() -> {
-			splitChanges.add(new SplitsRemoval<>(splitsToRemove));
-			splitsToRemove.forEach(s -> assignedSplits.remove(s.splitId()));
-			if (!fetchTask.isRunnable()) {
-				maybeEnqueueTask(fetchTask);
-			}
-			return true;
-		});
-		maybeWakeUpRunningThread();
+		maybeEnqueueTask(new RemoveSplitsTask<>(splitReader, splitsToRemove, splitChanges, assignedSplits));
+		wakeUp(true);
 	}
 
 	/**
@@ -152,52 +170,96 @@ public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 	public void shutdown() {
 		LOG.info("Closing split fetcher {}", id);
 		closed = true;
-		maybeWakeUpRunningThread();
+		wakeUp(false);
 	}
 
-	private void maybeWakeUpRunningThread() {
-		SplitFetcherTask currentTask = runningTask;
-		if (currentTask != null) {
-			wakenUp = true;
-			currentTask.wakeUp();
+	/**
+	 * Get the running task. Package private for testing.
+	 */
+	SplitFetcherTask runningTask() {
+		return runningTask;
+	}
+
+	/**
+	 * Check whether the fetch task should run. The fetch task should only run when all
+	 * the following conditions are met.
+	 * 1. there is no task in the task queue.
+	 * 2. there are assigned splits, OR there are split changes.
+	 * Package private for testing purpose.
+	 *
+	 * @return whether the fetch task should be run.
+	 */
+	boolean shouldRunFetchTask() {
+		return taskQueue.isEmpty() && (!assignedSplits.isEmpty() || !splitChanges.isEmpty());
+	}
+
+	/**
+	 * Wake up the fetcher thread. There are only two blocking points in a running fetcher.
+	 * 1. Taking the next task out of the task queue.
+	 * 2. Running a task.
+	 *
+	 * <p>They need to be waken up differently. If the fetcher is blocking waiting on the
+	 * next task in the task queue, we should just interrupt the fetcher thread.
+	 * If the fetcher is running the user split reader, we should call SplitReader.wakeUp()
+	 * instead of naively interrupt the thread.
+	 *
+	 * <p>The correctness can be think of in the following way. The purpose of wake up
+	 * is to let the fetcher thread go to the very beginning of the running loop.
+	 * There are three major events in each run of the loop.
+	 * <ol>
+	 *     <li>pick a task (blocking)
+	 * 	   <li>assign the task to runningTask variable.
+	 * 	   <li>run the runningTask. (blocking)
+	 * </ol>
+	 * We don't need to worry about things after step 3 because there is no blocking point
+	 * anymore.
+	 *
+	 * <p>We always first set the wakeup flag when waking up the fetcher, then use the
+	 * value of running task to determine where the fetcher thread is.
+	 * <ul>
+	 *     <li>
+	 *         If runningThread is null, it is before step 2, so we should interrupt fetcher.
+	 *         This interruption will not be propagated to the split reader, because the
+	 *         wakeUp flag will prevent the fetchTask from running.
+	 *     </li>
+	 *     <li>
+	 *         If runningThread is not null, it is after step 2. so we should wakeUp the
+	 *         split reader instead of interrupt the fetcher.
+	 *     </li>
+	 * </ul>
+	 *
+	 * The above logic only works in the same {@link #runOnce()} invocation. So we need to
+	 * synchronize to ensure the wake up logic do not touch a different invocation.
+	 */
+	void wakeUp(boolean taskOnly) {
+		// Synchronize to make sure the wake up only work for the current invocation of runOnce().
+		synchronized (wakeUp) {
+			// Do not wake up repeatedly.
+			if (wakeUp.compareAndSet(false, true)) {
+				// Now the wakeUp flag is set.
+				SplitFetcherTask currentTask = runningTask;
+				if (currentTask != null) {
+					// The running task may have missed our wakeUp flag and running, wake it up.
+					LOG.debug("Waking up running task {}", currentTask);
+					currentTask.wakeUp();
+				} else if (!taskOnly && runningThread != null) {
+					// The task has not started running yet, and it will not run for this
+					// runOnce() invocation due to the wakeUp flag. But we might have to
+					// interrupt the fetcher thread in case it is blocking on the task queue.
+					LOG.debug("Interrupting fetcher thread.");
+					// Only interrupt when the thread has started and there is no running task.
+					runningThread.interrupt();
+				}
+			}
 		}
 	}
 
 	private void maybeEnqueueTask(SplitFetcherTask task) {
-		boolean enqueued = true;
-		if (task == fetchTask) {
-			enqueued = taskQueue.offer(task);
-		} else if (task != null) {
-			enqueued = taskQueue.offerFirst(task);
-		}
-		if (!enqueued) {
+		// Only enqueue unfinished non-fetch task.
+		if (!closed && task != null && task != fetchTask && !taskQueue.offerFirst(task)) {
 			throw new RuntimeException("The task queue is full. This is only theoretically possible when " +
 									   "really bad thing happens.");
 		}
-	}
-
-	/**
-	 * The default fetch task.
-	 */
-	private class FetchTask implements SplitFetcherTask {
-		private boolean isRunnable = true;
-		@Override
-		public boolean run() throws InterruptedException {
-			if (!assignedSplits.isEmpty() || !splitChanges.isEmpty()) {
-				splitReader.fetch(elementsQueue, splitChanges, splitFinishedCallback);
-			}
-			isRunnable = !assignedSplits.isEmpty() || !splitChanges.isEmpty();
-			// If it is not runnable then the work is done.
-			return !isRunnable;
-		}
-
-		@Override
-		public void wakeUp() {
-			splitReader.wakeUp();
-		}
-
-		public boolean isRunnable() {
-			return isRunnable;
-		}
+		LOG.debug("Enqueued task {}", task);
 	}
 }

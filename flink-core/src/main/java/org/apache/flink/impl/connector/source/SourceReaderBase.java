@@ -25,20 +25,18 @@ import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.impl.connector.source.fetcher.SplitFetcherManager;
+import org.apache.flink.impl.connector.source.synchronization.FutureCompletingBlockingQueue;
+import org.apache.flink.impl.connector.source.synchronization.FutureNotifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * An abstract implementation of {@link SourceReader} which provides some sychronization between
@@ -54,11 +52,11 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 	implements SourceReader<T, SplitT>, Configurable {
 	private static final Logger LOG = LoggerFactory.getLogger(SourceReaderBase.class);
 
-	/** A queue to buffer the elements fetched by the fetcher thread. */
-	private final LinkedBlockingQueue<RecordsWithSplitId<E>> elementsQueue;
+	/** A future notifier to notify when this reader requires attention. */
+	private final FutureNotifier futureNotifier;
 
-	/** The future to complete when the element queue becomes non-empty. */
-	private final AtomicReference<CompletableFuture<Object>> futureRef;
+	/** A queue to buffer the elements fetched by the fetcher thread. */
+	private final BlockingQueue<RecordsWithSplitIds<E>> elementsQueue;
 
 	/** The state of the splits. */
 	private final Map<String, SplitStateT> splitStates;
@@ -76,18 +74,19 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 	protected Configuration configuration;
 
 	/** The last element to ensure it is fully handled. */
-	private IteratorAndSplitId<E> iterAndSplitId;
+	private SplitsRecordIterator<E> splitIter;
 
 	public SourceReaderBase(
-		SplitFetcherManager<E, SplitT> splitFetcherManager,
-		RecordEmitter<E, T, SplitStateT> recordEmitter) {
-		this.futureRef = new AtomicReference<>(null);
-		this.elementsQueue = new FutureCompletingBlockingQueue<>(futureRef);
+			FutureNotifier futureNotifier,
+			FutureCompletingBlockingQueue<RecordsWithSplitIds<E>> elementsQueue,
+			SplitFetcherManager<E, SplitT> splitFetcherManager,
+			RecordEmitter<E, T, SplitStateT> recordEmitter) {
+		this.futureNotifier = futureNotifier;
+		this.elementsQueue = elementsQueue;
+		this.splitFetcherManager = splitFetcherManager;
 		this.recordEmitter = recordEmitter;
 		this.splitStates = new HashMap<>();
-		this.splitFetcherManager = splitFetcherManager;
-		this.splitFetcherManager.setSourceReader(this);
-		this.iterAndSplitId = null;
+		this.splitIter = null;
 	}
 
 	@Override
@@ -106,8 +105,8 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 		splitFetcherManager.checkErrors();
 		// poll from the queue if the last element was successfully handled. Otherwise
 		// just pass the last element again.
-		RecordsWithSplitId<E> recordsWithSplitId = null;
-		boolean newFetch = iterAndSplitId == null || !iterAndSplitId.iter.hasNext();
+		RecordsWithSplitIds<E> recordsWithSplitId = null;
+		boolean newFetch = splitIter == null || !splitIter.hasNext();
 		if (newFetch) {
 			recordsWithSplitId = elementsQueue.poll();
 		}
@@ -117,19 +116,20 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 			// No element available, set to available later if needed.
 			status = Status.AVAILABLE_LATER;
 		} else if (recordsWithSplitId instanceof SplitFinishedMarkerRecords) {
+			// First remove the state of the split.
+			recordsWithSplitId.splitIds().forEach(splitStates::remove);
 			// Handle the finished splits.
-			onSplitFinished(recordsWithSplitId.splitId());
+			onSplitFinished(recordsWithSplitId.splitIds());
 			// Prepare the return status based on the availability of the next element.
 			status = elementsQueue.isEmpty() ? Status.AVAILABLE_LATER : Status.AVAILABLE_NOW;
 		} else {
 			// Update the record iterator if it is a new fetch.
 			if (newFetch) {
-				iterAndSplitId = new IteratorAndSplitId<>(
-						recordsWithSplitId.records().iterator(), recordsWithSplitId.splitId());
+				splitIter = new SplitsRecordIterator<>(recordsWithSplitId);
 			}
-			if (iterAndSplitId.iter.hasNext()) {
+			if (splitIter.hasNext()) {
 				// emit the record.
-				recordEmitter.emitRecord(iterAndSplitId.iter.next(), sourceOutput, splitStates.get(iterAndSplitId.splitId));
+				recordEmitter.emitRecord(splitIter.next(), sourceOutput, splitStates.get(splitIter.currentSplitId()));
 			}
 			// Prepare the return status based on the availability of the next element.
 			status = elementsQueue.isEmpty() ? Status.AVAILABLE_LATER : Status.AVAILABLE_NOW;
@@ -139,17 +139,17 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 
 	@Override
 	public CompletableFuture<?> available() {
+		// The order matters here. We first get the future. After this point, if the queue
+		// is empty or there is no error in the split fetcher manager, we can ensure that
+		// the future will be completed by the fetcher once it put an element into the element queue,
+		// or it will be completed when an error occurs.
+		//
+		CompletableFuture<Object> future = futureNotifier.future();
 		splitFetcherManager.checkErrors();
-		CompletableFuture<Object> future = new CompletableFuture<>();
-		// The order matters here. We first set the future ref. If the element queue is empty after
-		// this point, we can ensure that the future will be invoked by the fetcher once it
-		// put an element into the element queue.
-		this.futureRef.set(future);
-
 		if (!elementsQueue.isEmpty()) {
 			// The fetcher got the new elements after the last poll, or their is a finished split.
 			// Simply complete the future and return;
-			maybeCompleteFuture(futureRef);
+			futureNotifier.notifyComplete();
 		}
 		return future;
 	}
@@ -163,6 +163,7 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 
 	@Override
 	public void addSplits(List<SplitT> splits) {
+		LOG.trace("Adding splits {}", splits);
 		// Initialize the state for each split.
 		splits.forEach(s -> splitStates.put(s.splitId(), initializedState(s)));
 		// Hand over the splits to the split fetcher to start fetch.
@@ -183,7 +184,7 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 	/**
 	 * Handles the finished splits to clean the state if needed.
 	 */
-	protected abstract void onSplitFinished(String finishedSplitIds);
+	protected abstract void onSplitFinished(Collection<String> finishedSplitIds);
 
 	/**
 	 * When new splits are added to the reader. The initialize the state of the new splits.
@@ -200,113 +201,6 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 	 */
 	protected abstract SplitT toSplitType(String splitId, SplitStateT splitState);
 
-// ------------------ methods used by SplitFetcherManager -----------------
-
-	/**
-	 * Get the elements queue.
-	 * @return the elements queue.
-	 */
-	public BlockingQueue<RecordsWithSplitId<E>> elementsQueue() {
-		return elementsQueue;
-	}
-
-	/**
-	 * Wakeup this main thread interacting with this source reader.
-	 */
-	public void wakeup() {
-		maybeCompleteFuture(futureRef);
-	}
-
-	// ------------------- Private methods ------------------
-
-	/**
-	 * Complete the future if there is one. This will release the thread that is waiting for data.
-	 */
-	private static void maybeCompleteFuture(AtomicReference<CompletableFuture<Object>> futureRef) {
-		CompletableFuture<Object> future = futureRef.get();
-		// If there are multiple threads trying to complete the future, only the first one succeeds.
-		if (future != null && future.complete(new Object())) {
-			futureRef.set(null);
-		}
-	}
-
 	// ------------------- private classes -----------------
 
-	/**
-	 * A simple container class to host iterator and split id tuple.
-	 * @param <E> the element type.
-	 */
-	private static class IteratorAndSplitId<E> {
-		private final Iterator<E> iter;
-		private final String splitId;
-
-		private IteratorAndSplitId(Iterator<E> iter, String splitId) {
-			this.iter = iter;
-			this.splitId = splitId;
-		}
-	}
-
-	/**
-	 * A subclass of {@link LinkedBlockingQueue} that ensures all the methods adding elements into
-	 * the queue will complete the elements availability future.
-	 *
-	 * <p>The overriding methods must first put the elements into the queue then check and complete
-	 * the future if needed. This is required to ensure the thread waiting for more messages will
-	 * not lose a notification.
-	 *
-	 * @param <T> the type of the elements in the queue.
-	 */
-	private static class FutureCompletingBlockingQueue<T> extends LinkedBlockingQueue<T> {
-		private final AtomicReference<CompletableFuture<Object>> futureRef;
-
-		FutureCompletingBlockingQueue(AtomicReference<CompletableFuture<Object>> futureRef) {
-			this.futureRef = futureRef;
-		}
-
-		@Override
-		public void put(T t) throws InterruptedException {
-			super.put(t);
-			maybeCompleteFuture(futureRef);
-		}
-
-		@Override
-		public boolean offer(T t, long timeout, TimeUnit unit) throws InterruptedException {
-			if (super.offer(t, timeout, unit)) {
-				maybeCompleteFuture(futureRef);
-				return true;
-			} else {
-				return false;
-			}
-		}
-
-		@Override
-		public boolean offer(T t) {
-			if (super.offer(t)) {
-				maybeCompleteFuture(futureRef);
-				return true;
-			} else {
-				return false;
-			}
-		}
-
-		@Override
-		public boolean add(T t) {
-			if (super.add(t)) {
-				maybeCompleteFuture(futureRef);
-				return true;
-			} else {
-				return false;
-			}
-		}
-
-		@Override
-		public boolean addAll(Collection<? extends T> c) {
-			if (super.addAll(c)) {
-				maybeCompleteFuture(futureRef);
-				return true;
-			} else {
-				return false;
-			}
-		}
-	}
 }
