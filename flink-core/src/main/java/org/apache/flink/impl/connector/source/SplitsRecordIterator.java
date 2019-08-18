@@ -21,18 +21,21 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 
 /**
  * A class that wraps around a {@link RecordsWithSplitIds} and provide a consistent iterator.
  */
 public class SplitsRecordIterator<E> {
 	private final Map<String, Collection<E>> recordsBySplits;
+	private final Set<String> finishedSplitIds;
 	private final Iterator<Map.Entry<String, Collection<E>>> splitIter;
 	private String currentSplitId;
 	private Iterator<E> recordsIter;
 
 	/**
 	 * Construct a cross-splits iterator for the records.
+	 *
 	 * @param recordsWithSplitIds the records by splits.
 	 */
 	public SplitsRecordIterator(RecordsWithSplitIds<E> recordsWithSplitIds) {
@@ -40,6 +43,7 @@ public class SplitsRecordIterator<E> {
 		// Remove empty splits;
 		recordsBySplits.entrySet().removeIf(e -> e.getValue().isEmpty());
 		this.splitIter = recordsBySplits.entrySet().iterator();
+		this.finishedSplitIds = recordsWithSplitIds.finishedSplits();
 	}
 
 	/**
@@ -78,5 +82,14 @@ public class SplitsRecordIterator<E> {
 	 */
 	public String currentSplitId() {
 		return currentSplitId;
+	}
+
+	/**
+	 * The split Ids that are finished after all the records in this iterator are emitted.
+	 *
+	 * @return a set of finished split Ids.
+	 */
+	public Set<String> finishedSplitIds() {
+		return finishedSplitIds;
 	}
 }

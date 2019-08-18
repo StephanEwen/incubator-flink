@@ -33,7 +33,6 @@ import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
 /**
  * The internal fetcher runnable responsible for polling message from the external system.
@@ -49,45 +48,46 @@ public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 	private final BlockingQueue<RecordsWithSplitIds<E>> elementsQueue;
 	private final SplitReader<E, SplitT> splitReader;
 	private final Runnable shutdownHook;
-	private final Consumer<String> splitFinishedCallback;
-	private final FetchTask<E, SplitT> fetchTask;
 	private final AtomicBoolean wakeUp;
+	private final AtomicBoolean closed;
+	private FetchTask<E, SplitT> fetchTask;
 	private volatile Thread runningThread;
-	private volatile boolean closed;
 	private volatile SplitFetcherTask runningTask = null;
 
 	SplitFetcher(int id,
 				 BlockingQueue<RecordsWithSplitIds<E>> elementsQueue,
 				 SplitReader<E, SplitT> splitReader,
-				 Consumer<String> splitFinishedCallback,
 				 Runnable shutdownHook) {
 
 		this.id = id;
 		this.taskQueue = new LinkedBlockingDeque<>();
-		this.elementsQueue = elementsQueue;
 		this.splitChanges = new LinkedList<>();
+		this.elementsQueue = elementsQueue;
 		this.assignedSplits = new HashMap<>();
 		this.splitReader = splitReader;
 		this.shutdownHook = shutdownHook;
-		this.splitFinishedCallback = splitFinishedCallback;
-		// Remove the split from the assignments if it is already done.
-		this.splitFinishedCallback.andThen(assignedSplits::remove);
-		this.fetchTask = new FetchTask<>(splitReader, elementsQueue, splitFinishedCallback);
 		this.wakeUp = new AtomicBoolean(false);
-		this.closed = false;
+		this.closed = new AtomicBoolean(false);
 	}
 
 	@Override
 	public void run() {
+		LOG.info("Starting split fetcher {}", id);
 		try {
+			// Remove the split from the assignments if it is already done.
 			runningThread = Thread.currentThread();
-			while (!closed) {
+			this.fetchTask = new FetchTask<>(splitReader,
+											 elementsQueue,
+											 ids -> ids.forEach(assignedSplits::remove),
+											 runningThread);
+			while (!closed.get()) {
 				runOnce();
 			}
 		} finally {
 			// Reset the interrupted flag so the shutdown hook do not got interrupted.
 			Thread.interrupted();
 			shutdownHook.run();
+			LOG.info("Split fetcher {} exited.", id);
 		}
 	}
 
@@ -120,7 +120,7 @@ public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 				runningTask = null;
 			}
 		} catch (InterruptedException ie) {
-			if (closed) {
+			if (closed.get()) {
 				// The fetcher is closed, just return;
 				return;
 			} else if (wakeUp.get()) {
@@ -168,29 +168,39 @@ public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 	 * Shutdown the split fetcher.
 	 */
 	public void shutdown() {
-		LOG.info("Closing split fetcher {}", id);
-		closed = true;
-		wakeUp(false);
+		if (closed.compareAndSet(false, true)) {
+			LOG.info("Shutting down split fetcher {}", id);
+			wakeUp(false);
+		}
 	}
 
 	/**
-	 * Get the running task. Package private for testing.
+	 * Package private for unit test.
+	 * @return the assigned splits.
 	 */
-	SplitFetcherTask runningTask() {
-		return runningTask;
+	Map<String, SplitT> assignedSplits() {
+		return assignedSplits;
+	}
+
+	/**
+	 * Package private for unit test.
+	 * @return true if task queue is not empty, false otherwise.
+	 */
+	boolean isIdle() {
+		return taskQueue.isEmpty() && assignedSplits.isEmpty();
 	}
 
 	/**
 	 * Check whether the fetch task should run. The fetch task should only run when all
 	 * the following conditions are met.
-	 * 1. there is no task in the task queue.
-	 * 2. there are assigned splits, OR there are split changes.
+	 * 1. there is no task in the task queue to run.
+	 * 2. there are assigned splits
 	 * Package private for testing purpose.
 	 *
 	 * @return whether the fetch task should be run.
 	 */
 	boolean shouldRunFetchTask() {
-		return taskQueue.isEmpty() && (!assignedSplits.isEmpty() || !splitChanges.isEmpty());
+		return taskQueue.isEmpty() && !assignedSplits.isEmpty();
 	}
 
 	/**
@@ -256,7 +266,7 @@ public class SplitFetcher<E, SplitT extends SourceSplit> implements Runnable {
 
 	private void maybeEnqueueTask(SplitFetcherTask task) {
 		// Only enqueue unfinished non-fetch task.
-		if (!closed && task != null && task != fetchTask && !taskQueue.offerFirst(task)) {
+		if (!closed.get() && task != null && task != fetchTask && !taskQueue.offerFirst(task)) {
 			throw new RuntimeException("The task queue is full. This is only theoretically possible when " +
 									   "really bad thing happens.");
 		}

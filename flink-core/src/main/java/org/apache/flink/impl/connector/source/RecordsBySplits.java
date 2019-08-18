@@ -21,15 +21,17 @@ import org.apache.flink.api.connectors.source.SourceSplit;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * An interface for classes that needs to be associated with a particular split.
+ * An implementation of RecordsWithSplitIds to host all the records by splits.
  */
 public class RecordsBySplits<E> implements RecordsWithSplitIds<E> {
-	private Map<String, Collection<E>> recordsBySplits = new HashMap<>();
+	private Map<String, Collection<E>> recordsBySplits = new LinkedHashMap<>();
+	private Set<String> finishedSplits = new HashSet<>();
 
 	public void add(String splitId, E record) {
 		recordsBySplits.computeIfAbsent(splitId, sid -> new ArrayList<>()).add(record);
@@ -54,6 +56,19 @@ public class RecordsBySplits<E> implements RecordsWithSplitIds<E> {
 		addAll(split.splitId(), records);
 	}
 
+	public void addFinishedSplit(String splitId) {
+		finishedSplits.add(splitId);
+	}
+
+	public void addFinishedSplits(Collection<String> splitIds) {
+		finishedSplits.addAll(splitIds);
+	}
+
+	@Override
+	public Set<String> finishedSplits() {
+		return finishedSplits;
+	}
+
 	@Override
 	public Collection<String> splitIds() {
 		return recordsBySplits.keySet();
@@ -62,27 +77,5 @@ public class RecordsBySplits<E> implements RecordsWithSplitIds<E> {
 	@Override
 	public Map<String, Collection<E>> recordsBySplits() {
 		return recordsBySplits;
-	}
-
-	/**
-	 * A simple container class to host iterator and split id tuple.
-	 * @param <E> the element type.
-	 */
-	public static class SplitIterator<E> {
-		private final String splitId;
-		private final Iterator<E> iter;
-
-		private SplitIterator(String splitId, Iterator<E> iter) {
-			this.splitId = splitId;
-			this.iter = iter;
-		}
-
-		public String splitId() {
-			return splitId;
-		}
-
-		public Iterator<E> recordIterator() {
-			return iter;
-		}
 	}
 }

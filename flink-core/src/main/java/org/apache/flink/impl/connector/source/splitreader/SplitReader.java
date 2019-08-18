@@ -22,8 +22,6 @@ import org.apache.flink.impl.connector.source.Configurable;
 import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
 
 import java.util.Queue;
-import java.util.concurrent.BlockingQueue;
-import java.util.function.Consumer;
 
 /**
  * An interface used to read from splits. The implementation could either read from a single split or from
@@ -41,13 +39,11 @@ public interface SplitReader<E, SplitT extends SourceSplit> extends Configurable
 	 * exception. In either case, this method should be reentrant, meaning that the next fetch call
 	 * should just resume from where the last fetch call was waken up or interrupted.
 	 *
-	 * @param queue The element queue to put the fetched element into.
-	 * @param splitFinishedCallback a collector to report finished splits.
+	 * @return the Ids of the finished splits.
+	 *
 	 * @throws InterruptedException when interrupted
 	 */
-	void fetch(
-		BlockingQueue<RecordsWithSplitIds<E>> queue,
-		Consumer<String> splitFinishedCallback) throws InterruptedException;
+	RecordsWithSplitIds<E> fetch() throws InterruptedException;
 
 	/**
 	 * Handle the split changes. This call should be non-blocking.
@@ -58,7 +54,7 @@ public interface SplitReader<E, SplitT extends SourceSplit> extends Configurable
 
 	/**
 	 * Wake up the split reader in case the fetcher thread is blocking in
-	 * {@link #fetch(BlockingQueue, Consumer)}.
+	 * {@link #fetch()}.
 	 */
 	void wakeUp();
 }

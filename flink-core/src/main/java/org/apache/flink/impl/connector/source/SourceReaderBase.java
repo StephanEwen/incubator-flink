@@ -20,7 +20,6 @@ package org.apache.flink.impl.connector.source;
 import org.apache.flink.api.connectors.source.SourceOutput;
 import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.impl.connector.source.fetcher.SplitFinishedMarkerRecords;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.configuration.Configuration;
@@ -115,21 +114,20 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 		if (newFetch && recordsWithSplitId == null) {
 			// No element available, set to available later if needed.
 			status = Status.AVAILABLE_LATER;
-		} else if (recordsWithSplitId instanceof SplitFinishedMarkerRecords) {
-			// First remove the state of the split.
-			recordsWithSplitId.splitIds().forEach(splitStates::remove);
-			// Handle the finished splits.
-			onSplitFinished(recordsWithSplitId.splitIds());
-			// Prepare the return status based on the availability of the next element.
-			status = elementsQueue.isEmpty() ? Status.AVAILABLE_LATER : Status.AVAILABLE_NOW;
 		} else {
 			// Update the record iterator if it is a new fetch.
 			if (newFetch) {
 				splitIter = new SplitsRecordIterator<>(recordsWithSplitId);
 			}
+
 			if (splitIter.hasNext()) {
 				// emit the record.
 				recordEmitter.emitRecord(splitIter.next(), sourceOutput, splitStates.get(splitIter.currentSplitId()));
+			} else {
+				// First remove the state of the split.
+				splitIter.finishedSplitIds().forEach(splitStates::remove);
+				// Handle the finished splits.
+				onSplitFinished(splitIter.finishedSplitIds());
 			}
 			// Prepare the return status based on the availability of the next element.
 			status = elementsQueue.isEmpty() ? Status.AVAILABLE_LATER : Status.AVAILABLE_NOW;

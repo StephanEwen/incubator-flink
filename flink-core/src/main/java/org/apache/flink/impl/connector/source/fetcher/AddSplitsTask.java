@@ -34,6 +34,7 @@ class AddSplitsTask<SplitT extends SourceSplit> implements SplitFetcherTask {
 	private final List<SplitT> splitsToAdd;
 	private final Queue<SplitsChange<SplitT>> splitsChanges;
 	private final Map<String, SplitT> assignedSplits;
+	private boolean splitsChangesAdded;
 
 	AddSplitsTask(SplitReader<?, SplitT> splitReader,
 				  List<SplitT> splitsToAdd,
@@ -43,12 +44,16 @@ class AddSplitsTask<SplitT extends SourceSplit> implements SplitFetcherTask {
 		this.splitsToAdd = splitsToAdd;
 		this.splitsChanges = splitsChanges;
 		this.assignedSplits = assignedSplits;
+		this.splitsChangesAdded = false;
 	}
 
 	@Override
 	public boolean run() throws InterruptedException {
-		splitsChanges.add(new SplitsAddition<>(splitsToAdd));
-		splitsToAdd.forEach(s -> assignedSplits.put(s.splitId(), s));
+		if (!splitsChangesAdded) {
+			splitsChanges.add(new SplitsAddition<>(splitsToAdd));
+			splitsToAdd.forEach(s -> assignedSplits.put(s.splitId(), s));
+			splitsChangesAdded = true;
+		}
 		splitReader.handleSplitsChanges(splitsChanges);
 		return splitsChanges.isEmpty();
 	}

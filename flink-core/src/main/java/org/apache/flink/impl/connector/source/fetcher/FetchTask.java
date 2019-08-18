@@ -21,6 +21,7 @@ import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 
+import java.util.Collection;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Consumer;
 
@@ -30,26 +31,50 @@ import java.util.function.Consumer;
 class FetchTask<E, SplitT extends SourceSplit> implements SplitFetcherTask {
 	private final SplitReader<E, SplitT> splitReader;
 	private final BlockingQueue<RecordsWithSplitIds<E>> elementsQueue;
-	private final Consumer<String> splitFinishedCallback;
+	private final Consumer<Collection<String>> splitFinishedCallback;
+	private RecordsWithSplitIds<E> lastRecords;
+	private Thread runningThread;
+	private volatile boolean wakeup;
 
 	FetchTask(SplitReader<E, SplitT> splitReader,
 			  BlockingQueue<RecordsWithSplitIds<E>> elementsQueue,
-			  Consumer<String> splitFinishedCallback) {
+			  Consumer<Collection<String>> splitFinishedCallback,
+			  Thread runningThread) {
 		this.splitReader = splitReader;
 		this.elementsQueue = elementsQueue;
 		this.splitFinishedCallback = splitFinishedCallback;
+		this.lastRecords = null;
+		this.runningThread = runningThread;
+		this.wakeup = false;
 	}
 
 	@Override
 	public boolean run() throws InterruptedException {
-		splitReader.fetch(elementsQueue, splitFinishedCallback);
-		// It is important to return true here so that the running task.
+		if (lastRecords == null) {
+			lastRecords = splitReader.fetch();
+		}
+		if (!wakeup) {
+			elementsQueue.put(lastRecords);
+			splitFinishedCallback.accept(lastRecords.finishedSplits());
+		}
+		synchronized (this) {
+			wakeup = false;
+			lastRecords = null;
+		}
+		// The return value of fetch task does not matter.
 		return true;
 	}
 
 	@Override
 	public void wakeUp() {
-		splitReader.wakeUp();
+		synchronized (this) {
+			wakeup = true;
+			if (lastRecords == null) {
+				splitReader.wakeUp();
+			} else {
+				runningThread.interrupt();
+			}
+		}
 	}
 
 	@Override
