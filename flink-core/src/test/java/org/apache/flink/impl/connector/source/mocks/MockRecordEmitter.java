@@ -15,31 +15,22 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source.fetcher;
+package org.apache.flink.impl.connector.source.mocks;
 
-import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
+import org.apache.flink.api.connectors.source.SourceOutput;
+import org.apache.flink.impl.connector.source.RecordEmitter;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * A marker class to indicate that a split has finished.
+ * A mock {@link RecordEmitter} that works with the {@link MockSplitReader} and {@link MockSourceReader}.
  */
-public class SplitFinishedMarkerRecords<E> implements RecordsWithSplitIds<E> {
-	private final Collection<String> splitIds;
-
-	SplitFinishedMarkerRecords(Collection<String> splitIds) {
-		this.splitIds = splitIds;
-	}
-
+public class MockRecordEmitter implements RecordEmitter<int[], Integer, AtomicInteger> {
 	@Override
-	public Collection<String> splitIds() {
-		return splitIds;
-	}
-
-	@Override
-	public Map<String, Collection<E>> recordsBySplits() {
-		return Collections.emptyMap();
+	public void emitRecord(int[] record, SourceOutput<Integer> output, AtomicInteger splitState) {
+		// The value is the first element.
+		output.collect(record[0]);
+		// The state will be next index.
+		splitState.set(record[1] + 1);
 	}
 }

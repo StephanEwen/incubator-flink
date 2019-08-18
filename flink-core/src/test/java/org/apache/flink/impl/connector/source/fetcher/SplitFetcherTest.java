@@ -17,27 +17,22 @@
 
 package org.apache.flink.impl.connector.source.fetcher;
 
-import org.apache.flink.api.connectors.source.SourceSplit;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.impl.connector.source.RecordsBySplits;
 import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
+import org.apache.flink.impl.connector.source.mocks.MockSplitReader;
+import org.apache.flink.impl.connector.source.mocks.MockSplit;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
-import org.apache.flink.impl.connector.source.splitreader.SplitsChange;
+import org.apache.flink.testutils.TestUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Collection;
 import java.util.Collections;
-import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -47,61 +42,62 @@ import static org.junit.Assert.assertTrue;
 public class SplitFetcherTest {
 	private AtomicReference<Throwable> exception;
 	private ThrowableCatchingRunnableWrapper wrapper;
-	private BlockingQueue<Integer> sourceQueue = new LinkedBlockingQueue<>();
-	private PassThroughReader passThroughReader = new PassThroughReader(sourceQueue);
-	private BlockingQueue<RecordsWithSplitIds<Integer>> outputQueue = new LinkedBlockingQueue<>();
-	private SplitFetcher<Integer, TestingSplit> fetcher;
+	private MockSplitReader mockSplitReader;
+	private BlockingQueue<RecordsWithSplitIds<int[]>> outputQueue;
+	private SplitFetcher<int[], MockSplit> fetcher;
 	Thread fetcherThread;
 
 	@Before
 	public void setup() {
 		exception = new AtomicReference<>();
 		wrapper = new ThrowableCatchingRunnableWrapper(t -> exception.set(t));
-		sourceQueue = new LinkedBlockingQueue<>();
-		passThroughReader = new PassThroughReader(sourceQueue);
-		outputQueue = new LinkedBlockingQueue<>();
-		fetcher = new SplitFetcher<>(0,
-									 outputQueue,
-									 passThroughReader,
-									 s -> {},
-									 () -> {});
-		fetcherThread = runFetcher(fetcher);
 	}
 
 	@After
 	public void tearDown() {
-		fetcher.shutdown();
+		if (fetcher != null) {
+			fetcher.shutdown();
+		}
 	}
 
 	@Test (timeout = 30000L)
 	public void testBlockOnEmptySplits() throws InterruptedException {
-		sourceQueue.offer(123);
+		setupFetcher(1, true, true);
+		MockSplit mockSplit = new MockSplit(0);
+		mockSplit.addRecord(123);
+		// Add a split to the fetcher to trigger actual fetch.
+		fetcher.addSplits(Collections.singletonList(mockSplit));
 		// The fetcher should simply wait if there is no assignment.
-		waitUntil(() -> fetcherThread.getState() == Thread.State.WAITING);
-		assertTrue(!sourceQueue.isEmpty());
+		Collection<int[]> records = outputQueue.take().recordsBySplits().get("0");
+		assertArrayEquals(new int[]{123, 0}, records.iterator().next());
 	}
 
 	@Test (timeout = 30000L)
 	public void testAddSplitsAndFetchRecords() throws InterruptedException {
-		sourceQueue.offer(123);
-		// Assign a split to the fetcher to let it start fetching.
-		fetcher.addSplits(Collections.singletonList(new TestingSplit(0)));
+		setupFetcher(1, true, true);
+		MockSplit mockSplit = new MockSplit(0);
+		mockSplit.addRecord(123);
+		// Add a split to the fetcher to trigger actual fetch.
+		fetcher.addSplits(Collections.singletonList(mockSplit));
 		// Blocking util get the first element out of the queue and verify it.
-		assertEquals(Collections.singletonList(123), outputQueue.take().recordsBySplits().get("0"));
+		Collection<int[]> records = outputQueue.take().recordsBySplits().get("0");
+		assertArrayEquals(new int[]{123, 0}, records.iterator().next());
 	}
 
 	@Test (timeout = 30000L)
 	public void testRemoveSplits() throws InterruptedException {
-		sourceQueue.offer(123);
-		// Assign a split to the fetcher to let it start fetching.
-		fetcher.addSplits(Collections.singletonList(new TestingSplit(0)));
+		setupFetcher(1, true, true);
+		MockSplit mockSplit = new MockSplit(0);
+		mockSplit.addRecord(123);
+		// Add a split to the fetcher to trigger actual fetch.
+		fetcher.addSplits(Collections.singletonList(mockSplit));
 		// Blocking util get the first element out of the queue and verify it.
-		assertEquals(Collections.singletonList(123), outputQueue.take().recordsBySplits().get("0"));
-		fetcher.removeSplits(Collections.singletonList(new TestingSplit(0)));
+		Collection<int[]> records = outputQueue.take().recordsBySplits().get("0");
+		assertArrayEquals(new int[]{123, 0}, records.iterator().next());
+		fetcher.removeSplits(Collections.singletonList(mockSplit));
 		// the running task should become null if there is no task to run.
-		waitUntil(() -> fetcherThread.getState() == Thread.State.WAITING);
-		assertNull(fetcher.runningTask());
-		assertFalse(fetcher.shouldRunFetchTask());
+		TestUtils.waitUntil(() -> fetcherThread.getState() == Thread.State.WAITING);
+		assertTrue(fetcher.isIdle());
 	}
 
 	/**
@@ -111,89 +107,43 @@ public class SplitFetcherTest {
 	 */
 	@Test
 	public void testNeverInterruptSplitReader() throws InterruptedException {
+		setupFetcher(1, false, true);
+		MockSplit mockSplit = new MockSplit(0);
+		mockSplit.addRecord(123);
 		// Consume a record to ensure the split fetcher is running normally.
-		fetcher.addSplits(Collections.singletonList(new TestingSplit(0)));
-		sourceQueue.offer(123);
-		assertEquals(Collections.singletonList(123), outputQueue.take().recordsBySplits().get("0"));
+		fetcher.addSplits(Collections.singletonList(mockSplit));
+		Collection<int[]> records = outputQueue.take().recordsBySplits().get("0");
+		assertArrayEquals(new int[]{123, 0}, records.iterator().next());
 
 		// Interrupt the fetcher thread 10K times.
 		for (int i = 0; i < 10000; i++) {
 			fetcher.wakeUp(false);
 		}
-		// The split reader should never be interrupted.
-		assertNull(exception.get());
-		// SplitReader.fetch() should have run at least 10 times.
-		System.out.println(passThroughReader.invocationCount.get());
+		fetcher.shutdown();
+		fetcherThread.join();
+		assertNull("The split reader should never be interrupted.", exception.get());
 	}
 
 	// -----------------------------------
 
-	private Thread runFetcher(SplitFetcher<Integer, TestingSplit> splitFetcher) {
+	private void setupFetcher(int numRecordsPerSplitPerFetch,
+							  boolean blockingFetch,
+							  boolean handleSplitsInOneShot) {
+
+		mockSplitReader = new MockSplitReader(numRecordsPerSplitPerFetch,
+											  blockingFetch,
+											  handleSplitsInOneShot);
+		outputQueue = new LinkedBlockingQueue<>();
+		fetcher = new SplitFetcher<>(0,
+									 outputQueue,
+									 mockSplitReader,
+									 () -> {});
+		fetcherThread = runFetcher(fetcher);
+	}
+
+	private Thread runFetcher(SplitFetcher<int[], MockSplit> splitFetcher) {
 		Thread t = new Thread(wrapper.wrap(splitFetcher));
 		t.start();
 		return t;
-	}
-
-	private void waitUntil(Supplier<Boolean> action) throws InterruptedException {
-		while (!action.get()) {
-			Thread.sleep(1);
-		}
-	}
-
-	// -----------------------------------
-
-	private static class PassThroughReader implements SplitReader<Integer, TestingSplit> {
-		private final Integer WAKE_UP = new Integer(-1);
-		private final BlockingQueue<Integer> sourceQueue;
-		private final AtomicLong invocationCount;
-
-		private PassThroughReader(BlockingQueue<Integer> sourceQueue) {
-			this.sourceQueue = sourceQueue;
-			this.invocationCount = new AtomicLong(0);
-		}
-
-		@Override
-		public void fetch(BlockingQueue<RecordsWithSplitIds<Integer>> queue,
-						  Consumer<String> splitFinishedCallback) throws InterruptedException {
-			invocationCount.incrementAndGet();
-
-			if (Thread.currentThread().isInterrupted()) {
-				throw new RuntimeException("Should never be interrupted.");
-			}
-
-			Integer value = sourceQueue.poll();
-			if (value != null && value != WAKE_UP) {
-				RecordsBySplits<Integer> recordsBySplits = new RecordsBySplits<>();
-				recordsBySplits.add("0", value);
-				queue.offer(recordsBySplits);
-			}
-		}
-
-		@Override
-		public void handleSplitsChanges(Queue<SplitsChange<TestingSplit>> splitsChanges) {
-			splitsChanges.clear();
-		}
-
-		public void wakeUp() {
-			sourceQueue.offer(WAKE_UP);
-		}
-
-		@Override
-		public void configure(Configuration config) {
-
-		}
-	}
-
-	private static class TestingSplit implements SourceSplit {
-		private final int id;
-
-		TestingSplit(int id) {
-			this.id = id;
-		}
-
-		@Override
-		public String splitId() {
-			return Integer.toString(id);
-		}
 	}
 }

@@ -28,7 +28,7 @@ import org.apache.flink.impl.connector.source.synchronization.FutureNotifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,10 +68,6 @@ public abstract class SplitFetcherManager<E, SplitT extends SourceSplit> impleme
 	/** An executor service with two threads. One for the fetcher and one for the future completing thread. */
 	private ExecutorService executors;
 
-	/** A finished split reporter to allow the split fetcher to report finished splits.
-	 * This is needed in order to clean up the split states maintained in the source reader. */
-	private Consumer<String> splitFinishedCallback;
-
 	/** The configurations of this SplitFetcherManager and the SplitReaders. */
 	private Configuration config;
 
@@ -105,17 +101,6 @@ public abstract class SplitFetcherManager<E, SplitT extends SourceSplit> impleme
 		// Create the executor with a thread factory that fails the source reader if one of
 		// the fetcher thread exits abnormally.
 		this.executors = Executors.newCachedThreadPool(r -> new Thread(r, "SourceFetcher"));
-		// The finished split reporter simply enqueues a SplitFinishedMarkerRecords.
-		this.splitFinishedCallback = new Consumer<String>() {
-			@Override
-			public void accept(String splitId) {
-				try {
-					elementsQueue.put(new SplitFinishedMarkerRecords<>(Collections.singleton(splitId)));
-				} catch (InterruptedException e) {
-					throw new RuntimeException("Interrupted while reporting the finished split " + splitId);
-				}
-			}
-		};
 	}
 
 	@Override
@@ -139,7 +124,6 @@ public abstract class SplitFetcherManager<E, SplitT extends SourceSplit> impleme
 			fetcherId,
 			elementsQueue,
 			splitReader,
-			splitFinishedCallback,
 			() -> fetchers.remove(fetcherId));
 		fetchers.put(fetcherId, splitFetcher);
 		return splitFetcher;

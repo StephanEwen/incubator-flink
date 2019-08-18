@@ -15,35 +15,26 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source;
+package org.apache.flink.testutils;
 
-import java.util.Collection;
-import java.util.Map;
-import java.util.Set;
+import java.util.function.Supplier;
 
 /**
- * An interface for the elements passed from the fetchers to the source reader.
+ * A utils class that contains methods that are useful for unit tests in general.
  */
-public interface RecordsWithSplitIds<E> {
+public class TestUtils {
+	// Private constructor for util classes.
+	private TestUtils() {}
 
 	/**
-	 * Get all the split ids.
+	 * Wait until the given condition becomes true.
 	 *
-	 * @return a collection of split ids.
+	 * @param condition the condition to wait.
+	 * @throws InterruptedException if the waiting is interrupted.
 	 */
-	Collection<String> splitIds();
-
-	/**
-	 * Get all the records by Splits;
-	 *
-	 * @return a mapping from split ids to the records.
-	 */
-	Map<String, Collection<E>> recordsBySplits();
-
-	/**
-	 * Get the finished splits.
-	 *
-	 * @return the finished splits after this RecordsWithSplitIds is returned.
-	 */
-	Set<String> finishedSplits();
+	public static void waitUntil(Supplier<Boolean> condition) throws InterruptedException {
+		while (!condition.get()) {
+			Thread.sleep(1);
+		}
+	}
 }
