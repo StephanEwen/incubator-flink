@@ -17,33 +17,21 @@
 
 package org.apache.flink.streaming.connectors.kafka.newsrc;
 
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.TopicPartition;
+import org.apache.flink.streaming.connectors.kafka.KafkaTestBase;
 
-/**
- * The mutable partition state.
- */
-public class PartitionState<K, V> {
-	private TopicPartition tp;
-	private long offset;
-	private int leaderEpoch;
+import java.util.Properties;
 
-	PartitionState(TopicPartition tp, long offset, int leaderEpoch) {
-		this.tp = tp;
-		this.offset = offset;
-		this.leaderEpoch = leaderEpoch;
+public class KafkaTestService extends KafkaTestBase {
+
+	public String brokerConnectorStrings() {
+		return brokerConnectionStrings;
 	}
 
-	void maybeUpdate(ConsumerRecord<K, V> record) {
-		offset = record.offset() + 1;
-		leaderEpoch = record.leaderEpoch().orElse(-1);
+	public void createTopic(String topic, int numberOfPartitions, int replicationFactor) {
+		createTestTopic(topic, numberOfPartitions, replicationFactor);
 	}
 
-	TopicPartition topicPartition() {
-		return tp;
-	}
-
-	KafkaPartition toKafkaPartition() {
-		return new KafkaPartition(tp, offset, leaderEpoch);
+	public Properties getStandardProperties() {
+		return standardProps;
 	}
 }

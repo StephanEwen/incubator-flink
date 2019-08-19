@@ -28,11 +28,17 @@ import java.util.Optional;
 public class KafkaPartition implements SourceSplit {
 	private final TopicPartition tp;
 	private final long offset;
+	private final long endOffset;
 	private final int leaderEpoch;
 
 	public KafkaPartition(TopicPartition tp, long offset, int leaderEpoch) {
+		this(tp, offset, Long.MAX_VALUE, leaderEpoch);
+	}
+
+	public KafkaPartition(TopicPartition tp, long offset, long endOffset, int leaderEpoch) {
 		this.tp = tp;
 		this.offset = offset;
+		this.endOffset = endOffset;
 		this.leaderEpoch = leaderEpoch;
 	}
 
@@ -44,6 +50,10 @@ public class KafkaPartition implements SourceSplit {
 		return offset;
 	}
 
+	public long endOffset() {
+		return endOffset;
+	}
+
 	public Optional<Integer> leaderEpoch() {
 		return leaderEpoch < 0 ? Optional.empty() : Optional.of(leaderEpoch);
 	}
@@ -51,5 +61,10 @@ public class KafkaPartition implements SourceSplit {
 	@Override
 	public String splitId() {
 		return tp.toString();
+	}
+
+	@Override
+	public String toString() {
+		return String.format("%s, offset=%d, endOffset=%d, leaderEpoch=%d", tp, offset, endOffset, leaderEpoch);
 	}
 }

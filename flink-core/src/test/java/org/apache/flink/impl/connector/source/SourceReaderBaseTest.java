@@ -18,8 +18,6 @@
 package org.apache.flink.impl.connector.source;
 
 import org.apache.flink.api.connectors.source.Boundedness;
-import org.apache.flink.api.connectors.source.SourceOutput;
-import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.impl.connector.source.mocks.MockSourceReader;
 import org.apache.flink.impl.connector.source.mocks.MockSplit;
 import org.apache.flink.impl.connector.source.mocks.MockSplitReader;
@@ -34,102 +32,16 @@ import org.junit.rules.ExpectedException;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Queue;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 
 /**
  * A unit test class for {@link SourceReaderBase}
  */
-public class SourceReaderBaseTest {
-	private final int NUM_SPLITS = 10;
-	private final int NUM_RECORDS_PER_SPLIT = 10;
+public class SourceReaderBaseTest extends SourceReaderTest<MockSplit> {
 
 	@Rule
 	public ExpectedException expectedException = ExpectedException.none();
-
-	/**
-	 * Simply test the reader reads all the splits fine.
-	 */
-	@Test (timeout = 30000L)
-	public void testRead() {
-		MockSourceReader reader = createReader(Boundedness.BOUNDED);
-		reader.addSplits(getMockSplits(Boundedness.BOUNDED));
-		ValidatingSourceOutput output = new ValidatingSourceOutput();
-		while (output.count < 100) {
-			reader.pollNext(output);
-		}
-		output.validate();
-	}
-
-	@Test
-	public void testAddSplitToExistingFetcher() {
-		ValidatingSourceOutput output = new ValidatingSourceOutput();
-		// Add a split to start the fetcher.
-		List<MockSplit> splits = Collections.singletonList(getMockSplit(0, Boundedness.BOUNDED));
-		// Poll 5 records and let it block on the element queue which only have capacity fo 1;
-		MockSourceReader reader = consumeRecords(splits, output, 5, Boundedness.BOUNDED);
-		List<MockSplit> newSplits = new ArrayList<>();
-		for (int i = 1; i < NUM_SPLITS; i++) {
-			newSplits.add(getMockSplit(i, Boundedness.BOUNDED));
-		}
-		reader.addSplits(newSplits);
-
-		while (output.count() < 100) {
-			reader.pollNext(output);
-		}
-		output.validate();
-	}
-
-	@Test (timeout = 30000L)
-	public void testPollingFromEmptyQueue() {
-		ValidatingSourceOutput output = new ValidatingSourceOutput();
-		List<MockSplit> splits = Collections.singletonList(getMockSplit(0, Boundedness.BOUNDED));
-		// Consumer all the records in the s;oit.
-		MockSourceReader reader = consumeRecords(splits, output, NUM_RECORDS_PER_SPLIT, Boundedness.BOUNDED);
-		// Now let the main thread poll again.
-		assertEquals("The status should be ", SourceReader.Status.AVAILABLE_LATER, reader.pollNext(output));
-	}
-
-	@Test (timeout = 30000L)
-	public void testAvailableOnEmptyQueue() throws ExecutionException, InterruptedException {
-		ValidatingSourceOutput output = new ValidatingSourceOutput();
-		List<MockSplit> splits = Collections.singletonList(getMockSplit(0, Boundedness.BOUNDED));
-		// Consumer all the records in the split.
-		MockSourceReader reader = consumeRecords(splits, output, NUM_RECORDS_PER_SPLIT, Boundedness.BOUNDED);
-
-		CompletableFuture<?> future = reader.available();
-		assertFalse("There should be no records ready for poll.", future.isDone());
-		// Add a split to the reader so there are more records to be read.
-		reader.addSplits(Collections.singletonList(getMockSplit(1, Boundedness.BOUNDED)));
-		// THe future should be completed fairly soon. Otherwise the test will hit timeout and fail.
-		future.get();
-	}
-
-	@Test (timeout = 30000L)
-	public void testSnapshot() {
-		ValidatingSourceOutput output = new ValidatingSourceOutput();
-		// Add a split to start the fetcher.
-		List<MockSplit> splits = getMockSplits(Boundedness.BOUNDED);
-		// Poll 5 records. That means split 0 and 1 will at index 2, split 1 will at index 1.
-		MockSourceReader reader = consumeRecords(splits, output, 5, Boundedness.BOUNDED);
-
-		List<MockSplit> state = reader.snapshotState();
-		assertEquals("The snapshot should only have 10 splits. ", 10, state.size());
-		for (int i = 0; i < 2; i++) {
-			assertEquals("The first four splits should have been fully consumed.", 2, state.get(i).index());
-		}
-		assertEquals("The fourth split should have been consumed 5 elements.", 1, state.get(2).index());
-		for (int i = 3; i < 10; i++) {
-			assertEquals("The last 5 splits should have not been consumed.", 0, state.get(i).index());
-		}
-	}
 
 	@Test
 	public void testExceptionInSplitReader() throws InterruptedException {
@@ -165,7 +77,7 @@ public class SourceReaderBaseTest {
 
 		reader.configure(getConfig(Boundedness.BOUNDED));
 		ValidatingSourceOutput output = new ValidatingSourceOutput();
-		reader.addSplits(Collections.singletonList(getMockSplit(0, Boundedness.UNBOUNDED)));
+		reader.addSplits(Collections.singletonList(getSplit(0, NUM_RECORDS_PER_SPLIT, Boundedness.UNBOUNDED)));
 		// This is not a real infinite loop, it is supposed to throw exception after two polls.
 		while (true) {
 			reader.pollNext(output);
@@ -176,7 +88,8 @@ public class SourceReaderBaseTest {
 
 	// ---------------- helper methods -----------------
 
-	private MockSourceReader createReader(Boundedness boundedness) {
+	@Override
+	protected MockSourceReader createReader(Boundedness boundedness) {
 		FutureNotifier futureNotifier = new FutureNotifier();
 		FutureCompletingBlockingQueue<RecordsWithSplitIds<int[]>> elementsQueue =
 				new FutureCompletingBlockingQueue<>(futureNotifier);
@@ -191,40 +104,32 @@ public class SourceReaderBaseTest {
 		return reader;
 	}
 
-	private MockSourceReader consumeRecords(List<MockSplit> splits,
-											   ValidatingSourceOutput output,
-											   int n,
-											   Boundedness boundedness) {
-		MockSourceReader reader = createReader(boundedness);
-		// Add splits to start the fetcher.
-		reader.addSplits(splits);
-		// Poll all the n records of the single split.
-		while (output.count() < n) {
-			reader.pollNext(output);
-		}
-		return reader;
-	}
-
-	private List<MockSplit> getMockSplits(Boundedness boundedness) {
+	@Override
+	protected List<MockSplit> getSplits(int numSplits, int numRecordsPerSplit, Boundedness boundedness) {
 		List<MockSplit> mockSplits = new ArrayList<>();
-		for (int i = 0; i < NUM_SPLITS; i++) {
-			mockSplits.add(getMockSplit(i, boundedness));
+		for (int i = 0; i < numSplits; i++) {
+			mockSplits.add(getSplit(i, numRecordsPerSplit, boundedness));
 		}
 		return mockSplits;
 	}
 
-	private MockSplit getMockSplit(int splitId, Boundedness boundedness) {
-
+	@Override
+	protected MockSplit getSplit(int splitId, int numRecords, Boundedness boundedness) {
 		MockSplit mockSplit;
 		if (boundedness == Boundedness.BOUNDED) {
-			mockSplit = new MockSplit(splitId, 0, NUM_RECORDS_PER_SPLIT);
+			mockSplit = new MockSplit(splitId, 0, numRecords);
 		} else {
 			mockSplit = new MockSplit(splitId);
 		}
-		for (int j = 0; j < NUM_RECORDS_PER_SPLIT; j++) {
+		for (int j = 0; j < numRecords; j++) {
 			mockSplit.addRecord(splitId * 10 + j);
 		}
 		return mockSplit;
+	}
+
+	@Override
+	protected int getIndex(MockSplit split) {
+		return split.index();
 	}
 
 	private Configuration getConfig(Boundedness boundedness) {
@@ -233,42 +138,5 @@ public class SourceReaderBaseTest {
 		config.setLong(SourceReaderOptions.SOURCE_READER_CLOSE_TIMEOUT, 30000L);
 		config.setString(SourceReaderOptions.SOURCE_READER_BOUNDEDNESS, boundedness.name());
 		return config;
-	}
-
-	// ---------------- helper classes -----------------
-
-	/**
-	 * A source output that validates the output.
-	 */
-	private static class ValidatingSourceOutput implements SourceOutput<Integer> {
-		private Set<Integer> consumedValues = new HashSet<>();
-		private int max = Integer.MIN_VALUE;
-		private int min = Integer.MAX_VALUE;
-
-		private int count = 0;
-
-		@Override
-		public void collect(Integer element) {
-			max = Math.max(element, max);
-			min = Math.min(element, min);
-			count++;
-			consumedValues.add(element);
-		}
-
-		@Override
-		public void collect(Integer element, Long timestamp) {
-			collect(element);
-		}
-
-		public void validate() {
-			assertEquals("Should be 100 distinct elements in total", 100, consumedValues.size());
-			assertEquals("Should be 100 elements in total", 100, count);
-			assertEquals("The min value should be 0", 0, min);
-			assertEquals("The max value should be 99", 99, max);
-		}
-		public int count() {
-			return count;
-		}
-
 	}
 }
