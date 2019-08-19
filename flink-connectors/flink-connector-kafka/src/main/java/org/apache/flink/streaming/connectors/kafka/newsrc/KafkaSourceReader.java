@@ -32,14 +32,14 @@ import java.util.function.Supplier;
 /**
  * The source reader for Kafka.
  */
-public class KafkaSourceReader<K, V> extends SingleThreadMultiplexSourceReaderBase<
-		ConsumerRecord<K, V>, ConsumerRecord<K, V>, KafkaPartition, PartitionState<K, V>> {
+public class KafkaSourceReader<K, V, T> extends SingleThreadMultiplexSourceReaderBase<
+		ConsumerRecord<K, V>, T, KafkaPartition, PartitionState<K, V>> {
 
 	public KafkaSourceReader(
 			FutureNotifier futureNotifier,
 			FutureCompletingBlockingQueue<RecordsWithSplitIds<ConsumerRecord<K, V>>> elementsQueue,
 			Supplier<SplitReader<ConsumerRecord<K, V>, KafkaPartition>> splitFetcherSupplier,
-			RecordEmitter<ConsumerRecord<K, V>, ConsumerRecord<K, V>, PartitionState<K, V>> recordEmitter) {
+			RecordEmitter<ConsumerRecord<K, V>, T, PartitionState<K, V>> recordEmitter) {
 		super(futureNotifier, elementsQueue, splitFetcherSupplier, recordEmitter);
 	}
 

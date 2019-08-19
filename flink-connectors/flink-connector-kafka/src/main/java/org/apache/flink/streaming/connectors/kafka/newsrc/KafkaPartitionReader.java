@@ -18,7 +18,6 @@
 package org.apache.flink.streaming.connectors.kafka.newsrc;
 
 import org.apache.flink.impl.connector.source.RecordsBySplits;
-import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
 import org.apache.flink.impl.connector.source.splitreader.SplitReader;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.impl.connector.source.splitreader.SplitsAddition;
@@ -28,19 +27,22 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.WakeupException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
 public class KafkaPartitionReader<K, V> implements SplitReader<ConsumerRecord<K, V>, KafkaPartition> {
+	private static final Logger LOG = LoggerFactory.getLogger(KafkaPartitionReader.class);
 	/**
 	 * The maximum time to block in an API call. this is to ensure the thread could be
 	 * waken up timely.
@@ -48,46 +50,50 @@ public class KafkaPartitionReader<K, V> implements SplitReader<ConsumerRecord<K,
 	private static final long MAX_BLOCK_TIME_MS = 1000L;
 
 	private final KafkaConsumer<K, V> consumer;
-	private RecordsBySplits<ConsumerRecord<K, V>> recordsByPartition;
-
-	/** A boolean indicating whether the reader has been waken up. */
-	private volatile boolean wakenUp;
+	private final Map<TopicPartition, Long> endOffSets;
 
 	public KafkaPartitionReader(Configuration config) {
 		Properties props = new Properties();
 		config.addAllToProperties(props);
 		this.consumer = new KafkaConsumer<>(props);
-		this.recordsByPartition = null;
+		this.endOffSets = new HashMap<>();
 	}
 
 	@Override
-	public void fetch(
-		BlockingQueue<RecordsWithSplitIds<ConsumerRecord<K, V>>> queue,
-		Consumer<String> splitFinishedCallback) throws InterruptedException {
+	public RecordsBySplits<ConsumerRecord<K, V>> fetch() {
 		// It is possible that the fetch got waken up and the iterator has not finished yet.
 		// In that case, we resume from the unfinished iterator rather than start from
 		// beginning.
-		if (recordsByPartition == null) {
-			recordsByPartition = new RecordsBySplits<>();
+		RecordsBySplits<ConsumerRecord<K, V>> recordsByPartition = new RecordsBySplits<>();
+		try {
 			ConsumerRecords<K, V> records = consumer.poll(Duration.ofMillis(MAX_BLOCK_TIME_MS));
+			LOG.debug("Fetched {} records from {} partitions", records.count(), records.partitions().size());
 			for (TopicPartition tp : records.partitions()) {
-				recordsByPartition.addAll(tp.toString(), records.records(tp));
+				List<ConsumerRecord<K, V>> recordsForPartition = records.records(tp);
+				long endOffset = endOffSets.get(tp);
+				if (recordsForPartition.get(recordsForPartition.size() - 1).offset() < endOffset) {
+					recordsByPartition.addAll(tp.toString(), records.records(tp));
+				} else {
+					for (ConsumerRecord<K, V> record : recordsForPartition) {
+						if (record.offset() < endOffset - 1) {
+							recordsByPartition.add(tp.toString(), record);
+						} else if (record.offset() == endOffset - 1) {
+							recordsByPartition.add(tp.toString(), record);
+							recordsByPartition.addFinishedSplit(tp.toString());
+							unassign(tp);
+							break;
+						} else {
+							recordsByPartition.addFinishedSplit(tp.toString());
+							unassign(tp);
+							break;
+						}
+					}
+				}
 			}
+		} catch (WakeupException we) {
+			LOG.debug("Waken up when fetching the records.");
 		}
-
-		boolean putSucceeded;
-		do {
-			// Put all the records into the queue. Ensure the thread blocks up to MAX_BLOCK_TIME_MS
-			putSucceeded = queue.offer(recordsByPartition, MAX_BLOCK_TIME_MS, TimeUnit.MILLISECONDS);
-		} while (!putSucceeded && !wakenUp);
-
-		// Set the records to null so we fetch the next set of records.
-		if (putSucceeded) {
-			recordsByPartition = null;
-		}
-
-		// Reset the wakenUp flag.
-		wakenUp = false;
+		return recordsByPartition;
 	}
 
 	@Override
@@ -101,15 +107,23 @@ public class KafkaPartitionReader<K, V> implements SplitReader<ConsumerRecord<K,
 				for (KafkaPartition kp : splitsChange.splits()) {
 					if (!currentAssignments.contains(kp.topicPartition())) {
 						toConsume.add(kp.topicPartition());
+						endOffSets.put(kp.topicPartition(), kp.endOffset());
 					} else {
 						throw new IllegalStateException("Partition " + kp.topicPartition() + " is already assigned.");
 					}
 					toSeek.add(kp);
 				}
 			} else {
-				splitsChange.splits().forEach(sc -> toConsume.remove(sc.topicPartition()));
+				splitsChange.splits().forEach(sc -> {
+					toConsume.remove(sc.topicPartition());
+					endOffSets.remove(sc.topicPartition());
+				});
 			}
 
+			LOG.debug("Assigning partitions {}", toConsume);
+			if (!toSeek.isEmpty()) {
+				LOG.debug("Seeking on partitions {}", toSeek);
+			}
 			consumer.assign(toConsume);
 			toSeek.forEach(kp -> consumer.seek(
 					kp.topicPartition(),
@@ -119,11 +133,17 @@ public class KafkaPartitionReader<K, V> implements SplitReader<ConsumerRecord<K,
 
 	@Override
 	public void wakeUp() {
-		wakenUp = true;
+		consumer.wakeup();
 	}
 
 	@Override
 	public void configure(Configuration config) {
 
+	}
+
+	private void unassign(TopicPartition tp) {
+		Set<TopicPartition> newAssignments = new HashSet<>(consumer.assignment());
+		newAssignments.remove(tp);
+		consumer.assign(newAssignments);
 	}
 }
