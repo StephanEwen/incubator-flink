@@ -94,8 +94,8 @@ public class KafkaSourceReaderTest extends SourceReaderTest<KafkaPartition> {
 	}
 
 	@Override
-	protected int getIndex(KafkaPartition split) {
-		return 0;
+	protected long getIndex(KafkaPartition split) {
+		return split.offset();
 	}
 
 	private Configuration getConfig(Boundedness boundedness) {
