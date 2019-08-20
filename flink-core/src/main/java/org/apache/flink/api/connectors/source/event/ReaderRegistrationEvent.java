@@ -17,20 +17,20 @@
 
 package org.apache.flink.api.connectors.source.event;
 
-import java.util.List;
+public class ReaderRegistrationEvent implements OperatorEvent {
+	private final int subtaskId;
+	private final String location;
 
-/**
- * A source event that adds splits to a source reader.
- * @param <SplitT> the type of splits.
- */
-public class AddSplitEvent<SplitT> implements OperatorEvent {
-	private final List<SplitT> splits;
-
-	public AddSplitEvent(List<SplitT> splits) {
-		this.splits = splits;
+	public ReaderRegistrationEvent(int subtaskId, String location) {
+		this.subtaskId = subtaskId;
+		this.location = location;
 	}
 
-	public List<SplitT> splits() {
-		return splits;
+	public int subtaskId() {
+		return subtaskId;
+	}
+
+	public String location() {
+		return location;
 	}
 }

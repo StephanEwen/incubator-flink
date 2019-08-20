@@ -15,43 +15,39 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source.mocks;
+package org.apache.flink.impl.connector.source.reader.fetcher;
 
+import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.impl.connector.source.reader.RecordsWithSplitIds;
-import org.apache.flink.impl.connector.source.reader.SingleThreadMultiplexSourceReaderBase;
 import org.apache.flink.impl.connector.source.reader.splitreader.SplitReader;
 import org.apache.flink.impl.connector.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.impl.connector.source.reader.synchronization.FutureNotifier;
 
-import java.util.Collection;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * A mock SourceReader class;
+ * A Fetcher manager with a single fetcher and assign all the splits to it.
  */
-public class MockSourceReader
-		extends SingleThreadMultiplexSourceReaderBase<int[], Integer, MockSplit, AtomicInteger> {
+public class SingleThreadFetcherManager<E, SplitT extends SourceSplit>
+		extends SplitFetcherManager<E, SplitT> {
 
-
-	public MockSourceReader(FutureNotifier futureNotifier,
-							   FutureCompletingBlockingQueue<RecordsWithSplitIds<int[]>> elementsQueue,
-							   Supplier<SplitReader<int[], MockSplit>> splitFetcherSupplier) {
-		super(futureNotifier, elementsQueue, splitFetcherSupplier, new MockRecordEmitter());
+	public SingleThreadFetcherManager(FutureNotifier futureNotifier,
+									  FutureCompletingBlockingQueue<RecordsWithSplitIds<E>> elementsQueue,
+									  Supplier<SplitReader<E, SplitT>> splitReaderSupplier) {
+		super(futureNotifier, elementsQueue, splitReaderSupplier);
 	}
 
 	@Override
-	protected void onSplitFinished(Collection<String> finishedSplitIds) {
-
-	}
-
-	@Override
-	protected AtomicInteger initializedState(MockSplit split) {
-		return new AtomicInteger(split.index());
-	}
-
-	@Override
-	protected MockSplit toSplitType(String splitId, AtomicInteger splitState) {
-		return new MockSplit(Integer.parseInt(splitId), splitState.get());
+	public void addSplits(List<SplitT> splitsToAdd) {
+		SplitFetcher<E, SplitT> fetcher = fetchers.get(0);
+		if (fetcher == null) {
+			fetcher = createSplitFetcher();
+			// Add the splits to the fetchers.
+			fetcher.addSplits(splitsToAdd);
+			startFetcher(fetcher);
+		} else {
+			fetcher.addSplits(splitsToAdd);
+		}
 	}
 }

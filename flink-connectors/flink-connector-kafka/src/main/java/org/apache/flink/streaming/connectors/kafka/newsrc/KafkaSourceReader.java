@@ -17,12 +17,12 @@
 
 package org.apache.flink.streaming.connectors.kafka.newsrc;
 
-import org.apache.flink.impl.connector.source.RecordEmitter;
-import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
-import org.apache.flink.impl.connector.source.SingleThreadMultiplexSourceReaderBase;
-import org.apache.flink.impl.connector.source.splitreader.SplitReader;
-import org.apache.flink.impl.connector.source.synchronization.FutureCompletingBlockingQueue;
-import org.apache.flink.impl.connector.source.synchronization.FutureNotifier;
+import org.apache.flink.impl.connector.source.reader.RecordEmitter;
+import org.apache.flink.impl.connector.source.reader.RecordsWithSplitIds;
+import org.apache.flink.impl.connector.source.reader.SingleThreadMultiplexSourceReaderBase;
+import org.apache.flink.impl.connector.source.reader.splitreader.SplitReader;
+import org.apache.flink.impl.connector.source.reader.synchronization.FutureCompletingBlockingQueue;
+import org.apache.flink.impl.connector.source.reader.synchronization.FutureNotifier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 import java.util.Collection;

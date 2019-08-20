@@ -15,22 +15,26 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.connectors.source.event;
+package org.apache.flink.impl.connector.source.reader.splitreader;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
- * A source event that adds splits to a source reader.
- * @param <SplitT> the type of splits.
+ * An abstract class to host splits change.
  */
-public class AddSplitEvent<SplitT> implements OperatorEvent {
+public abstract class SplitsChange<SplitT> {
 	private final List<SplitT> splits;
 
-	public AddSplitEvent(List<SplitT> splits) {
+	SplitsChange(List<SplitT> splits) {
 		this.splits = splits;
 	}
 
+	/**
+	 * @return the list of splits.
+	 */
 	public List<SplitT> splits() {
-		return splits;
+		return Collections.unmodifiableList(splits);
 	}
+
 }

@@ -23,9 +23,9 @@ import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SplitEnumerator;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
-import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
-import org.apache.flink.impl.connector.source.synchronization.FutureCompletingBlockingQueue;
-import org.apache.flink.impl.connector.source.synchronization.FutureNotifier;
+import org.apache.flink.impl.connector.source.reader.RecordsWithSplitIds;
+import org.apache.flink.impl.connector.source.reader.synchronization.FutureCompletingBlockingQueue;
+import org.apache.flink.impl.connector.source.reader.synchronization.FutureNotifier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 import java.io.IOException;

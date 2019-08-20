@@ -18,7 +18,7 @@
 package org.apache.flink.impl.connector.source.mocks;
 
 import org.apache.flink.api.connectors.source.SourceOutput;
-import org.apache.flink.impl.connector.source.RecordEmitter;
+import org.apache.flink.impl.connector.source.reader.RecordEmitter;
 
 import java.util.concurrent.atomic.AtomicInteger;
 

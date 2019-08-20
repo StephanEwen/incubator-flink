@@ -24,8 +24,10 @@ import org.apache.flink.api.connectors.source.Source;
 import org.apache.flink.api.connectors.source.SourceOutput;
 import org.apache.flink.api.connectors.source.SourceReader;
 import org.apache.flink.api.connectors.source.SourceSplit;
+import org.apache.flink.api.connectors.source.event.AddSplitEvent;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.runtime.state.StateSnapshotContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,63 +36,53 @@ import java.util.concurrent.CompletableFuture;
 /**
  * A new stream source operator for FLIP-27.
  */
-//public class NewStreamSourceOperator<T, SplitT extends SourceSplit, CoordCkt> extends AbstractStreamOperator<T>
-//	implements SourceReader<T, SplitT> {
-//
-//	private final Source<T, SplitT, CoordCkt> source;
-//	private SourceReader<T, SplitT> sourceReader;
-//	private SimpleVersionedSerializer<SplitT> splitSerializer;
-//	private ListState<byte[]> readerState;
-//
-//	public NewStreamSourceOperator(Source<T, SplitT, CoordCkt> source) {
-//		this.source = source;
-//	}
-//
-//	@Override
-//	public void open() throws Exception {
-//		this.sourceReader = source.createReader(getOperatorConfig().getConfiguration(), null);
-//		this.splitSerializer = source.getSplitSerializer();
-//		this.readerState = getRuntimeContext().getListState(
-//			new ListStateDescriptor<byte[]>("SourceReaderState", BytePrimitiveArraySerializer.INSTANCE));
-//	}
-//
-//	@Override
-//	public void start() {
-//		sourceReader.start();
-//	}
-//
-//	@Override
-//	public Status pollNext(SourceOutput<T> sourceOutput) {
-//		return sourceReader.pollNext(sourceOutput);
-//	}
-//
-//	@Override
-//	public List<SplitT> snapshotState() {
-//		List<SplitT> splitStates = sourceReader.snapshotState();
-//		try {
-//			List<byte[]> state = new ArrayList<>();
-//			for (SplitT splitState : splitStates) {
-//				state.add(splitSerializer.serialize(splitState));
-//			}
-//			readerState.update(state);
-//		} catch (Exception e) {
-//			throw new RuntimeException("Encountered exception when persisting state of the source readers.");
-//		}
-//		return splitStates;
-//	}
-//
-//	@Override
-//	public CompletableFuture<?> available() {
-//		return sourceReader.available();
-//	}
-//
-//	@Override
-//	public void addSplits(List<SplitT> splits) {
-//		sourceReader.addSplits(splits);
-//	}
-//
-//	@Override
-//	public void handleOperatorEvents(SourceEvent sourceEvent) {
-//
-//	}
-//}
+public class NewStreamSourceOperator<T, SplitT extends SourceSplit, CoordCkt> extends AbstractStreamOperator<T> {
+
+	private final Source<T, SplitT, CoordCkt> source;
+	private SourceReader<T, SplitT> sourceReader;
+	private SimpleVersionedSerializer<SplitT> splitSerializer;
+	private ListState<byte[]> readerState;
+
+	public NewStreamSourceOperator(Source<T, SplitT, CoordCkt> source) {
+		this.source = source;
+	}
+
+	@Override
+	public void open() throws Exception {
+		this.sourceReader = source.createReader(getOperatorConfig().getConfiguration(), null);
+		sourceReader.start();
+		this.splitSerializer = source.getSplitSerializer();
+		this.readerState = getRuntimeContext().getListState(
+				new ListStateDescriptor<byte[]>("SourceReaderState", BytePrimitiveArraySerializer.INSTANCE));
+	}
+
+	public SourceReader.Status pollNext(SourceOutput<T> sourceOutput) {
+		return sourceReader.pollNext(sourceOutput);
+	}
+
+	@Override
+	public void snapshotState(StateSnapshotContext context) {
+		List<SplitT> splitStates = sourceReader.snapshotState();
+		try {
+			List<byte[]> state = new ArrayList<>();
+			for (SplitT splitState : splitStates) {
+				state.add(splitSerializer.serialize(splitState));
+			}
+			readerState.update(state);
+		} catch (Exception e) {
+			throw new RuntimeException("Encountered exception when persisting state of the source readers.");
+		}
+	}
+
+	public CompletableFuture<?> available() {
+		return sourceReader.available();
+	}
+
+	public void handleOperatorEvents(SourceEvent sourceEvent) {
+		if (sourceEvent instanceof AddSplitEvent) {
+			sourceReader.addSplits(((AddSplitEvent<SplitT>) sourceEvent).splits());
+		} else {
+			sourceReader.handleSourceEvents(sourceEvent);
+		}
+	}
+}

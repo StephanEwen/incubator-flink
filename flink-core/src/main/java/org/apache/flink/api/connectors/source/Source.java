@@ -27,9 +27,9 @@ import java.io.Serializable;
  *
  * @param <T>        The type of records produced by the source.
  * @param <SplitT>   The type of splits handled by the source.
- * @param <CoordChkT> The type of the enumerator checkpoints.
+ * @param <EnumChkT> The type of the enumerator checkpoints.
  */
-public interface Source<T, SplitT extends SourceSplit, CoordChkT> extends Serializable {
+public interface Source<T, SplitT extends SourceSplit, EnumChkT> extends Serializable {
 
 	/**
 	 * Creates a new reader to read data from the spits it gets assigned.
@@ -45,14 +45,14 @@ public interface Source<T, SplitT extends SourceSplit, CoordChkT> extends Serial
 	 *
 	 * @param config the configuration for this operator.
 	 */
-	SplitEnumerator<SplitT, CoordChkT> createEnumerator(Configuration config) throws IOException;
+	SplitEnumerator<SplitT, EnumChkT> createEnumerator(Configuration config) throws IOException;
 
 	/**
 	 * Restores an enumerator from a checkpoint.
 	 *
 	 * @param config the configuration of this operator.
 	 */
-	SplitEnumerator<SplitT, CoordChkT> restoreEnumerator(Configuration config, CoordChkT checkpoint) throws IOException;
+	SplitEnumerator<SplitT, EnumChkT> restoreEnumerator(Configuration config, EnumChkT checkpoint) throws IOException;
 
 	// ------------------------------------------------------------------------
 	//  serializers for the metadata
@@ -69,5 +69,5 @@ public interface Source<T, SplitT extends SourceSplit, CoordChkT> extends Serial
 	 * The serializer is used for the result of the {@link SplitEnumerator#snapshotState()}
 	 * method.
 	 */
-	SimpleVersionedSerializer<CoordChkT> getEnumeratorCheckpointSerializer();
+	SimpleVersionedSerializer<EnumChkT> getEnumeratorCheckpointSerializer();
 }

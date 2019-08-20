@@ -17,20 +17,17 @@
 
 package org.apache.flink.api.connectors.source.event;
 
-import java.util.List;
-
 /**
- * A source event that adds splits to a source reader.
- * @param <SplitT> the type of splits.
+ * An event that indicates a source reader is dead.
  */
-public class AddSplitEvent<SplitT> implements OperatorEvent {
-	private final List<SplitT> splits;
+public class ReaderFailedEvent implements OperatorEvent {
+	private final int subtasKId;
 
-	public AddSplitEvent(List<SplitT> splits) {
-		this.splits = splits;
+	public ReaderFailedEvent(int subtaskId) {
+		this.subtasKId = subtaskId;
 	}
 
-	public List<SplitT> splits() {
-		return splits;
+	public int subtaskId() {
+		return subtasKId;
 	}
 }

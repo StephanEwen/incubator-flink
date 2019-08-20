@@ -18,11 +18,11 @@
 package org.apache.flink.impl.connector.source.mocks;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.impl.connector.source.RecordsBySplits;
-import org.apache.flink.impl.connector.source.RecordsWithSplitIds;
-import org.apache.flink.impl.connector.source.splitreader.SplitReader;
-import org.apache.flink.impl.connector.source.splitreader.SplitsAddition;
-import org.apache.flink.impl.connector.source.splitreader.SplitsChange;
+import org.apache.flink.impl.connector.source.reader.RecordsBySplits;
+import org.apache.flink.impl.connector.source.reader.RecordsWithSplitIds;
+import org.apache.flink.impl.connector.source.reader.splitreader.SplitReader;
+import org.apache.flink.impl.connector.source.reader.splitreader.SplitsAddition;
+import org.apache.flink.impl.connector.source.reader.splitreader.SplitsChange;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
