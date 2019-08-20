@@ -15,22 +15,28 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.connectors.source.event;
-
-import java.util.List;
+package org.apache.flink.impl.connector.source.reader.fetcher;
 
 /**
- * A source event that adds splits to a source reader.
- * @param <SplitT> the type of splits.
+ * An interface similar to {@link Runnable} but allows throwing exceptions and wakeup.
  */
-public class AddSplitEvent<SplitT> implements OperatorEvent {
-	private final List<SplitT> splits;
+public interface SplitFetcherTask {
 
-	public AddSplitEvent(List<SplitT> splits) {
-		this.splits = splits;
-	}
+	/**
+	 * Run the logic. This method allows throwing an interrupted exception on wakeup, but the
+	 * implementation does not have to. It is preferred to finish the work elegantly
+	 * and return a boolean to indicate whether all the jobs have been done or more
+	 * invocation is needed.
+	 *
+	 * @return whether the runnable has successfully finished running.
+	 * @throws InterruptedException when interrupted.
+	 */
+	boolean run() throws InterruptedException;
 
-	public List<SplitT> splits() {
-		return splits;
+	/**
+	 * Wake up the running thread.
+	 */
+	default void wakeUp() {
+		// Usually the tasks finishes shortly, so by default wakeUp() does nothing.
 	}
 }

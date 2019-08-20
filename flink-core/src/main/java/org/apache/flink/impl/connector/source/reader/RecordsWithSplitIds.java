@@ -15,22 +15,35 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.connectors.source.event;
+package org.apache.flink.impl.connector.source.reader;
 
-import java.util.List;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * A source event that adds splits to a source reader.
- * @param <SplitT> the type of splits.
+ * An interface for the elements passed from the fetchers to the source reader.
  */
-public class AddSplitEvent<SplitT> implements OperatorEvent {
-	private final List<SplitT> splits;
+public interface RecordsWithSplitIds<E> {
 
-	public AddSplitEvent(List<SplitT> splits) {
-		this.splits = splits;
-	}
+	/**
+	 * Get all the split ids.
+	 *
+	 * @return a collection of split ids.
+	 */
+	Collection<String> splitIds();
 
-	public List<SplitT> splits() {
-		return splits;
-	}
+	/**
+	 * Get all the records by Splits;
+	 *
+	 * @return a mapping from split ids to the records.
+	 */
+	Map<String, Collection<E>> recordsBySplits();
+
+	/**
+	 * Get the finished splits.
+	 *
+	 * @return the finished splits after this RecordsWithSplitIds is returned.
+	 */
+	Set<String> finishedSplits();
 }

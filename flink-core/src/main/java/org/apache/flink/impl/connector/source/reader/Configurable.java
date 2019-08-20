@@ -15,22 +15,20 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.connectors.source.event;
+package org.apache.flink.impl.connector.source.reader;
 
-import java.util.List;
+import org.apache.flink.configuration.Configuration;
 
 /**
- * A source event that adds splits to a source reader.
- * @param <SplitT> the type of splits.
+ * An interface allowing a instantiate-then-configure pattern of pluggables. This class
+ * should be in a more generic package and applied to all the pluggables in Flink. For now
+ * we just keep it in the connector common for development purpose.
  */
-public class AddSplitEvent<SplitT> implements OperatorEvent {
-	private final List<SplitT> splits;
+public interface Configurable {
 
-	public AddSplitEvent(List<SplitT> splits) {
-		this.splits = splits;
-	}
-
-	public List<SplitT> splits() {
-		return splits;
-	}
+	/**
+	 * Configure the implementation class with the given configurations.
+	 * @param config the configuration to use.
+	 */
+	void configure(Configuration config);
 }

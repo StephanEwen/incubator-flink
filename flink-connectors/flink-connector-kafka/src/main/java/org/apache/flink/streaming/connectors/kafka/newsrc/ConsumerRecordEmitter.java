@@ -18,7 +18,7 @@
 package org.apache.flink.streaming.connectors.kafka.newsrc;
 
 import org.apache.flink.api.connectors.source.SourceOutput;
-import org.apache.flink.impl.connector.source.RecordEmitter;
+import org.apache.flink.impl.connector.source.reader.RecordEmitter;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 public class ConsumerRecordEmitter<K, V>

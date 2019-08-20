@@ -65,7 +65,7 @@ public interface SourceReader<T, SplitT extends SourceSplit> extends AutoCloseab
 	 *
 	 * @param sourceEvent the event sent by the {@link SplitEnumerator}.
 	 */
-	default void handleOperatorEvents(SourceEvent sourceEvent) {
+	default void handleSourceEvents(SourceEvent sourceEvent) {
 		// Do nothing.
 	}
 

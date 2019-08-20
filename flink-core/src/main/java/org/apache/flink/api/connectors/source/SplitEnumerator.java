@@ -17,9 +17,12 @@
 
 package org.apache.flink.api.connectors.source;
 
+import org.apache.flink.api.connectors.source.event.SourceEvent;
+
 import java.io.IOException;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The enumerator is responsible for doing the following:
@@ -29,20 +32,12 @@ import java.util.Optional;
 public interface SplitEnumerator<SplitT, CheckpointT> extends AutoCloseable {
 
 	/**
-	 * Indicate whether there is more unassigned splits to be read.
+	 * Handles the source event from the source reader.
 	 *
-	 * @return true if there are more splits to read.
+	 * @param subtaskId the subtask id of the source reader who sent the source event.
+	 * @param sourceEvent the source event from the source reader.
 	 */
-	boolean isEndOfInput();
-
-	/**
-	 * Assign a split to assign to the given reader.
-	 *
-	 * @param readerLocation the location of the reader. Assuming it is String for now.
-	 * @param subtaskIndex the reader subtask index id.
-	 * @return An optional Split to assign to the source reader.
-	 */
-	Optional<SplitT> nextSplit(String readerLocation, int subtaskIndex);
+	void handleSourceEvent(int subtaskId, SourceEvent sourceEvent);
 
 	/**
 	 * Add a split back to the split enumerator. It will only happen when a {@link SourceReader} fails
@@ -52,6 +47,22 @@ public interface SplitEnumerator<SplitT, CheckpointT> extends AutoCloseable {
 	 */
 	void addSplitsBack(List<SplitT> splits);
 
+	/**
+	 * A method that returns a future that will be completed when a split assignment is available.
+	 * A typical implementation would just assign the splits synchronously when this method is
+	 * invoked for the first time. And afterwards, only update the assignments when some event
+	 * happens, some examples of the events are:
+	 * 1. receiving a new SourceEvent from the SourceReader
+	 * 2. some splits are added back to the enumerator
+	 * 3. a new split is discovered (by an internal thread)
+	 *
+	 * <p>When a new source reader is registered, this method will be invoked again to get a new
+	 * split assignment.
+	 *
+	 * @param registeredReader the currently registered readers.
+	 * @return a future that will be completed when a new assignment is available.
+	 */
+	CompletableFuture<SplitsAssignment<SplitT>> assignSplits(Map<Integer, ReaderInfo> registeredReader);
 
 	/**
 	 * Checkpoints the state of this split enumerator.

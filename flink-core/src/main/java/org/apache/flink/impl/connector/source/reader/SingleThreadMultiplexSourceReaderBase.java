@@ -15,43 +15,35 @@
  * limitations under the License.
  */
 
-package org.apache.flink.impl.connector.source.mocks;
+package org.apache.flink.impl.connector.source.reader;
 
-import org.apache.flink.impl.connector.source.reader.RecordsWithSplitIds;
-import org.apache.flink.impl.connector.source.reader.SingleThreadMultiplexSourceReaderBase;
+import org.apache.flink.api.connectors.source.SourceSplit;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.impl.connector.source.reader.fetcher.SingleThreadFetcherManager;
 import org.apache.flink.impl.connector.source.reader.splitreader.SplitReader;
 import org.apache.flink.impl.connector.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.impl.connector.source.reader.synchronization.FutureNotifier;
 
-import java.util.Collection;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
-/**
- * A mock SourceReader class;
- */
-public class MockSourceReader
-		extends SingleThreadMultiplexSourceReaderBase<int[], Integer, MockSplit, AtomicInteger> {
+public abstract class SingleThreadMultiplexSourceReaderBase<E, T, SplitT extends SourceSplit, SplitStateT>
+	extends SourceReaderBase<E, T, SplitT, SplitStateT> {
 
-
-	public MockSourceReader(FutureNotifier futureNotifier,
-							   FutureCompletingBlockingQueue<RecordsWithSplitIds<int[]>> elementsQueue,
-							   Supplier<SplitReader<int[], MockSplit>> splitFetcherSupplier) {
-		super(futureNotifier, elementsQueue, splitFetcherSupplier, new MockRecordEmitter());
+	public SingleThreadMultiplexSourceReaderBase(
+			FutureNotifier futureNotifier,
+			FutureCompletingBlockingQueue<RecordsWithSplitIds<E>> elementsQueue,
+			Supplier<SplitReader<E, SplitT>> splitFetcherSupplier,
+			RecordEmitter<E, T, SplitStateT> recordEmitter) {
+		super(futureNotifier,
+			  elementsQueue,
+			  new SingleThreadFetcherManager<>(futureNotifier, elementsQueue, splitFetcherSupplier),
+			  recordEmitter);
 	}
 
 	@Override
-	protected void onSplitFinished(Collection<String> finishedSplitIds) {
-
-	}
-
-	@Override
-	protected AtomicInteger initializedState(MockSplit split) {
-		return new AtomicInteger(split.index());
-	}
-
-	@Override
-	protected MockSplit toSplitType(String splitId, AtomicInteger splitState) {
-		return new MockSplit(Integer.parseInt(splitId), splitState.get());
+	public void configure(Configuration config) {
+		super.configure(config);
+		splitFetcherManager.configure(config);
+		recordEmitter.configure(config);
 	}
 }
