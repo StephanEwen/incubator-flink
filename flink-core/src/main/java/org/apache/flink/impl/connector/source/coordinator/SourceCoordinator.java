@@ -96,6 +96,9 @@ public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implemen
 		this.coordinatorState = context.getState(new ValueStateDescriptor<>("CoordinatorState", byte[].class));
 		this.context = context;
 		this.closed = false;
+	}
+
+	public void start() {
 		this.executor.submit(runnableWrapper.wrap(new ProcessingRunnable()));
 	}
 
@@ -109,7 +112,7 @@ public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implemen
 
 	public CompletableFuture<Boolean> snapshotState(long checkpointId) {
 		CompletableFuture<Boolean> future = new CompletableFuture<>();
-		taskQueue.add(runnableWrapper.wrap(() -> {
+		taskQueue.add(() -> {
 			try {
 				uncheckpointedSplitsAssignment.snapshotState(checkpointId);
 
@@ -124,13 +127,13 @@ public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implemen
 			} catch (IOException e) {
 				throw new RuntimeException(e);
 			}
-		}));
+		});
 		return future;
 	}
 
 	public void handleOperatorEvent(int subtaskId, OperatorEvent event) {
 		if (event instanceof SourceEvent) {
-			taskQueue.add(runnableWrapper.wrap(() -> enumerator.handleSourceEvent(subtaskId, (SourceEvent) event)));
+			taskQueue.add(() -> enumerator.handleSourceEvent(subtaskId, (SourceEvent) event));
 		} else if (event instanceof ReaderRegistrationEvent) {
 			handleReaderRegistrationEvent((ReaderRegistrationEvent) event);
 		} else if (event instanceof ReaderFailedEvent) {
@@ -139,20 +142,20 @@ public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implemen
 	}
 
 	private void handleReaderRegistrationEvent(ReaderRegistrationEvent event) {
-		taskQueue.add(runnableWrapper.wrap(() -> {
+		taskQueue.add(() -> {
 			registeredReaders.put(event.subtaskId(), new ReaderInfo(event.subtaskId(), event.location()));
 			// Need to add the assignment update runnable back because the enumerator does not know the
 			// source reader registration change.
 			taskQueue.add(assignmentUpdateRunnable);
-		}));
+		});
 	}
 
 	private void handleReaderFailedEvent(ReaderFailedEvent event) {
-		taskQueue.add(runnableWrapper.wrap(() -> {
+		taskQueue.add(() -> {
 			List<SplitT> splitsToAddBack =
 					uncheckpointedSplitsAssignment.splitsToAddBack(event.subtaskId(), false);
 			enumerator.addSplitsBack(splitsToAddBack);
-		}));
+		});
 	}
 
 	private class AssignmentUpdateRunnable implements Runnable {
