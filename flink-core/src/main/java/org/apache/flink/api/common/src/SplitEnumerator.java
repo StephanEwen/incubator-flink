@@ -21,8 +21,6 @@ package org.apache.flink.api.common.src;
 import org.apache.flink.annotation.Public;
 import org.apache.flink.api.common.src.util.ReaderLocation;
 
-import java.io.Closeable;
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,7 +39,7 @@ import java.util.Optional;
  * @param <CheckpointT>
  */
 @Public
-public interface SplitEnumerator<SplitT, CheckpointT> extends Closeable {
+public interface SplitEnumerator<SplitT, CheckpointT> extends AutoCloseable {
 
 	/**
 	 * Returns true when the input is bounded and no more splits are available.
@@ -74,5 +72,5 @@ public interface SplitEnumerator<SplitT, CheckpointT> extends Closeable {
 	 * network connections.
 	 */
 	@Override
-	void close() throws IOException;
+	void close() throws Exception;
 }
