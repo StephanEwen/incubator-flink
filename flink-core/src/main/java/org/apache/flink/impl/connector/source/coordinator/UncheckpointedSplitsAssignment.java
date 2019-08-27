@@ -59,10 +59,10 @@ class UncheckpointedSplitsAssignment<SplitT extends SourceSplit> {
 		assignmentsByCheckpoints.entrySet().removeIf(entry -> entry.getKey() <= checkpointId);
 	}
 
-	List<SplitT> splitsToAddBack(int subtaskId, boolean readOnly) {
+	List<SplitT> splitsToAddBack(int subtaskId) {
 		List<SplitT> splits = new ArrayList<>();
 		assignmentsByCheckpoints.values().forEach(assignments -> {
-			List<SplitT> splitsForSubtask = readOnly ? assignments.get(subtaskId) : assignments.remove(subtaskId);
+			List<SplitT> splitsForSubtask = assignments.remove(subtaskId);
 			if (splitsForSubtask != null) {
 				splits.addAll(splitsForSubtask);
 			}

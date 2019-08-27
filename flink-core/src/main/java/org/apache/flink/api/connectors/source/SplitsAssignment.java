@@ -27,7 +27,7 @@ import java.util.Map;
  * simply adds the splits to the existing assignment. The overriding assignment will replace
  * the existing assignment.
  */
-public class SplitsAssignment<SplitT> {
+public class SplitsAssignment<SplitT extends SourceSplit> {
 	private final Type type;
 	private final Map<Integer, List<SplitT>> assignment;
 

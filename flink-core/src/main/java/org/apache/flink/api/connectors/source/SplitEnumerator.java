@@ -22,6 +22,7 @@ import org.apache.flink.api.connectors.source.event.SourceEvent;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -29,7 +30,24 @@ import java.util.concurrent.CompletableFuture;
  * 1. discover the splits for the {@link SourceReader} to read.
  * 2. assign the splits to the source reader.
  */
-public interface SplitEnumerator<SplitT, CheckpointT> extends AutoCloseable {
+public interface SplitEnumerator<SplitT extends SourceSplit, CheckpointT> extends AutoCloseable {
+
+	/**
+	 * Set the enumerator context.
+	 *
+	 * @param context the {@link SplitEnumeratorContext} of this enumerator.
+	 */
+	void setSplitEnumeratorContext(SplitEnumeratorContext context);
+
+	/**
+	 * Start the split enumerator. This method will be invoked after
+	 * {@link #setSplitEnumeratorContext(SplitEnumeratorContext)}.
+	 *
+	 * <p>The default behavior does nothing.
+	 */
+	default void start() {
+		// By default do nothing.
+	}
 
 	/**
 	 * Handles the source event from the source reader.
@@ -60,9 +78,13 @@ public interface SplitEnumerator<SplitT, CheckpointT> extends AutoCloseable {
 	 * split assignment.
 	 *
 	 * @param registeredReader the currently registered readers.
-	 * @return a future that will be completed when a new assignment is available.
+	 * @param currentAssignment the current split assignment.
+	 * @param numSubtasks the total number of subtasks.
+	 * @return an optional that will be non-null when a new assignment is available.
 	 */
-	CompletableFuture<SplitsAssignment<SplitT>> assignSplits(Map<Integer, ReaderInfo> registeredReader);
+	Optional<SplitsAssignment<SplitT>> nextAssignment(Map<Integer, ReaderInfo> registeredReader,
+													  Map<Integer, List<SplitT>> currentAssignment,
+													  int numSubtasks);
 
 	/**
 	 * Checkpoints the state of this split enumerator.

@@ -15,30 +15,25 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.connectors.source;
+package org.apache.flink.impl.connector.source.coordinator;
 
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
+import org.apache.flink.api.connectors.source.SplitEnumeratorContext;
 import org.apache.flink.api.connectors.source.event.OperatorEvent;
-import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.api.connectors.source.event.SourceEvent;
 
 import java.util.concurrent.CompletableFuture;
 
-public interface SourceCoordinatorContext {
-
-	MetricGroup metricGroup();
+public interface SourceCoordinatorContext extends SplitEnumeratorContext {
 
 	/**
-	 * Send a source event to a source reader. The source reader is identified by its subtask id.
+	 * Send a source event to a source operator. The source operator is identified by its subtask id.
+	 * This method is different from {@link #sendEventToSourceReader(int, SourceEvent)} that the
+	 * latter is used by the {@link org.apache.flink.api.connectors.source.SplitEnumerator} to
+	 * send {@link SourceEvent} to the {@link org.apache.flink.api.connectors.source.SourceReader}.
 	 *
-	 * @param subtaskId the subtask id of the source reader to send this event to.
+	 * @param subtaskId the subtask id of the source operator to send this event to.
 	 * @param event the source event to send.
 	 * @return a completable future which tells the result of the sending.
 	 */
 	CompletableFuture<Boolean> sendEventToSourceOperator(int subtaskId, OperatorEvent event);
-
-	/**
-	 * Access the state for the enumerator state.
-	 */
-	<T> ValueState<T> getState(ValueStateDescriptor<T> stateProperties);
 }

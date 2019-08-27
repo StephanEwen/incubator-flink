@@ -17,5 +17,17 @@
 
 package org.apache.flink.streaming.connectors.kafka.newsrc.enumerator;
 
+import org.apache.flink.streaming.connectors.kafka.newsrc.KafkaPartition;
+
+import java.util.Set;
+
+/**
+ * The enumerator checkpoint.
+ */
 public class KafkaPartitionsCheckpoint {
+	private final Set<KafkaPartition> unassignedPartitions;
+
+	KafkaPartitionsCheckpoint(Set<KafkaPartition> unassignedPartitions) {
+		this.unassignedPartitions = unassignedPartitions;
+	}
 }

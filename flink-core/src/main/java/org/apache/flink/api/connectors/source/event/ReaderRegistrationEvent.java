@@ -17,13 +17,24 @@
 
 package org.apache.flink.api.connectors.source.event;
 
-public class ReaderRegistrationEvent implements OperatorEvent {
+import org.apache.flink.api.connectors.source.SourceSplit;
+
+import java.util.Collections;
+import java.util.List;
+
+public class ReaderRegistrationEvent<SplitT extends SourceSplit> implements OperatorEvent {
 	private final int subtaskId;
 	private final String location;
+	private final List<SplitT> assignedSplits;
 
 	public ReaderRegistrationEvent(int subtaskId, String location) {
+		this(subtaskId, location, Collections.emptyList());
+	}
+
+	public ReaderRegistrationEvent(int subtaskId, String location, List<SplitT> assignedSplits) {
 		this.subtaskId = subtaskId;
 		this.location = location;
+		this.assignedSplits = assignedSplits;
 	}
 
 	public int subtaskId() {
@@ -32,5 +43,9 @@ public class ReaderRegistrationEvent implements OperatorEvent {
 
 	public String location() {
 		return location;
+	}
+
+	public List<SplitT> assignedSplits() {
+		return assignedSplits;
 	}
 }

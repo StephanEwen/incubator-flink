@@ -20,7 +20,6 @@ package org.apache.flink.impl.connector.source.coordinator;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.connectors.source.ReaderInfo;
-import org.apache.flink.api.connectors.source.SourceCoordinatorContext;
 import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.api.connectors.source.SplitEnumerator;
 import org.apache.flink.api.connectors.source.SplitsAssignment;
@@ -30,7 +29,6 @@ import org.apache.flink.api.connectors.source.event.ReaderFailedEvent;
 import org.apache.flink.api.connectors.source.event.ReaderRegistrationEvent;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
-import org.apache.flink.util.ThrowableCatchingRunnableWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,11 +37,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingDeque;
 
 /**
  * A class that runs a {@link org.apache.flink.api.connectors.source.SplitEnumerator}.
@@ -68,72 +62,65 @@ import java.util.concurrent.LinkedBlockingDeque;
 public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implements AutoCloseable {
 	private static final Logger LOG = LoggerFactory.getLogger(SourceCoordinator.class);
 	private final SplitEnumerator<SplitT, CheckpointT> enumerator;
-	private final ExecutorService executor;
-	private final BlockingDeque<Runnable> taskQueue;
-	private final ThrowableCatchingRunnableWrapper runnableWrapper;
 	private final Map<Integer, ReaderInfo> registeredReaders;
-	private final UncheckpointedSplitsAssignment<SplitT> uncheckpointedSplitsAssignment;
-	private final Runnable assignmentUpdateRunnable;
+	private final SplitAssignmentTracker<SplitT> assignmentTracker;
 	private final SimpleVersionedSerializer<CheckpointT> enumeratorStateSerializer;
 	private final SimpleVersionedSerializer<SplitT> splitSerializer;
 	private final ValueState<byte[]> coordinatorState;
 	private final SourceCoordinatorContext context;
-	private volatile boolean closed;
 
 	public SourceCoordinator(SplitEnumerator<SplitT, CheckpointT> enumerator,
 							 SimpleVersionedSerializer<CheckpointT> enumeratorStateSerializer,
 							 SimpleVersionedSerializer<SplitT> splitsSerializer,
 							 SourceCoordinatorContext context) {
 		this.enumerator = enumerator;
-		this.executor = Executors.newSingleThreadExecutor(r -> new Thread("SourceCoordinator"));
-		this.taskQueue = new LinkedBlockingDeque<>();
-		this.runnableWrapper = new ThrowableCatchingRunnableWrapper(t -> {}, LOG);
 		this.registeredReaders = new HashMap<>();
-		this.uncheckpointedSplitsAssignment = new UncheckpointedSplitsAssignment<>();
-		this.assignmentUpdateRunnable = runnableWrapper.wrap(new AssignmentUpdateRunnable());
+		this.assignmentTracker = new SplitAssignmentTracker<>();
 		this.enumeratorStateSerializer = enumeratorStateSerializer;
 		this.splitSerializer = splitsSerializer;
 		this.coordinatorState = context.getState(new ValueStateDescriptor<>("CoordinatorState", byte[].class));
 		this.context = context;
-		this.closed = false;
-	}
-
-	public void start() {
-		this.executor.submit(runnableWrapper.wrap(new ProcessingRunnable()));
+		this.enumerator.setSplitEnumeratorContext(context);
 	}
 
 	@Override
 	public void close() throws Exception {
-		closed = true;
-		// enqueue an empty runnable.
-		taskQueue.addFirst(() -> {});
-		executor.shutdown();
+		enumerator.close();
 	}
 
-	public CompletableFuture<Boolean> snapshotState(long checkpointId) {
+	/**
+	 * Snapshot the state of assigner tracker and split enumerator.
+	 *
+	 * @param checkpointId the checkpoint id.
+	 */
+	public void snapshotState(long checkpointId) {
 		CompletableFuture<Boolean> future = new CompletableFuture<>();
-		taskQueue.add(() -> {
-			try {
-				uncheckpointedSplitsAssignment.snapshotState(checkpointId);
+		try {
+			assignmentTracker.snapshotState(checkpointId);
 
-				CoordinatorState<SplitT, CheckpointT> coordState = new CoordinatorState<>(
-						checkpointId,
-						enumerator,
-						uncheckpointedSplitsAssignment,
-						splitSerializer,
-						enumeratorStateSerializer);
-				coordinatorState.update(coordState.toBytes());
-				future.complete(true);
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
-		});
-		return future;
+			CoordinatorState<SplitT, CheckpointT> coordState = new CoordinatorState<>(
+					checkpointId,
+					enumerator,
+					assignmentTracker.uncheckpointedSplitsAssignment(),
+					splitSerializer,
+					enumeratorStateSerializer);
+			coordinatorState.update(coordState.toBytes());
+			future.complete(true);
+		} catch (IOException e) {
+			LOG.warn("Failed to take snapshot on the SourceCoordinator.");
+			future.complete(false);
+		}
 	}
 
-	public void handleOperatorEvent(int subtaskId, OperatorEvent event) {
+	/**
+	 * Handles the operator event sent from the source operator of the given subtask id.
+	 *
+	 * @param subtaskId the subtask id of the operator event sender.
+	 * @param event the received operator event.
+	 */
+	void handleOperatorEvent(int subtaskId, OperatorEvent event) {
 		if (event instanceof SourceEvent) {
-			taskQueue.add(() -> enumerator.handleSourceEvent(subtaskId, (SourceEvent) event));
+			enumerator.handleSourceEvent(subtaskId, (SourceEvent) event);
 		} else if (event instanceof ReaderRegistrationEvent) {
 			handleReaderRegistrationEvent((ReaderRegistrationEvent) event);
 		} else if (event instanceof ReaderFailedEvent) {
@@ -141,55 +128,33 @@ public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implemen
 		}
 	}
 
+	/**
+	 * Update the split assignment. Record the
+	 */
+	void updateAssignment() {
+		enumerator.nextAssignment(Collections.unmodifiableMap(registeredReaders),
+								  assignmentTracker.currentSplitsAssignment(),
+								  context.numSubtasks())
+				  .ifPresent(assignment -> {
+					  if (assignment.type() == SplitsAssignment.Type.OVERRIDING) {
+						  throw new UnsupportedOperationException("The OVERRIDING assignment type is not " +
+																  "supported yet.");
+					  }
+					  assignmentTracker.recordSplitAssignment(assignment);
+					  assignment.assignment().forEach(
+					  		(id, splits) -> context.sendEventToSourceOperator(id, new AddSplitEvent<>(splits))
+					  );
+				  });
+	}
+
+	// --------------------- private methods
 	private void handleReaderRegistrationEvent(ReaderRegistrationEvent event) {
-		taskQueue.add(() -> {
-			registeredReaders.put(event.subtaskId(), new ReaderInfo(event.subtaskId(), event.location()));
-			// Need to add the assignment update runnable back because the enumerator does not know the
-			// source reader registration change.
-			taskQueue.add(assignmentUpdateRunnable);
-		});
+		registeredReaders.put(event.subtaskId(), new ReaderInfo(event.subtaskId(), event.location()));
+
 	}
 
 	private void handleReaderFailedEvent(ReaderFailedEvent event) {
-		taskQueue.add(() -> {
-			List<SplitT> splitsToAddBack =
-					uncheckpointedSplitsAssignment.splitsToAddBack(event.subtaskId(), false);
-			enumerator.addSplitsBack(splitsToAddBack);
-		});
-	}
-
-	private class AssignmentUpdateRunnable implements Runnable {
-		@Override
-		public void run() {
-			CompletableFuture<SplitsAssignment<SplitT>> future =
-					enumerator.assignSplits(Collections.unmodifiableMap(registeredReaders));
-			future.thenAccept(assignment -> {
-				if ( assignment.type() == SplitsAssignment.Type.OVERRIDING) {
-					throw new UnsupportedOperationException("The OVERRIDING assignment type is not supported yet.");
-				}
-				assignment.assignment().forEach((id, splits) -> {
-					context.sendEventToSourceOperator(id, new AddSplitEvent<>(splits));
-				});
-				// Enqueue this again to grab the next split updates.
-				taskQueue.add(this);
-			});
-		}
-	}
-
-	/** The main loop runnable. */
-	private class ProcessingRunnable implements Runnable {
-		@Override
-		public void run() {
-			LOG.info("Source coordinator started.");
-			while (!closed) {
-				try {
-					taskQueue.take().run();
-				} catch (InterruptedException e) {
-					if (!closed) {
-						throw new RuntimeException("The Source coordinator thread is interrupted unexpectedly.", e);
-					}
-				}
-			}
-		}
+		List<SplitT> splitsToAddBack = assignmentTracker.getAndRemoveUncheckpointedAssignment(event.subtaskId());
+		enumerator.addSplitsBack(splitsToAddBack);
 	}
 }
