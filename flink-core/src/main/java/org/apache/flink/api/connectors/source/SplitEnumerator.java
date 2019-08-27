@@ -37,7 +37,7 @@ public interface SplitEnumerator<SplitT extends SourceSplit, CheckpointT> extend
 	 *
 	 * @param context the {@link SplitEnumeratorContext} of this enumerator.
 	 */
-	void setSplitEnumeratorContext(SplitEnumeratorContext context);
+	void setSplitEnumeratorContext(SplitEnumeratorContext<SplitT> context);
 
 	/**
 	 * Start the split enumerator. This method will be invoked after
@@ -76,15 +76,8 @@ public interface SplitEnumerator<SplitT extends SourceSplit, CheckpointT> extend
 	 *
 	 * <p>When a new source reader is registered, this method will be invoked again to get a new
 	 * split assignment.
-	 *
-	 * @param registeredReader the currently registered readers.
-	 * @param currentAssignment the current split assignment.
-	 * @param numSubtasks the total number of subtasks.
-	 * @return an optional that will be non-null when a new assignment is available.
 	 */
-	Optional<SplitsAssignment<SplitT>> nextAssignment(Map<Integer, ReaderInfo> registeredReader,
-													  Map<Integer, List<SplitT>> currentAssignment,
-													  int numSubtasks);
+	void updateAssignment();
 
 	/**
 	 * Checkpoints the state of this split enumerator.

@@ -22,8 +22,6 @@ import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.connectors.source.ReaderInfo;
 import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.api.connectors.source.SplitEnumerator;
-import org.apache.flink.api.connectors.source.SplitsAssignment;
-import org.apache.flink.api.connectors.source.event.AddSplitEvent;
 import org.apache.flink.api.connectors.source.event.OperatorEvent;
 import org.apache.flink.api.connectors.source.event.ReaderFailedEvent;
 import org.apache.flink.api.connectors.source.event.ReaderRegistrationEvent;
@@ -33,10 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -62,25 +57,22 @@ import java.util.concurrent.CompletableFuture;
 public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implements AutoCloseable {
 	private static final Logger LOG = LoggerFactory.getLogger(SourceCoordinator.class);
 	private final SplitEnumerator<SplitT, CheckpointT> enumerator;
-	private final Map<Integer, ReaderInfo> registeredReaders;
-	private final SplitAssignmentTracker<SplitT> assignmentTracker;
 	private final SimpleVersionedSerializer<CheckpointT> enumeratorStateSerializer;
 	private final SimpleVersionedSerializer<SplitT> splitSerializer;
 	private final ValueState<byte[]> coordinatorState;
-	private final SourceCoordinatorContext context;
+	private final SourceCoordinatorContextImpl<SplitT> context;
 
 	public SourceCoordinator(SplitEnumerator<SplitT, CheckpointT> enumerator,
 							 SimpleVersionedSerializer<CheckpointT> enumeratorStateSerializer,
 							 SimpleVersionedSerializer<SplitT> splitsSerializer,
-							 SourceCoordinatorContext context) {
+							 SourceCoordinatorContextImpl<SplitT> context) {
 		this.enumerator = enumerator;
-		this.registeredReaders = new HashMap<>();
-		this.assignmentTracker = new SplitAssignmentTracker<>();
 		this.enumeratorStateSerializer = enumeratorStateSerializer;
 		this.splitSerializer = splitsSerializer;
 		this.coordinatorState = context.getState(new ValueStateDescriptor<>("CoordinatorState", byte[].class));
 		this.context = context;
 		this.enumerator.setSplitEnumeratorContext(context);
+		this.enumerator.start();
 	}
 
 	@Override
@@ -96,12 +88,12 @@ public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implemen
 	public void snapshotState(long checkpointId) {
 		CompletableFuture<Boolean> future = new CompletableFuture<>();
 		try {
-			assignmentTracker.snapshotState(checkpointId);
+			context.snapshotState(checkpointId);
 
 			CoordinatorState<SplitT, CheckpointT> coordState = new CoordinatorState<>(
 					checkpointId,
 					enumerator,
-					assignmentTracker.uncheckpointedSplitsAssignment(),
+					context.uncheckpointedSplitsAssignment(),
 					splitSerializer,
 					enumeratorStateSerializer);
 			coordinatorState.update(coordState.toBytes());
@@ -126,35 +118,16 @@ public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implemen
 		} else if (event instanceof ReaderFailedEvent) {
 			handleReaderFailedEvent((ReaderFailedEvent) event);
 		}
-	}
-
-	/**
-	 * Update the split assignment. Record the
-	 */
-	void updateAssignment() {
-		enumerator.nextAssignment(Collections.unmodifiableMap(registeredReaders),
-								  assignmentTracker.currentSplitsAssignment(),
-								  context.numSubtasks())
-				  .ifPresent(assignment -> {
-					  if (assignment.type() == SplitsAssignment.Type.OVERRIDING) {
-						  throw new UnsupportedOperationException("The OVERRIDING assignment type is not " +
-																  "supported yet.");
-					  }
-					  assignmentTracker.recordSplitAssignment(assignment);
-					  assignment.assignment().forEach(
-					  		(id, splits) -> context.sendEventToSourceOperator(id, new AddSplitEvent<>(splits))
-					  );
-				  });
+		enumerator.updateAssignment();
 	}
 
 	// --------------------- private methods
 	private void handleReaderRegistrationEvent(ReaderRegistrationEvent event) {
-		registeredReaders.put(event.subtaskId(), new ReaderInfo(event.subtaskId(), event.location()));
-
+		context.registerSourceReader(event.subtaskId(), new ReaderInfo(event.subtaskId(), event.location()));
 	}
 
 	private void handleReaderFailedEvent(ReaderFailedEvent event) {
-		List<SplitT> splitsToAddBack = assignmentTracker.getAndRemoveUncheckpointedAssignment(event.subtaskId());
+		List<SplitT> splitsToAddBack = context.getAndRemoveUncheckpointedAssignment(event.subtaskId());
 		enumerator.addSplitsBack(splitsToAddBack);
 	}
 }

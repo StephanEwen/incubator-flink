@@ -17,13 +17,14 @@
 
 package org.apache.flink.impl.connector.source.coordinator;
 
+import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.api.connectors.source.SplitEnumeratorContext;
 import org.apache.flink.api.connectors.source.event.OperatorEvent;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 
 import java.util.concurrent.CompletableFuture;
 
-public interface SourceCoordinatorContext extends SplitEnumeratorContext {
+public interface SourceCoordinatorContext<SplitT extends SourceSplit> extends SplitEnumeratorContext<SplitT> {
 
 	/**
 	 * Send a source event to a source operator. The source operator is identified by its subtask id.

@@ -17,7 +17,6 @@
 
 package org.apache.flink.streaming.connectors.kafka.newsrc.enumerator;
 
-import org.apache.flink.api.connectors.source.ReaderInfo;
 import org.apache.flink.api.connectors.source.SplitEnumerator;
 import org.apache.flink.api.connectors.source.SplitEnumeratorContext;
 import org.apache.flink.api.connectors.source.SplitsAssignment;
@@ -25,7 +24,6 @@ import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.connectors.kafka.newsrc.KafkaPartition;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,22 +31,18 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class KafkaPartitionEnumerator implements SplitEnumerator<KafkaPartition, KafkaPartitionsCheckpoint> {
 	private static final Logger LOG = LoggerFactory.getLogger(KafkaPartitionEnumerator.class);
 	private final Set<KafkaPartition> unassignedPartitions;
 	private final KafkaConsumer<byte[], byte[]> kafkaConsumer;
 	private final Map<String, Integer> topicToNumPartitions;
-	private SplitEnumeratorContext context;
+	private SplitEnumeratorContext<KafkaPartition> context;
 
 	public KafkaPartitionEnumerator(Configuration configuration) {
 		Properties props = new Properties();
@@ -82,22 +76,17 @@ public class KafkaPartitionEnumerator implements SplitEnumerator<KafkaPartition,
 	}
 
 	@Override
-	public Optional<SplitsAssignment<KafkaPartition>> nextAssignment(Map<Integer, ReaderInfo> registeredReader,
-																	 Map<Integer, List<KafkaPartition>> currentAssignment,
-																	 int numSubtasks) {
-		if (unassignedPartitions.isEmpty()) {
-			return Optional.empty();
-		} else {
+	public void updateAssignment() {
+		if (!unassignedPartitions.isEmpty()) {
 			Map<Integer, List<KafkaPartition>> additionalAssignment = new HashMap<>();
 			for (KafkaPartition kp : unassignedPartitions) {
-				int targetSubtask = kp.topicPartition().partition() % numSubtasks;
-				if (registeredReader.containsKey(targetSubtask)) {
+				int targetSubtask = kp.topicPartition().partition() % context.numSubtasks();
+				if (context.registeredReaders().containsKey(targetSubtask)) {
 					additionalAssignment.computeIfAbsent(targetSubtask, id -> new ArrayList<>())
 										.add(kp);
 				}
 			}
-			SplitsAssignment<KafkaPartition> newAssignment = new SplitsAssignment<>(additionalAssignment);
-			return Optional.of(newAssignment);
+			context.assignSplits(new SplitsAssignment<>(additionalAssignment));
 		}
 	}
 
@@ -107,7 +96,7 @@ public class KafkaPartitionEnumerator implements SplitEnumerator<KafkaPartition,
 	}
 
 	@Override
-	public void setSplitEnumeratorContext(SplitEnumeratorContext context) {
+	public void setSplitEnumeratorContext(SplitEnumeratorContext<KafkaPartition> context) {
 		this.context = context;
 	}
 

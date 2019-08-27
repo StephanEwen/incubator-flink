@@ -23,11 +23,13 @@ import org.apache.flink.api.connectors.source.event.OperatorEvent;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.metrics.MetricGroup;
 
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 
-public interface SplitEnumeratorContext {
+public interface SplitEnumeratorContext<SplitT extends SourceSplit> {
 
 	MetricGroup metricGroup();
 
@@ -51,6 +53,27 @@ public interface SplitEnumeratorContext {
 	 * @return the number of subtasks.
 	 */
 	int numSubtasks();
+
+	/**
+	 * Get the currently registered readers. The mapping is from subtask id to the reader info.
+	 *
+	 * @return the currently registered readers.
+	 */
+	Map<Integer, ReaderInfo> registeredReaders();
+
+	/**
+	 * Get the current split assignment.
+	 *
+	 * @return the current split assignment.
+	 */
+	Map<Integer, List<SplitT>> currentAssignment();
+
+	/**
+	 * Assign the splits.
+	 *
+	 * @param newSplitAssignments the new split assignments to add.
+	 */
+	void assignSplits(SplitsAssignment<SplitT> newSplitAssignments);
 
 	/**
 	 * Notify the source coordinator that a new assignment is ready.
