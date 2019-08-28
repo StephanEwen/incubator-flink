@@ -29,17 +29,11 @@ import java.util.concurrent.ExecutorService;
 public class SourceCoordinatorRunner<T, SplitT extends SourceSplit, CheckpointT> implements AutoCloseable {
 	private final ExecutorService executor;
 	private final SourceCoordinator<SplitT, CheckpointT> coordinator;
-	private final Runnable assignmentUpdateRunnable;
 
 	public SourceCoordinatorRunner(ExecutorService executor,
 								   SourceCoordinator<SplitT, CheckpointT> coordinator) {
 		this.executor = executor;
 		this.coordinator = coordinator;
-		this.assignmentUpdateRunnable = coordinator::updateAssignment;
-	}
-
-	public void start() {
-		executor.submit(new AssignmentPollingRunnable());
 	}
 
 	public void handleOperatorEvent(int subtaskId, OperatorEvent operatorEvent) {
@@ -51,14 +45,8 @@ public class SourceCoordinatorRunner<T, SplitT extends SourceSplit, CheckpointT>
 	}
 
 	@Override
-	public void close() {
+	public void close() throws Exception {
+		coordinator.close();
 		executor.shutdown();
-	}
-
-	private class AssignmentPollingRunnable implements Runnable {
-		@Override
-		public void run() {
-			coordinator.updateAssignment();
-		}
 	}
 }
