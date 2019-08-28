@@ -39,14 +39,22 @@ public class SplitAssignmentTracker<SplitT extends SourceSplit> {
 		currentAssignment = new HashMap<>();
 	}
 
-	public void snapshotState(long checkpointId) {
+	/**
+	 * Take a snapshot of the uncheckpointed split assignments.
+	 *
+	 * @param checkpointId the id of the ongoing checkpoint
+	 * @return the uncheckpointed splits assignment that needs to be saved.
+	 */
+	public Map<Long, Map<Integer, List<SplitT>>> snapshotState(long checkpointId) {
 		uncheckpointedAssignment.snapshotState(checkpointId);
+		return uncheckpointedAssignment.assignmentsByCheckpoints();
 	}
 
-	UncheckpointedSplitsAssignment<SplitT> uncheckpointedSplitsAssignment() {
-		return uncheckpointedAssignment;
-	}
-
+	/**
+	 * Get the current split assignment.
+	 *
+	 * @return the current split assignment.
+	 */
 	Map<Integer, List<SplitT>> currentSplitsAssignment() {
 		return Collections.unmodifiableMap(currentAssignment);
 	}

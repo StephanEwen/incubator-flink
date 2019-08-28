@@ -29,6 +29,15 @@ import java.util.concurrent.CompletableFuture;
  * The enumerator is responsible for doing the following:
  * 1. discover the splits for the {@link SourceReader} to read.
  * 2. assign the splits to the source reader.
+ *
+ * <p>The enumerator will be provided a {@link SplitEnumeratorContext} object which host necessary
+ * information for the enumerator to make assignment decisions. Such information includes:
+ * 1. Registered source readers
+ * 2. Number of source reader subtasks.
+ * 3. Current split assignment for each source reader subtasks.
+ *
+ * In addition, the {@link SplitEnumeratorContext} also serves as a way for the SplitEnumerator to
+ * update the assignments and communicate to a SourceReaders.
  */
 public interface SplitEnumerator<SplitT extends SourceSplit, CheckpointT> extends AutoCloseable {
 

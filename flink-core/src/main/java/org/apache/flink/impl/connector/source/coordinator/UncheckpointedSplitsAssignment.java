@@ -21,6 +21,7 @@ import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.api.connectors.source.SplitsAssignment;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +49,10 @@ class UncheckpointedSplitsAssignment<SplitT extends SourceSplit> {
 		} else {
 			throw new UnsupportedOperationException("The OVERRIDING assignment is not supported yet.");
 		}
+	}
+
+	Map<Long, Map<Integer, List<SplitT>>> assignmentsByCheckpoints() {
+		return Collections.unmodifiableMap(assignmentsByCheckpoints);
 	}
 
 	void snapshotState(long checkpointId) {

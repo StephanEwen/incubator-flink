@@ -32,44 +32,34 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
  * A class that runs a {@link org.apache.flink.api.connectors.source.SplitEnumerator}.
- * It is responsible for the followings:
- * 1. Maintain the assigned but uncheckpointed splits assignments.
- * 2. Handle the source reader registration.
- * 3. Handle the source reader failure.
- *
- * <p>This class has an internal thread that follows an event-loop model. In most cases, the
- * {@link SplitEnumerator} does not need to have its own internal thread because any split
- * assignment change is going to be triggered by some events and some corresponding method
- * of the SplitEnumerator will be invoked. If a new assignment is needed, the SplitEnumerator
- * can just complete the future that was returned earlier. Every time after a new assignment
- * is triggered, the main thread will get the future for the next assignment.
+ * It is responsible for the following:
+ * 1. handle the operator events sent by the SourceOperator. This will also trigger a split assignment.
+ * 2. collects the state of the SplitEnumerator and SourceCoordinatorContext to do checkpoint.
  *
  * <p>The first split assignment query is always triggered by a SourceReader registration.
  * After that the split assignment query can be triggered by one of the following:
  * 1. receiving a new SourceEvent from the SourceReader
  * 2. some splits are added back to the enumerator, probably due to a source reader failure.
- * 3. a new split is discovered (by an internal thread)
+ * 3. a new split is discovered
  */
 public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implements AutoCloseable {
 	private static final Logger LOG = LoggerFactory.getLogger(SourceCoordinator.class);
 	private final SplitEnumerator<SplitT, CheckpointT> enumerator;
-	private final SimpleVersionedSerializer<CheckpointT> enumeratorStateSerializer;
-	private final SimpleVersionedSerializer<SplitT> splitSerializer;
+	private final SimpleVersionedSerializer<CoordinatorState<SplitT, CheckpointT>> stateSerializer;
 	private final ValueState<byte[]> coordinatorState;
-	private final SourceCoordinatorContextImpl<SplitT> context;
+	private final SourceCoordinatorContext<SplitT> context;
 
 	public SourceCoordinator(SplitEnumerator<SplitT, CheckpointT> enumerator,
-							 SimpleVersionedSerializer<CheckpointT> enumeratorStateSerializer,
-							 SimpleVersionedSerializer<SplitT> splitsSerializer,
-							 SourceCoordinatorContextImpl<SplitT> context) {
+							 SourceCoordinatorContext<SplitT> context,
+							 SimpleVersionedSerializer<CoordinatorState<SplitT, CheckpointT>> stateSerializer) {
 		this.enumerator = enumerator;
-		this.enumeratorStateSerializer = enumeratorStateSerializer;
-		this.splitSerializer = splitsSerializer;
 		this.coordinatorState = context.getState(new ValueStateDescriptor<>("CoordinatorState", byte[].class));
+		this.stateSerializer = stateSerializer;
 		this.context = context;
 		this.enumerator.setSplitEnumeratorContext(context);
 		this.enumerator.start();
@@ -88,15 +78,9 @@ public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implemen
 	public void snapshotState(long checkpointId) {
 		CompletableFuture<Boolean> future = new CompletableFuture<>();
 		try {
-			context.snapshotState(checkpointId);
-
-			CoordinatorState<SplitT, CheckpointT> coordState = new CoordinatorState<>(
-					checkpointId,
-					enumerator,
-					context.uncheckpointedSplitsAssignment(),
-					splitSerializer,
-					enumeratorStateSerializer);
-			coordinatorState.update(coordState.toBytes());
+			CoordinatorState<SplitT, CheckpointT> coordState =
+					new CoordinatorState<>(checkpointId, enumerator, context);
+			coordinatorState.update(stateSerializer.serialize(coordState));
 			future.complete(true);
 		} catch (IOException e) {
 			LOG.warn("Failed to take snapshot on the SourceCoordinator.");
@@ -121,7 +105,7 @@ public class SourceCoordinator<SplitT extends SourceSplit, CheckpointT> implemen
 		enumerator.updateAssignment();
 	}
 
-	// --------------------- private methods
+	// --------------------- private methods -------------
 	private void handleReaderRegistrationEvent(ReaderRegistrationEvent event) {
 		context.registerSourceReader(event.subtaskId(), new ReaderInfo(event.subtaskId(), event.location()));
 	}

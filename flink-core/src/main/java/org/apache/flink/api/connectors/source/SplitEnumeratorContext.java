@@ -17,9 +17,6 @@
 
 package org.apache.flink.api.connectors.source;
 
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.api.connectors.source.event.OperatorEvent;
 import org.apache.flink.api.connectors.source.event.SourceEvent;
 import org.apache.flink.metrics.MetricGroup;
 
@@ -29,6 +26,15 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 
+/**
+ * A context class for the {@link SplitEnumerator}. This class serves the following purposes:
+ * 1. Host information necessary for the SplitEnumerator to make split assignment decisions.
+ * 2. Accept and track the split assignment from the enumerator.
+ * 3. Provide a managed threading model so the split enumerators do not need to create their
+ *    own internal threads.
+ *
+ * @param <SplitT> the type of the splits.
+ */
 public interface SplitEnumeratorContext<SplitT extends SourceSplit> {
 
 	MetricGroup metricGroup();
@@ -41,11 +47,6 @@ public interface SplitEnumeratorContext<SplitT extends SourceSplit> {
 	 * @return a completable future which tells the result of the sending.
 	 */
 	CompletableFuture<Boolean> sendEventToSourceReader(int subtaskId, SourceEvent event);
-
-	/**
-	 * Access the state for the enumerator state.
-	 */
-	<T> ValueState<T> getState(ValueStateDescriptor<T> stateProperties);
 
 	/**
 	 * Get the number of subtasks.
@@ -88,7 +89,7 @@ public interface SplitEnumeratorContext<SplitT extends SourceSplit> {
 	 * any shared state. Otherwise the there might be unexpected behavior.
 	 *
 	 * @param callable a callable to call.
-	 * @param handler a handler that handles
+	 * @param handler a handler that handles the return value of or the exception thrown from the callable.
 	 */
 	<T> void notifyNewAssignmentAsync(Callable<T> callable, BiFunction<T, Throwable, Boolean> handler);
 
@@ -99,7 +100,8 @@ public interface SplitEnumeratorContext<SplitT extends SourceSplit> {
 	 * <p>It is important to make sure that the callable and handler does not modify
 	 * any shared state. Otherwise the there might be unexpected behavior.
 	 *
-	 * @param callable the callable to call
+	 * @param callable the callable to call.
+	 * @param handler a handler that handles the return value of or the exception thrown from the callable.
 	 * @param initialDelay the initial delay of calling the callable.
 	 * @param period the period between two invocations of the callable.
 	 */

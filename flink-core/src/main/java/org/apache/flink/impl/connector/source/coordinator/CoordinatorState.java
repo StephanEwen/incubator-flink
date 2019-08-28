@@ -21,6 +21,9 @@ import org.apache.flink.api.connectors.source.SourceSplit;
 import org.apache.flink.api.connectors.source.SplitEnumerator;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * The state to be checkpointed for the {@link SourceCoordinator}.
  *
@@ -30,25 +33,25 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 class CoordinatorState<SplitT extends SourceSplit, CheckpointT> {
 	private final long checkpointId;
 	private final SplitEnumerator<SplitT, CheckpointT> enumerator;
-	private final UncheckpointedSplitsAssignment<SplitT> uncheckpointedSplitsAssignment;
-	private final SimpleVersionedSerializer<SplitT> splitSerializer;
+	private final SourceCoordinatorContext<SplitT> context;
 
 	CoordinatorState(long checkpointId,
 					 SplitEnumerator<SplitT, CheckpointT> enumerator,
-					 UncheckpointedSplitsAssignment<SplitT> uncheckpointedSplitsAssignment,
-					 SimpleVersionedSerializer<SplitT> splitSerializer,
-					 SimpleVersionedSerializer<CheckpointT> enuemratorStateSerailzer) {
+					 SourceCoordinatorContext<SplitT> context) {
 		this.checkpointId = checkpointId;
 		this.enumerator = enumerator;
-		this.uncheckpointedSplitsAssignment = uncheckpointedSplitsAssignment;
-		this.splitSerializer = splitSerializer;
+		this.context = context;
 	}
 
-	byte[] toBytes() {
+	byte[] toBytes(SimpleVersionedSerializer<SplitT> splitSerializer,
+				   SimpleVersionedSerializer<CheckpointT> enuemratorStateSerailzer) {
 		return null;
 	}
 
-	static CoordinatorState fromBytes(byte[] bytes) {
+	static <SplitT extends SourceSplit, CheckpointT> CoordinatorState<SplitT, CheckpointT> fromBytes(
+			byte[] bytes,
+			SimpleVersionedSerializer<SplitT> splitSerializer,
+			SimpleVersionedSerializer<CheckpointT> enuemratorStateSerailzer) {
 		return null;
 	}
 }
