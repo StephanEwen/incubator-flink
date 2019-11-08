@@ -19,29 +19,24 @@
 package org.apache.flink.api.common.eventtime;
 
 import org.apache.flink.annotation.Public;
-import org.apache.flink.api.common.ExecutionConfig;
 
 /**
- * The {@code WatermarkGenerator} generates watermarks either based on events or
- * periodically (in a fixed interval).
+ * A timestamp assigner that assigns timestamps based on the machine's wall clock.
+ * If this assigner is used after a stream source, it realizes "ingestion time" semantics.
  *
- * <p><b>Note:</b> This WatermarkGenerator subsumes the previous distinction between the
- * {@code AssignerWithPunctuatedWatermarks} and the {@code AssignerWithPeriodicWatermarks}.
+ * @param <T> The type of the elements that get timestamps assigned.
  */
 @Public
-public interface WatermarkGenerator<T> {
+public final class IngestionTimeAssigner<T> implements TimestampAssigner<T> {
+	private static final long serialVersionUID = 1L;
 
-	/**
-	 * Called for every event, allows the watermark generator to examine and remember the
-	 * event timestamps, or to emit a watermark based on the event itself.
-	 */
-	void onEvent(T event, long eventTimestamp, WatermarkOutput output);
+	private long maxTimestamp;
 
-	/**
-	 * Called periodically, and might emit a new watermark, or not.
-	 *
-	 * <p>The interval in which this method is called and Watermarks are generated
-	 * depends on {@link ExecutionConfig#getAutoWatermarkInterval()}.
-	 */
-	void onPeriodicEmit(WatermarkOutput output);
+	@Override
+	public long extractTimestamp(T element, long previousElementTimestamp) {
+		// make sure timestamps are monotonously increasing, even when the system clock re-syncs
+		final long now = Math.max(System.currentTimeMillis(), maxTimestamp);
+		maxTimestamp = now;
+		return now;
+	}
 }
