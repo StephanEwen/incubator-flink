@@ -57,6 +57,14 @@ under the License.
 			<version>${junit.version}</version>
 			<scope>compile</scope>
 		</dependency>
+
+		<!-- the dependency within the kinesis connector is shaded, so we need this extra dependency -->
+		<dependency>
+			<groupId>com.amazonaws</groupId>
+			<artifactId>aws-java-sdk-kinesis</artifactId>
+			<version>1.11.603</version>
+			<scope>provided</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -82,6 +90,15 @@ under the License.
 								</transformer>
 							</transformers>
 							<finalName>KinesisExample</finalName>
+							<relocations combine.children="override">
+								<!-- this needs to be kept in sync with the relocation of the AWS SDK -->
+								<!-- in the connector, so that the references in this test ends up using -->
+								<!-- referring to the relocated classes -->
+								<relocation>
+									<pattern>com.amazonaws</pattern>
+									<shadedPattern>org.apache.flink.kinesis.shaded.com.amazonaws</shadedPattern>
+								</relocation>
+							</relocations>
 						</configuration>
 					</execution>
 				</executions>
