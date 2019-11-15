@@ -39,6 +39,7 @@ import org.apache.flink.runtime.io.network.partition.consumer.IteratorWrappingTe
 import org.apache.flink.runtime.io.network.util.TestPooledBufferProvider;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
+import org.apache.flink.runtime.jobgraph.tasks.OperatorEventSender;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.memory.MemoryManagerBuilder;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
@@ -326,6 +327,11 @@ public class MockEnvironment implements Environment, AutoCloseable {
 
 	@Override
 	public void declineCheckpoint(long checkpointId, Throwable cause) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public OperatorEventSender getOperatorCoordinatorEventGateway() {
 		throw new UnsupportedOperationException();
 	}
 

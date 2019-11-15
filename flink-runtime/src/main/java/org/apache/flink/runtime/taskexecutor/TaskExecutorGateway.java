@@ -30,15 +30,18 @@ import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotReport;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
+import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.types.SerializableOptional;
+import org.apache.flink.util.SerializedValue;
 
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -209,4 +212,18 @@ public interface TaskExecutorGateway extends RpcGateway {
 	 * @return Future flag indicating whether the task executor can be released.
 	 */
 	CompletableFuture<Boolean> canBeReleased();
+
+	/**
+	 * Sends an operator event to an operator in a task executed by this task executor.
+	 *
+	 * <p>The reception is acknowledged (future is completed) when the event has been dispatched to the
+	 * {@link org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable#dispatchOperatorEvent(OperatorID, SerializedValue)}
+	 * method. It is not guaranteed that the event is processes successfully within the implementation.
+	 * These cases are up to the task and event sender to handle (for example with an explicit response
+	 * message upon success, or by triggering failure/recovery upon exception).
+	 */
+	CompletableFuture<Acknowledge> sendOperatorEvent(
+			ExecutionAttemptID task,
+			OperatorID operator,
+			SerializedValue<OperatorEvent> evt);
 }

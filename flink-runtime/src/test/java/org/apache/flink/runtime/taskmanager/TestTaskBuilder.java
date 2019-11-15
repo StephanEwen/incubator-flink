@@ -42,7 +42,6 @@ import org.apache.flink.runtime.io.network.partition.NoOpResultPartitionConsumab
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
-import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.memory.MemoryManagerBuilder;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
@@ -198,6 +197,7 @@ public final class TestTaskBuilder {
 			taskManagerActions,
 			new MockInputSplitProvider(),
 			new TestCheckpointResponder(),
+			new NoOpOperatorEventSender(),
 			new TestGlobalAggregateManager(),
 			blobCacheService,
 			libraryCacheManager,

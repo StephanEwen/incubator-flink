@@ -43,6 +43,7 @@ import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
@@ -53,6 +54,7 @@ import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
+import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.shuffle.PartitionDescriptor;
 import org.apache.flink.runtime.shuffle.ProducerDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
@@ -63,6 +65,7 @@ import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.OptionalFailure;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.function.ThrowingRunnable;
 
 import org.slf4j.Logger;
@@ -1009,6 +1012,23 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			taskManagerGateway.triggerCheckpoint(attemptId, getVertex().getJobId(), checkpointId, timestamp, checkpointOptions, advanceToEndOfEventTime);
 		} else {
 			LOG.debug("The execution has no slot assigned. This indicates that the execution is no longer running.");
+		}
+	}
+
+	/**
+	 * Sends the operator event to the Task on the Task Executor.
+	 *
+	 * @return True, of the message was sent, false is the task is currently not running.
+	 */
+	public boolean sendOperatorEvent(OperatorID operatorId, SerializedValue<OperatorEvent> event) {
+		final LogicalSlot slot = assignedResource;
+
+		if (slot != null && getState() == RUNNING) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+			taskManagerGateway.sendOperatorEvent(getAttemptId(), operatorId, event);
+			return true;
+		} else {
+			return false;
 		}
 	}
 

@@ -209,6 +209,7 @@ public class TaskAsyncCallTest extends TestLogger {
 			mock(TaskManagerActions.class),
 			mock(InputSplitProvider.class),
 			mock(CheckpointResponder.class),
+			new NoOpOperatorEventSender(),
 			new TestGlobalAggregateManager(),
 			blobService,
 			libCache,
