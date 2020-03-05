@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.messages.checkpoint;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.util.SerializedThrowable;
 
@@ -41,14 +40,21 @@ public class DeclineCheckpoint extends AbstractCheckpointMessage implements java
 	}
 
 	public DeclineCheckpoint(JobID job, ExecutionAttemptID taskExecutionId, long checkpointId, Throwable reason) {
+		this(job, taskExecutionId, checkpointId, reason, true);
+	}
+
+	private DeclineCheckpoint(
+			JobID job,
+			ExecutionAttemptID taskExecutionId,
+			long checkpointId,
+			Throwable reason,
+			boolean serializeThrowable) {
+
 		super(job, taskExecutionId, checkpointId);
 
-		if (reason == null || reason instanceof CheckpointException) {
-			this.reason = reason;
-		} else {
-			// some other exception. replace with a serialized throwable, to be on the safe side
-			this.reason = new SerializedThrowable(reason);
-		}
+		// replace exceptions with serialized throwable, in case classes for connectors are
+		// not in the system class loader
+		this.reason = reason == null || !serializeThrowable ? reason : new SerializedThrowable(reason);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -60,6 +66,15 @@ public class DeclineCheckpoint extends AbstractCheckpointMessage implements java
 	 */
 	public Throwable getReason() {
 		return reason;
+	}
+
+	public DeclineCheckpoint tryDeserializeExceptionIfNeeded(ClassLoader classLoader) {
+		if (!(reason instanceof SerializedThrowable)) {
+			return this;
+		}
+
+		final Throwable deserializedCause = ((SerializedThrowable) reason).deserializeError(classLoader);
+		return new DeclineCheckpoint(getJob(), getTaskExecutionId(), getCheckpointId(), deserializedCause, false);
 	}
 
 	// --------------------------------------------------------------------------------------------

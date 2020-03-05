@@ -825,7 +825,8 @@ public abstract class SchedulerBase implements SchedulerNG {
 		if (checkpointCoordinator != null) {
 			ioExecutor.execute(() -> {
 				try {
-					checkpointCoordinator.receiveDeclineMessage(decline, taskManagerLocationInfo);
+					final DeclineCheckpoint deserializedDecline = decline.tryDeserializeExceptionIfNeeded(userCodeLoader);
+					checkpointCoordinator.receiveDeclineMessage(deserializedDecline, taskManagerLocationInfo);
 				} catch (Exception e) {
 					log.error("Error in CheckpointCoordinator while processing {}", decline, e);
 				}
