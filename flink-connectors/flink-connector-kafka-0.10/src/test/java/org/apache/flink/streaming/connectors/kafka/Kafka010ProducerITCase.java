@@ -21,7 +21,6 @@ package org.apache.flink.streaming.connectors.kafka;
 /**
  * IT cases for the {@link FlinkKafkaProducer010}.
  */
-@SuppressWarnings("serial")
 public class Kafka010ProducerITCase extends KafkaProducerTestBase {
 	@Override
 	public void testExactlyOnceRegularSink() throws Exception {

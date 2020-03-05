@@ -68,8 +68,7 @@ public class ContentDump {
 	public Collection<String> read(String name) {
 		List<String> content = filesContent.get(name);
 		checkState(content != null, "Unknown file [%s]", name);
-		List<String> result = new ArrayList<>(content);
-		return result;
+		return new ArrayList<>(content);
 	}
 
 	private void putContent(String name, List<String> values) {
@@ -124,7 +123,9 @@ public class ContentDump {
 	/**
 	 * Exception thrown for an attempt to write into read-only {@link ContentDump}.
 	 */
-	public class NotWritableException extends RuntimeException {
+	public static class NotWritableException extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+
 		public NotWritableException(String name) {
 			super(String.format("File [%s] is not writable", name));
 		}

@@ -52,13 +52,14 @@ import static org.powermock.api.mockito.PowerMockito.when;
 /**
  * Tests for the {@link CassandraSinkBase}.
  */
+@SuppressWarnings("serial")
 public class CassandraSinkBaseTest {
 
 	private static final long DEFAULT_TEST_TIMEOUT = 5000;
 
 	@Test(expected = NoHostAvailableException.class)
 	public void testHostNotFoundErrorHandling() throws Exception {
-		CassandraSinkBase base = new CassandraSinkBase(new ClusterBuilder() {
+		CassandraSinkBase<?, ?> base = new CassandraSinkBase(new ClusterBuilder() {
 			@Override
 			protected Cluster buildCluster(Cluster.Builder builder) {
 				return builder
@@ -68,7 +69,7 @@ public class CassandraSinkBaseTest {
 			}
 		}, CassandraSinkBaseConfig.newBuilder().build(), new NoOpCassandraFailureHandler()) {
 			@Override
-			public ListenableFuture send(Object value) {
+			public ListenableFuture<?> send(Object value) {
 				return null;
 			}
 		};
