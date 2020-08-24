@@ -95,7 +95,7 @@ public abstract class ResultPartition implements ResultPartitionWriter, BufferPo
 
 	private final AtomicBoolean isReleased = new AtomicBoolean();
 
-	private BufferPool bufferPool;
+	protected BufferPool bufferPool;
 
 	private boolean isFinished;
 
@@ -377,7 +377,7 @@ public abstract class ResultPartition implements ResultPartitionWriter, BufferPo
 
 	// ------------------------------------------------------------------------
 
-	private void checkInProduceState() throws IllegalStateException {
+	protected void checkInProduceState() throws IllegalStateException {
 		checkState(!isFinished, "Partition already finished.");
 	}
 }
