@@ -116,8 +116,6 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 
 	@Override
 	public InputStatus pollNext(ReaderOutput<T> output) throws Exception {
-		splitFetcherManager.checkErrors();
-
 		// make sure we have a fetch we are working on, or move to the next
 		RecordsWithSplitIds<E> recordsWithSplitId = this.currentFetch;
 		if (recordsWithSplitId == null) {
@@ -151,6 +149,8 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 
 	@Nullable
 	private RecordsWithSplitIds<E> getNextFetch(final ReaderOutput<T> output) {
+		splitFetcherManager.checkErrors();
+
 		final RecordsWithSplitIds<E> recordsWithSplitId = elementsQueue.poll();
 		if (recordsWithSplitId == null || !moveToNextSplit(recordsWithSplitId, output)) {
 			// No element available, set to available later if needed.
