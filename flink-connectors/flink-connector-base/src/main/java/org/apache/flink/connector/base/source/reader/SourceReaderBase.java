@@ -119,9 +119,12 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 		splitFetcherManager.checkErrors();
 
 		// make sure we have a fetch we are working on, or move to the next
-		final RecordsWithSplitIds<E> recordsWithSplitId = getCurrentOrNewFetch(output);
+		RecordsWithSplitIds<E> recordsWithSplitId = this.currentFetch;
 		if (recordsWithSplitId == null) {
-			return trace(finishedOrAvailableLater());
+			recordsWithSplitId = getNextFetch(output);
+			if (recordsWithSplitId == null) {
+				return trace(finishedOrAvailableLater());
+			}
 		}
 
 		// we need to loop here, because we may have to go across splits
@@ -147,13 +150,8 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
 	}
 
 	@Nullable
-	private RecordsWithSplitIds<E> getCurrentOrNewFetch(final ReaderOutput<T> output) {
-		RecordsWithSplitIds<E> recordsWithSplitId = this.currentFetch;
-		if (recordsWithSplitId != null) {
-			return recordsWithSplitId;
-		}
-
-		recordsWithSplitId = elementsQueue.poll();
+	private RecordsWithSplitIds<E> getNextFetch(final ReaderOutput<T> output) {
+		final RecordsWithSplitIds<E> recordsWithSplitId = elementsQueue.poll();
 		if (recordsWithSplitId == null || !moveToNextSplit(recordsWithSplitId, output)) {
 			// No element available, set to available later if needed.
 			return null;
