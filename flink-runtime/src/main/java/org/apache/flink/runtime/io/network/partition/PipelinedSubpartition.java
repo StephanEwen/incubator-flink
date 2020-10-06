@@ -70,6 +70,7 @@ public class PipelinedSubpartition extends ResultSubpartition
 	// ------------------------------------------------------------------------
 
 	/** All buffers of this subpartition. Access to the buffers is synchronized on this object. */
+	@GuardedBy("buffers")
 	private final PrioritizedDeque<BufferConsumer> buffers = new PrioritizedDeque<>();
 
 	/** The number of non-event buffers currently in this subpartition. */
@@ -181,6 +182,7 @@ public class PipelinedSubpartition extends ResultSubpartition
 		return true;
 	}
 
+	@GuardedBy("buffers")
 	private boolean addBuffer(BufferConsumer bufferConsumer) {
 		assert Thread.holdsLock(buffers);
 		if (bufferConsumer.getDataType().hasPriority()) {
@@ -190,6 +192,7 @@ public class PipelinedSubpartition extends ResultSubpartition
 		return false;
 	}
 
+	@GuardedBy("buffers")
 	private boolean processPriorityBuffer(BufferConsumer bufferConsumer) {
 		buffers.addPriorityElement(bufferConsumer);
 		final int numPriorityElements = buffers.getNumPriorityElements();
@@ -380,6 +383,7 @@ public class PipelinedSubpartition extends ResultSubpartition
 		return !isBlockedByCheckpoint && (flushRequested || getNumberOfFinishedBuffers() > 0);
 	}
 
+	@GuardedBy("buffers")
 	private Buffer.DataType getNextBufferTypeUnsafe() {
 		assert Thread.holdsLock(buffers);
 
@@ -389,6 +393,8 @@ public class PipelinedSubpartition extends ResultSubpartition
 
 	// ------------------------------------------------------------------------
 
+	@SuppressWarnings("FieldAccessNotGuarded")
+	@VisibleForTesting
 	int getCurrentNumberOfBuffers() {
 		return buffers.size();
 	}
@@ -414,6 +420,7 @@ public class PipelinedSubpartition extends ResultSubpartition
 			getSubPartitionIndex(), numBuffers, numBytes, getBuffersInBacklog(), finished, hasReadView);
 	}
 
+	@SuppressWarnings("FieldAccessNotGuarded")
 	@Override
 	public int unsynchronizedGetNumberOfQueuedBuffers() {
 		// since we do not synchronize, the size may actually be lower than 0!
@@ -514,6 +521,7 @@ public class PipelinedSubpartition extends ResultSubpartition
 		}
 	}
 
+	@GuardedBy("buffers")
 	private int getNumberOfFinishedBuffers() {
 		assert Thread.holdsLock(buffers);
 
