@@ -140,7 +140,7 @@ public class PipelinedSubpartition extends ResultSubpartition
 	}
 
 	@Override
-	public boolean add(BufferConsumer bufferConsumer, int header) throws IOException {
+	public boolean add(BufferConsumer bufferConsumer) throws IOException {
 		return add(bufferConsumer, false);
 	}
 

@@ -77,11 +77,6 @@ public abstract class ResultSubpartition {
 		parent.onConsumedSubpartition(getSubPartitionIndex());
 	}
 
-	@VisibleForTesting
-	public final boolean add(BufferConsumer bufferConsumer) throws IOException {
-		return add(bufferConsumer, 0);
-	}
-
 	/**
 	 * Adds the given buffer.
 	 *
@@ -98,7 +93,7 @@ public abstract class ResultSubpartition {
 	 * @throws IOException
 	 * 		thrown in case of errors while adding the buffer
 	 */
-	public abstract boolean add(BufferConsumer bufferConsumer, int header) throws IOException;
+	public abstract boolean add(BufferConsumer bufferConsumer) throws IOException;
 
 	public abstract void flush();
 

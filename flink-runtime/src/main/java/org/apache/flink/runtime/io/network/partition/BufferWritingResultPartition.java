@@ -58,6 +58,8 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 	/** For non-broadcast mode, each subpartition maintains a separate BufferBuilder which might be null. */
 	private final BufferBuilder[] subpartitionBufferBuilders;
 
+	private final ByteBuffer partialLenBuffer = ByteBuffer.allocateDirect(4);
+
 	/** For broadcast mode, a single BufferBuilder is shared by all subpartitions. */
 	private BufferBuilder broadcastBufferBuilder;
 
@@ -137,7 +139,10 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 
 		while (record.hasRemaining()) {
 			finishSubpartitionBufferBuilder(targetSubpartition);
-			buffer = getNewSubpartitionBufferBuilderForRecordContinuation(record, targetSubpartition);
+			buffer = getNewEmptySubpartitionBufferBuilder(targetSubpartition);
+			writePartialLen(record, buffer);
+			buffer.append(record);
+			buffer.commit();
 		}
 
 		if (buffer.isFull()) {
@@ -156,7 +161,10 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 
 		while (record.hasRemaining()) {
 			finishBroadcastBufferBuilder();
-			buffer = getNewBroadcastBufferBuilderForRecordContinuation(record);
+			buffer = getNewEmptyBroadcastBufferBuilder();
+			writePartialLen(record, buffer);
+			buffer.append(record);
+			buffer.commit();
 		}
 
 		if (buffer.isFull()) {
@@ -173,7 +181,7 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, isPriorityEvent)) {
 			for (ResultSubpartition subpartition : subpartitions) {
 				// Retain the buffer so that it can be recycled by each channel of targetPartition
-				subpartition.add(eventBufferConsumer.copy(), 0);
+				subpartition.add(eventBufferConsumer.copy());
 			}
 		}
 	}
@@ -225,59 +233,33 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		}
 	}
 
+	private void writePartialLen(ByteBuffer recordBytes, BufferBuilder buffer) {
+		partialLenBuffer.clear();
+		partialLenBuffer.putInt(0, Math.min(recordBytes.remaining(), buffer.getWritableBytes() - 4));
+		buffer.append(partialLenBuffer);
+	}
+
 	private BufferBuilder getNewEmptySubpartitionBufferBuilder(int targetSubpartition) throws IOException {
-		final BufferBuilder bufferBuilder = requestNewSubpartitionBufferBuilder(targetSubpartition);
-		subpartitions[targetSubpartition].add(bufferBuilder.createBufferConsumer(), 0);
-		return bufferBuilder;
-	}
-
-	private BufferBuilder getNewSubpartitionBufferBuilderForRecordContinuation(
-			final ByteBuffer remainingRecordBytes,
-			final int targetSubpartition) throws IOException {
-
-		final BufferBuilder bufferBuilder = requestNewSubpartitionBufferBuilder(targetSubpartition);
-		final int partialRecordBytes = bufferBuilder.appendAndCommit(remainingRecordBytes);
-		subpartitions[targetSubpartition].add(bufferBuilder.createBufferConsumer(), partialRecordBytes);
-		return bufferBuilder;
-	}
-
-	private BufferBuilder requestNewSubpartitionBufferBuilder(int targetSubpartition) throws IOException {
 		checkInProduceState();
 		ensureUnicastMode();
 		final BufferBuilder bufferBuilder = requestNewBufferBuilderFromPool(targetSubpartition);
 		subpartitionBufferBuilders[targetSubpartition] = bufferBuilder;
+		subpartitions[targetSubpartition].add(bufferBuilder.createBufferConsumer());
 		return bufferBuilder;
 	}
 
 	private BufferBuilder getNewEmptyBroadcastBufferBuilder() throws IOException {
-		final BufferBuilder bufferBuilder = requestNewBroadcastBufferBuilder();
-		try (final BufferConsumer consumer = bufferBuilder.createBufferConsumer()) {
-			for (ResultSubpartition subpartition : subpartitions) {
-				subpartition.add(consumer.copy(), 0);
-			}
-		}
-		return bufferBuilder;
-	}
-
-	private BufferBuilder getNewBroadcastBufferBuilderForRecordContinuation(
-			final ByteBuffer remainingRecordBytes) throws IOException {
-
-		final BufferBuilder bufferBuilder = requestNewBroadcastBufferBuilder();
-		final int partialRecordBytes = bufferBuilder.appendAndCommit(remainingRecordBytes);
-		try (final BufferConsumer consumer = bufferBuilder.createBufferConsumer()) {
-			for (ResultSubpartition subpartition : subpartitions) {
-				subpartition.add(consumer.copy(), partialRecordBytes);
-			}
-		}
-		return bufferBuilder;
-	}
-
-	private BufferBuilder requestNewBroadcastBufferBuilder() throws IOException {
 		checkInProduceState();
 		ensureBroadcastMode();
 
 		final BufferBuilder bufferBuilder = requestNewBufferBuilderFromPool(0);
 		broadcastBufferBuilder = bufferBuilder;
+
+		try (final BufferConsumer consumer = bufferBuilder.createBufferConsumer()) {
+			for (ResultSubpartition subpartition : subpartitions) {
+				subpartition.add(consumer.copy());
+			}
+		}
 		return bufferBuilder;
 	}
 
