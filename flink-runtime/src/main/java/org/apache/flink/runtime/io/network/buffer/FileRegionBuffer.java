@@ -28,16 +28,25 @@ import org.apache.flink.shaded.netty4.io.netty.channel.DefaultFileRegion;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.WritableByteChannel;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * This class implements {@link Buffer} mainly for compatible with existing usages. We can also lazy read
- * it into another buffer via {@link #readInto(MemorySegment)} for use. Since it behaves "read-only" style,
- * then many methods implemented via throw {@link UnsupportedOperationException}.
+ * This class represents a chunk of data in a file channel. Its purpose is to be passed
+ * to the netty code and to be written to the socket via the zero-copy direct transfer
+ * capabilities of {@link FileChannel#transferTo(long, long, WritableByteChannel)}.
  *
- * <p>This also extends from Netty's {@link DefaultFileRegion}, so we don't need to do any special handling.
- * Netty will internally treat this differently than the Buffer that implements {@link ByteBuf}.
+ * <p>This class implements {@link Buffer} mainly for compatible with existing usages.
+ * It can be thought of as a "lazy buffer" that does not hold the data directly, although
+ * the data can be fetches as a read-only {@code ByteBuffer} when needed, for example
+ * in local input channels. See {@link #readInto(MemorySegment)} and
+ * {@link #getNioBufferReadable()}. Because this buffer is read-only, the modification
+ * methods (and methods that give a writable buffer) throw {@link UnsupportedOperationException}.
+ *
+ * <p>This class extends from Netty's {@link DefaultFileRegion}, similar as the
+ * {@link NetworkBuffer} extends from Netty's {@link ByteBuf}. That way we can pass both
+ * of them to Netty in the same way, and Netty will internally treat them appropriately.
  */
 public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 
