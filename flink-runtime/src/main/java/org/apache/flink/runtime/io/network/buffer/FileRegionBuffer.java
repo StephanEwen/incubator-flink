@@ -20,6 +20,7 @@ package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.partition.BufferReaderWriterUtil;
+import org.apache.flink.util.FlinkRuntimeException;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
@@ -60,11 +61,12 @@ public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 
 	public FileRegionBuffer(
 			FileChannel fileChannel,
+			long fileChannelPosition,
 			int bufferSize,
 			DataType dataType,
-			boolean isCompressed) throws IOException {
+			boolean isCompressed) {
 
-		super(fileChannel, fileChannel.position(), bufferSize);
+		super(fileChannel, fileChannelPosition, bufferSize);
 
 		this.fileChannel = checkNotNull(fileChannel);
 		this.dataType = checkNotNull(dataType);
@@ -122,11 +124,23 @@ public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 	}
 
 	/**
-	 * This method is only implemented for tests at the moment.
+	 * This method is only called by tests and by event-deserialization, like
+	 * checkpoint barriers. Because such events are not used for bounded intermediate
+	 * results, this method currently executes only in tests.
 	 */
 	@Override
 	public ByteBuffer getNioBufferReadable() {
-		return BufferReaderWriterUtil.tryReadByteBuffer(fileChannel, bufferSize());
+		try {
+			final ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize());
+			BufferReaderWriterUtil.readByteBufferFully(fileChannel, buffer, position());
+			buffer.flip();
+			return buffer;
+		} catch (IOException e) {
+			// this is not very pretty, but given that this code runs only in tests
+			// the exception wrapping here is simpler than updating the method signature
+			// to declare IOExceptions, as would be necessary for a proper "lazy buffer".
+			throw new FlinkRuntimeException(e.getMessage(), e);
+		}
 	}
 
 	@Override
@@ -214,7 +228,7 @@ public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 
 	public Buffer readInto(MemorySegment segment) throws IOException {
 		final ByteBuffer buffer = segment.wrap(0, bufferSize());
-		BufferReaderWriterUtil.readByteBufferFully(fileChannel, buffer);
+		BufferReaderWriterUtil.readByteBufferFully(fileChannel, buffer, position());
 
 		return new NetworkBuffer(
 			segment,

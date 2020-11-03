@@ -25,7 +25,6 @@ import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.FileRegionBuffer;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
-import org.apache.flink.util.ExceptionUtils;
 
 import javax.annotation.Nullable;
 
@@ -155,7 +154,7 @@ public final class BufferReaderWriterUtil {
 		boolean isCompressed = headerBuffer.getShort() == BUFFER_IS_COMPRESSED;
 		int size = headerBuffer.getInt();
 
-		return new FileRegionBuffer(channel, size, dataType, isCompressed);
+		return new FileRegionBuffer(channel, channel.position(), size, dataType, isCompressed);
 	}
 
 	@Nullable
@@ -205,17 +204,6 @@ public final class BufferReaderWriterUtil {
 		return new ByteBuffer[] { allocatedHeaderBuffer(), null };
 	}
 
-	public static ByteBuffer tryReadByteBuffer(FileChannel channel, int size) {
-		ByteBuffer bb = ByteBuffer.allocate(size);
-		try {
-			tryReadByteBuffer(channel, bb);
-			bb.flip();
-		} catch (IOException ex) {
-			ExceptionUtils.rethrow(ex);
-		}
-		return bb;
-	}
-
 	private static boolean tryReadByteBuffer(FileChannel channel, ByteBuffer b) throws IOException {
 		if (channel.read(b) == -1) {
 			return false;
@@ -230,12 +218,28 @@ public final class BufferReaderWriterUtil {
 		}
 	}
 
-	public static void readByteBufferFully(FileChannel channel, ByteBuffer b) throws IOException {
+	static void readByteBufferFully(FileChannel channel, ByteBuffer b) throws IOException {
 		// the post-checked loop here gets away with one less check in the normal case
 		do {
 			if (channel.read(b) == -1) {
 				throwPrematureEndOfFile();
 			}
+		}
+		while (b.hasRemaining());
+	}
+
+	public static void readByteBufferFully(
+			final FileChannel channel,
+			final ByteBuffer b,
+			long position) throws IOException {
+
+		// the post-checked loop here gets away with one less check in the normal case
+		do {
+			final int numRead = channel.read(b, position);
+			if (numRead == -1) {
+				throwPrematureEndOfFile();
+			}
+			position += numRead;
 		}
 		while (b.hasRemaining());
 	}
