@@ -41,9 +41,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  */
 public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 
-	/** The number of bytes to be read/transferred from this file region. */
-	private final int bufferSize;
-
 	private final FileChannel fileChannel;
 
 	/** The {@link DataType} this buffer represents. */
@@ -61,9 +58,14 @@ public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 		super(fileChannel, fileChannel.position(), bufferSize);
 
 		this.fileChannel = checkNotNull(fileChannel);
-		this.bufferSize = bufferSize;
 		this.dataType = checkNotNull(dataType);
 		this.isCompressed = isCompressed;
+	}
+
+	private int bufferSize() {
+		// this is guaranteed to not be lossy, because we initialize this from
+		// an int in the constructor.
+		return (int) count();
 	}
 
 	// ------------------------------------------------------------------------
@@ -115,7 +117,7 @@ public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 	 */
 	@Override
 	public ByteBuffer getNioBufferReadable() {
-		return BufferReaderWriterUtil.tryReadByteBuffer(fileChannel, bufferSize);
+		return BufferReaderWriterUtil.tryReadByteBuffer(fileChannel, bufferSize());
 	}
 
 	@Override
@@ -135,12 +137,12 @@ public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 
 	@Override
 	public int getSize() {
-		return bufferSize;
+		return bufferSize();
 	}
 
 	@Override
 	public int readableBytes() {
-		return bufferSize;
+		return bufferSize();
 	}
 
 	@Override
@@ -202,7 +204,7 @@ public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 	// ------------------------------------------------------------------------
 
 	public Buffer readInto(MemorySegment segment) throws IOException {
-		final ByteBuffer buffer = segment.wrap(0, bufferSize);
+		final ByteBuffer buffer = segment.wrap(0, bufferSize());
 		BufferReaderWriterUtil.readByteBufferFully(fileChannel, buffer);
 
 		return new NetworkBuffer(
@@ -210,6 +212,6 @@ public class FileRegionBuffer extends DefaultFileRegion implements Buffer {
 			BufferRecycler.DummyBufferRecycler.INSTANCE,
 			dataType,
 			isCompressed,
-			bufferSize);
+			bufferSize());
 	}
 }
