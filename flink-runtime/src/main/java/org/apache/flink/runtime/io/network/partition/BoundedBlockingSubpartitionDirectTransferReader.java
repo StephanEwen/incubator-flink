@@ -165,10 +165,6 @@ public class BoundedBlockingSubpartitionDirectTransferReader implements ResultSu
 
 		private final ByteBuffer headerBuffer;
 
-		private long lastPosition = -1L;
-
-		private int lastBufferSize;
-
 		FileRegionReader(Path filePath) throws IOException {
 			this.fileChannel = FileChannel.open(filePath, StandardOpenOption.READ);
 			this.headerBuffer = BufferReaderWriterUtil.allocatedHeaderBuffer();
@@ -177,18 +173,7 @@ public class BoundedBlockingSubpartitionDirectTransferReader implements ResultSu
 		@Nullable
 		@Override
 		public Buffer nextBuffer() throws IOException {
-			// As the file region transfer via network channel will not modify the underlining file position,
-			// then we need update the position with last buffer size before reading the next header.
-			if (fileChannel.position() == lastPosition) {
-				fileChannel.position(fileChannel.position() + lastBufferSize);
-			}
-
-			Buffer buffer = BufferReaderWriterUtil.readFromByteChannel(fileChannel, headerBuffer);
-			if (buffer != null) {
-				lastBufferSize = buffer.getSize();
-				lastPosition = fileChannel.position();
-			}
-			return buffer;
+			return BufferReaderWriterUtil.readFileRegionFromByteChannel(fileChannel, headerBuffer);
 		}
 
 		@Override

@@ -142,19 +142,25 @@ public final class BufferReaderWriterUtil {
 	}
 
 	@Nullable
-	static Buffer readFromByteChannel(FileChannel channel, ByteBuffer headerBuffer) throws IOException {
+	static Buffer readFileRegionFromByteChannel(FileChannel channel, ByteBuffer headerBuffer) throws IOException {
 		headerBuffer.clear();
 		if (!tryReadByteBuffer(channel, headerBuffer)) {
 			return null;
 		}
 		headerBuffer.flip();
 
-		boolean isEvent = headerBuffer.getShort() == HEADER_VALUE_IS_EVENT;
-		Buffer.DataType dataType = isEvent ? Buffer.DataType.EVENT_BUFFER : Buffer.DataType.DATA_BUFFER;
-		boolean isCompressed = headerBuffer.getShort() == BUFFER_IS_COMPRESSED;
-		int size = headerBuffer.getInt();
+		final boolean isEvent = headerBuffer.getShort() == HEADER_VALUE_IS_EVENT;
+		final Buffer.DataType dataType = isEvent ? Buffer.DataType.EVENT_BUFFER : Buffer.DataType.DATA_BUFFER;
+		final boolean isCompressed = headerBuffer.getShort() == BUFFER_IS_COMPRESSED;
+		final int size = headerBuffer.getInt();
 
-		return new FileRegionBuffer(channel, channel.position(), size, dataType, isCompressed);
+		// the file region does not advance position. it must not, because it gets written
+		// interleaved with these calls, which would completely mess up the reading.
+		// so we advance the positions always and only here.
+		final long position = channel.position();
+		channel.position(position + size);
+
+		return new FileRegionBuffer(channel, position, size, dataType, isCompressed);
 	}
 
 	@Nullable
