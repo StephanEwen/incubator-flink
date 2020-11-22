@@ -21,6 +21,7 @@ package org.apache.flink.runtime.operators.coordination;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.util.TemporaryClassLoaderContext;
 import org.apache.flink.util.function.ThrowingConsumer;
 import org.apache.flink.util.function.ThrowingRunnable;
 
@@ -121,9 +122,11 @@ public class RecreateOnResetOperatorCoordinator implements OperatorCoordinator {
 		closingFuture.thenRun(() -> {
 			if (!closed) {
 				// The previous coordinator has closed. Create a new one.
-				newCoordinator.createNewInternalCoordinator(context, provider);
-				newCoordinator.resetAndStart(checkpointData, started);
-				newCoordinator.processPendingCalls();
+				try (TemporaryClassLoaderContext ignored = TemporaryClassLoaderContext.of(context.getUserCodeClassloader())) {
+					newCoordinator.createNewInternalCoordinator(context, provider);
+					newCoordinator.resetAndStart(checkpointData, started);
+					newCoordinator.processPendingCalls();
+				}
 			}
 		});
 	}

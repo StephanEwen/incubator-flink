@@ -25,6 +25,7 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.coordination.RecreateOnResetOperatorCoordinator;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
+import org.apache.flink.util.TemporaryClassLoaderContext;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -67,13 +68,18 @@ public class SourceCoordinatorProvider<SplitT extends SourceSplit> extends Recre
 	public OperatorCoordinator getCoordinator(OperatorCoordinator.Context context) throws Exception  {
 		final String coordinatorThreadName = "SourceCoordinator-" + operatorName;
 		CoordinatorExecutorThreadFactory coordinatorThreadFactory =
-				new CoordinatorExecutorThreadFactory(coordinatorThreadName);
+				new CoordinatorExecutorThreadFactory(coordinatorThreadName, context.getUserCodeClassloader());
 		ExecutorService coordinatorExecutor = Executors.newSingleThreadExecutor(coordinatorThreadFactory);
-		SimpleVersionedSerializer<SplitT> splitSerializer = source.getSplitSerializer();
-		SourceCoordinatorContext<SplitT> sourceCoordinatorContext =
-				new SourceCoordinatorContext<>(coordinatorExecutor, coordinatorThreadFactory, numWorkerThreads,
-						context, splitSerializer);
-		return new SourceCoordinator<>(operatorName, coordinatorExecutor, source, sourceCoordinatorContext);
+
+		// we set the user code classloader here for the serializer, and for the coordinator that is
+		// created nested in the constructor
+		try (TemporaryClassLoaderContext ignored = TemporaryClassLoaderContext.of(context.getUserCodeClassloader())) {
+			SimpleVersionedSerializer<SplitT> splitSerializer = source.getSplitSerializer();
+			SourceCoordinatorContext<SplitT> sourceCoordinatorContext =
+					new SourceCoordinatorContext<>(coordinatorExecutor, coordinatorThreadFactory, numWorkerThreads,
+							context, splitSerializer);
+			return new SourceCoordinator<>(operatorName, coordinatorExecutor, source, sourceCoordinatorContext);
+		}
 	}
 
 	/**
@@ -81,11 +87,15 @@ public class SourceCoordinatorProvider<SplitT extends SourceSplit> extends Recre
 	 */
 	public static class CoordinatorExecutorThreadFactory implements ThreadFactory {
 		private final String coordinatorThreadName;
+		private final ClassLoader cl;
 		private Thread t;
 
-		CoordinatorExecutorThreadFactory(String coordinatorThreadName) {
+		CoordinatorExecutorThreadFactory(
+				final String coordinatorThreadName,
+				final ClassLoader contextClassLoader) {
 			this.coordinatorThreadName = coordinatorThreadName;
 			this.t = null;
+			this.cl = contextClassLoader;
 		}
 
 		@Override
@@ -95,6 +105,7 @@ public class SourceCoordinatorProvider<SplitT extends SourceSplit> extends Recre
 						"SingleThreadExecutor.");
 			}
 			t = new Thread(r, coordinatorThreadName);
+			t.setContextClassLoader(cl);
 			t.setUncaughtExceptionHandler(FatalExitExceptionHandler.INSTANCE);
 			return t;
 		}

@@ -249,16 +249,30 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT> implements 
 	 * @throws Exception When something goes wrong in serialization.
 	 */
 	private byte[] toBytes(long checkpointId) throws Exception {
-		EnumChkT enumCkpt = enumerator.snapshotState();
+		return writeCheckpointBytes(
+				checkpointId,
+				enumerator.snapshotState(),
+				context,
+				enumCheckpointSerializer,
+				splitSerializer);
+	}
+
+	static <SplitT extends SourceSplit, EnumChkT> byte[] writeCheckpointBytes(
+			final long checkpointId,
+			final EnumChkT enumeratorCheckpoint,
+			final SourceCoordinatorContext<SplitT> coordinatorContext,
+			final SimpleVersionedSerializer<EnumChkT> checkpointSerializer,
+			final SimpleVersionedSerializer<SplitT> splitSerializer) throws Exception {
 
 		try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
 				DataOutputStream out = new DataOutputViewStreamWrapper(baos)) {
+
 			writeCoordinatorSerdeVersion(out);
-			out.writeInt(enumCheckpointSerializer.getVersion());
-			byte[] serialziedEnumChkpt = enumCheckpointSerializer.serialize(enumCkpt);
+			out.writeInt(checkpointSerializer.getVersion());
+			byte[] serialziedEnumChkpt = checkpointSerializer.serialize(enumeratorCheckpoint);
 			out.writeInt(serialziedEnumChkpt.length);
 			out.write(serialziedEnumChkpt);
-			context.snapshotState(checkpointId, splitSerializer, out);
+			coordinatorContext.snapshotState(checkpointId, splitSerializer, out);
 			out.flush();
 			return baos.toByteArray();
 		}
