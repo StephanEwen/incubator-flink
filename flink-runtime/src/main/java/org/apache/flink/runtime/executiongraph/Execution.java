@@ -891,7 +891,8 @@ public class Execution
                     new TaskNotRunningException(
                             '"'
                                     + vertex.getTaskNameWithSubtaskIndex()
-                                    + "\" is currently not running or ready."));
+                                    + "\" is currently not running, but in state "
+                                    + getState()));
         }
     }
 
